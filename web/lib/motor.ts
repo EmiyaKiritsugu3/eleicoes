@@ -18,6 +18,13 @@
  *   `nEleitores` contam só válidos ("excluída com contagem").
  * - Peso = `demo.eleitores` quando finito; fallback `total`, depois `pop`
  *   (v1 pode não ter `fato_eleitorado` → `eleitores` null), senão 0.
+ *   O fallback NUNCA é silencioso: `pesoFonte` = "eleitores" quando TODA
+ *   linha vencedora foi ponderada por `demo.eleitores`, "misto" se QUALQUER
+ *   linha vencedora caiu no fallback (`total`/`pop`) — a Task 7 renderiza a
+ *   nota honesta a partir daí.
+ * - `nEleitores` = soma dos pesos EFETIVOS das linhas vencedoras válidas
+ *   (eleitores quando há, fallback quando não) — não é contagem de
+ *   eleitores censitários quando `pesoFonte` = "misto".
  * - Campos demo `null` dentro de demo não-nula são pulados por variável.
  * - Sem peso válido na variável → `NaN` (fail-closed: nunca zero
  *   silencioso). `candidatoId` desconhecido → perfil vazio, baseline
@@ -63,9 +70,12 @@ export interface MunRow {
   demo: Record<VarDemo, number | null> | null;
 }
 
+export type PesoFonte = "eleitores" | "misto";
+
 export interface PerfilResult {
   nMun: number;
   nEleitores: number;
+  pesoFonte: PesoFonte;
   medias: Record<VarDemo, number>;
   vsBrasil: Record<VarDemo, number>;
 }
@@ -89,12 +99,28 @@ export function indiceVencedor(votos: (number | null)[]): number {
   return bestV === -Infinity ? -1 : best;
 }
 
+/** Origem do peso de uma linha na cadeia eleitores → total → pop. */
+export type FontePesoLinha = "eleitores" | "total" | "pop" | "nenhuma";
+
+export function fontePeso(row: MunRow): FontePesoLinha {
+  if (row.demo && finito(row.demo.eleitores)) return "eleitores";
+  if (finito(row.total)) return "total";
+  if (row.demo && finito(row.demo.pop)) return "pop";
+  return "nenhuma";
+}
+
 /** Peso eleitoral da linha p/ médias ponderadas (eleitores → total → pop). */
 export function pesoEleitoral(row: MunRow): number {
-  if (row.demo && finito(row.demo.eleitores)) return row.demo.eleitores as number;
-  if (finito(row.total)) return row.total as number;
-  if (row.demo && finito(row.demo.pop)) return row.demo.pop as number;
-  return 0;
+  switch (fontePeso(row)) {
+    case "eleitores":
+      return row.demo!.eleitores as number;
+    case "total":
+      return row.total as number;
+    case "pop":
+      return row.demo!.pop as number;
+    default:
+      return 0;
+  }
 }
 
 function mediaPonderada(
@@ -126,7 +152,7 @@ export function perfilOndeVenceu(
   const ordem = Array.isArray(cond?.candidatos) ? cond.candidatos : [];
   const alvo = ordem.findIndex((c) => c?.id === cond?.candidatoId);
 
-  const validas = lista.filter((r) => r && r.demo !== null);
+  const validas = lista.filter((r) => r?.demo != null);
   const vencidas =
     alvo < 0 ? [] : validas.filter((r) => indiceVencedor(r.votos ?? []) === alvo);
 
@@ -146,6 +172,9 @@ export function perfilOndeVenceu(
   return {
     nMun: vencidas.length,
     nEleitores: vencidas.reduce((acc, r) => acc + pesoEleitoral(r), 0),
+    pesoFonte: vencidas.every((r) => fontePeso(r) === "eleitores")
+      ? "eleitores"
+      : "misto",
     medias,
     vsBrasil,
   };
