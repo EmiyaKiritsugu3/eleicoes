@@ -2,6 +2,7 @@ import React from "react";
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import Home from "../app/page";
+import { HomeContent } from "../components/HomeContent";
 
 // SSR estático: useEffect não roda (sem fetch), então a página renderiza
 // o estado inicial — badges na variante "dado não auditado", seções vazias.
@@ -43,5 +44,26 @@ describe("fixture-never-official em / (selo via getSealState)", () => {
     });
     expect(seal.official).toBe(null);
     expect(seal.hasFixture).toBe(true);
+  });
+});
+
+describe("candidate scope honesty — F1+F2 (busca por candidato é global no V1)", () => {
+  it("shows global-candidate note in Resumo/UF when candidato set", async () => {
+    const { NOTA_CANDIDATO_GLOBAL } = await import("../lib/data");
+    expect(html).not.toContain(NOTA_CANDIDATO_GLOBAL);
+    const htmlCand = renderToStaticMarkup(<HomeContent initialFiltros={{ candidato: "silva" }} />);
+    expect(htmlCand).toContain('role="note"');
+    expect(htmlCand).toContain(NOTA_CANDIDATO_GLOBAL);
+  });
+  it("shows no-ano-cargo-uf-coverage note in ranking when those filters set with candidato", async () => {
+    const { NOTA_RANKING_SEM_COBERTURA } = await import("../lib/data");
+    expect(html).not.toContain(NOTA_RANKING_SEM_COBERTURA);
+    const htmlMix = renderToStaticMarkup(
+      <HomeContent initialFiltros={{ candidato: "silva", ano: "2022", cargo: "presidente", uf: "SP" }} />,
+    );
+    expect(htmlMix).toContain('role="note"');
+    expect(htmlMix).toContain(NOTA_RANKING_SEM_COBERTURA);
+    const htmlAnoSemCand = renderToStaticMarkup(<HomeContent initialFiltros={{ ano: "2022" }} />);
+    expect(htmlAnoSemCand).not.toContain(NOTA_RANKING_SEM_COBERTURA);
   });
 });

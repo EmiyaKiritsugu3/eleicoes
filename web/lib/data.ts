@@ -9,6 +9,18 @@
  * - Tabelas/JSONs vazios -> a página mostra "sem dado oficial".
  */
 
+/** Decisão travada (F1+F2): busca por candidato é GLOBAL no V1 — o agregado
+ *  por UF não tem recorte por candidato e o agregado por candidato não tem
+ *  colunas ano/cargo/UF. As seções de / exibem estas notas com role="note"
+ *  quando os filtros se misturam (padrão reusado de NOTA_PARTIDO em
+ *  /analisar). Vive em lib (não em app/page.tsx) porque o Next só aceita
+ *  exports próprios de Page em arquivos de rota.
+ */
+export const NOTA_CANDIDATO_GLOBAL =
+  "Busca por candidato é global no V1: totais por UF/ano ignoram o nome buscado (agregado sem recorte por candidato).";
+export const NOTA_RANKING_SEM_COBERTURA =
+  "nota: filtros ano/cargo/UF sem cobertura no agregado por candidato (V1) — números desta seção ignoram ano/cargo/UF";
+
 export interface Filtros {
   ano?: string;
   cargo?: string;
@@ -165,6 +177,9 @@ function matchTexto(valor: unknown, filtro: string): boolean {
 /** Total de votos em `por_uf` respeitando ano/cargo/UF.
  *  `municipio`/`candidato` não existem no agregado por UF (V1) e são ignorados
  *  aqui — o filtro de candidato aplica-se ao ranking via `filtrarCandidatos`.
+ *  Decisão travada (F1+F2): busca por candidato é GLOBAL no V1; quando
+ *  `filtros.candidato` está ativo, a página exibe `NOTA_CANDIDATO_GLOBAL`
+ *  (role="note") nas seções Resumo/UF. Comportamento inalterado.
  */
 export function getResumo(
   porUf: PorUfRow[],
@@ -179,7 +194,11 @@ export function getResumo(
   return { totalVotos: rows.reduce((acc, r) => acc + (Number(r.votos) || 0), 0), vazio: rows.length === 0 };
 }
 
-/** Ranking de UFs (base da seção "mapa" v1: lista ordenada + tabela acessível). */
+/** Ranking de UFs (base da seção "mapa" v1: lista ordenada + tabela acessível).
+ *  `candidato` não existe no agregado por UF (V1) e é ignorado aqui — com
+ *  `filtros.candidato` ativo, a seção exibe `NOTA_CANDIDATO_GLOBAL`
+ *  (role="note"). Comportamento inalterado.
+ */
 export function rankingUf(
   porUf: PorUfRow[],
   filtros: Filtros,
@@ -212,7 +231,12 @@ export function evolucaoAnual(
     .sort((a, b) => a.ano - b.ano);
 }
 
-/** Ranking de candidatos com busca por nome/partido. */
+/** Ranking de candidatos com busca por nome/partido.
+ *  O agregado por candidato (V1) não tem colunas ano/cargo/UF: esses filtros
+ *  são ignorados aqui — quando combinados com `filtros.candidato`, a seção
+ *  Ranking exibe `NOTA_RANKING_SEM_COBERTURA` (role="note"). Comportamento
+ *  inalterado.
+ */
 export function filtrarCandidatos(
   rows: PorCandidatoRow[],
   filtros: Filtros,
