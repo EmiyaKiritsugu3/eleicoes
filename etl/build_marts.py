@@ -7,7 +7,8 @@
 3. Cria o DuckDB com `fato_voto`, `dim_candidato`, `fato_eleitorado` e
    `fato_fin` (eleitorado/finanças ficam com schema vazio quando não houver
    fonte — caso do V1, só votação nominal).
-4. Escreve agregados JSON em `web/public/data/` (raiz do repo).
+4. Escreve agregados JSON em `web/public/data/` (raiz do repo),
+   redirecionável via `web_data_dir`.
 5. Registra a fonte oficial (campo `url` CDN de `V1_DATASETS`, Task 2) no manifest.
 
 É idempotente e tolera `curated_dir` vazio (cria tabelas/JSONs vazios).
@@ -18,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import warnings
 from pathlib import Path
 
 import duckdb
@@ -57,20 +59,39 @@ def _read_input_file(path: Path) -> pd.DataFrame | None:
                 except (UnicodeDecodeError, pd.errors.ParserError):
                     continue
             return pd.read_csv(path, sep=",", encoding="latin1", dtype="string")
-    except Exception:
+    except Exception as exc:
+        warnings.warn(
+            f"build_marts: skipping unreadable file {path.name}: {exc}",
+            UserWarning,
+            stacklevel=3,
+        )
         return None
     return None
+
+
+def _is_generated(path: Path) -> bool:
+    """True se o arquivo foi escrito pelo próprio build (partição `ano=`)."""
+    return any(part.startswith("ano=") for part in path.parts)
 
 
 def _load_canonical(curated_dir: Path) -> pd.DataFrame:
     frames: list[pd.DataFrame] = []
     if curated_dir.is_dir():
-        for path in sorted(curated_dir.rglob("*")):
-            if path.is_file() and path.suffix.lower() in (".parquet", ".csv"):
-                df = _read_input_file(path)
-                if df is None or df.empty:
-                    continue
-                frames.append(df if _is_canonical(df) else normalize_resultados(df))
+        paths = sorted(
+            p
+            for p in curated_dir.rglob("*")
+            if p.is_file() and p.suffix.lower() in (".parquet", ".csv")
+        )
+        # Idempotência: numa re-ingestão no mesmo dir, os Parquet particionados
+        # (`ano=/.../data.parquet`) escritos pelo build anterior duplicariam os
+        # votos se lidos junto com as fontes. Prefere as fontes; só lê os
+        # gerados quando não há fonte (dir só com partições).
+        sources = [p for p in paths if not _is_generated(p)]
+        for path in sources or paths:
+            df = _read_input_file(path)
+            if df is None or df.empty:
+                continue
+            frames.append(df if _is_canonical(df) else normalize_resultados(df))
     if not frames:
         return _empty_canonical()
     out = pd.concat(frames, ignore_index=True)
@@ -190,11 +211,15 @@ def _register_sources(df: pd.DataFrame, manifest_path) -> None:
         )
 
 
-def build_all(curated_dir, db_path, manifest_path) -> None:
-    """Pipeline completo: Parquet particionado + DuckDB + JSONs + manifest."""
+def build_all(curated_dir, db_path, manifest_path, web_data_dir=None) -> None:
+    """Pipeline completo: Parquet particionado + DuckDB + JSONs + manifest.
+
+    `web_data_dir` redireciona os agregados JSON (padrão: `web/public/data/`
+    na raiz do repo); útil em testes para não mutar a árvore do repo.
+    """
     curated = Path(curated_dir)
     df = _load_canonical(curated)
     _write_partitioned_parquet(df, curated)
     _write_duckdb(df, Path(db_path))
-    _write_json_aggs(df)
+    _write_json_aggs(df, Path(web_data_dir) if web_data_dir is not None else WEB_DATA_DIR)
     _register_sources(df, manifest_path)
