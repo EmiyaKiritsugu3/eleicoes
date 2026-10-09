@@ -308,3 +308,191 @@ export function quintis(xs: number[], ys: number[]): Quintil[] {
   }
   return faixas;
 }
+
+/**
+ * Estratificação do "por quê?" (spec §4, Task 5): repete a correlação de
+ * Pearson dentro de cada estrato. Piso `n >= 30` herdado de `correlacao()`
+ * (estrato suprimido → `r: null`, nunca zero silencioso).
+ *
+ * Desvio documentado do brief: `varY = {candidatoId}` aceita `candidatos?:
+ * {id}[]` opcional — mesma razão da Task 3 (`votos` é posicional; sem a
+ * ordem id→índice é irresolvível). Sem `candidatos` ou com id desconhecido,
+ * Y é indefinido em toda linha → estratos com `n: 0, r: null` (fail-closed).
+ *
+ * Semântica de Y candidato: share = `votos[idx] / soma(votos finitos)` da
+ * linha; linha sem votos finitos ou soma ≤ 0 tem Y indefinido (excluída dos
+ * pares, mas segue contando p/ pertencimento ao estrato). `n` = nº de pares
+ * válidos do estrato (mesmo filtro de `correlacao()`, por construção).
+ *
+ * Estratos:
+ * - `regiao`: prefixo UF → N/NE/CO/SE/S (mapa abaixo); UF desconhecida é
+ *   excluída (sem estrato inventado p/ dado sujo). Ordem fixa
+ *   N, NE, CO, SE, S, só regiões presentes.
+ * - `faixa_renda`: tercis de `renda_media` (ordenação estável por
+ *   renda, desempate por ibge; primeiros absorvem o resto, como `quintis`),
+ *   rótulos `baixa/media/alta`. Linha sem `renda_media` finita é excluída.
+ */
+
+export type EstratoPor = "regiao" | "faixa_renda";
+
+export interface Estrato {
+  estrato: string;
+  r: number | null;
+  n: number;
+}
+
+const UF_REGIAO: Record<string, string> = {
+  AC: "N",
+  AP: "N",
+  AM: "N",
+  PA: "N",
+  RO: "N",
+  RR: "N",
+  TO: "N",
+  AL: "NE",
+  BA: "NE",
+  CE: "NE",
+  MA: "NE",
+  PB: "NE",
+  PE: "NE",
+  PI: "NE",
+  RN: "NE",
+  SE: "NE",
+  DF: "CO",
+  GO: "CO",
+  MT: "CO",
+  MS: "CO",
+  ES: "SE",
+  MG: "SE",
+  RJ: "SE",
+  SP: "SE",
+  PR: "S",
+  RS: "S",
+  SC: "S",
+};
+
+const ORDEM_REGIAO = ["N", "NE", "CO", "SE", "S"];
+
+const FAIXAS_RENDA = ["baixa", "media", "alta"];
+
+/** Região da UF (`null` quando UF desconhecida — linha excluída). */
+export function regiaoDeUF(uf: unknown): string | null {
+  if (typeof uf !== "string") return null;
+  return UF_REGIAO[uf.trim().toUpperCase()] ?? null;
+}
+
+/** Share do candidato na linha; `null` quando indefinido. */
+function shareCandidato(row: MunRow, indice: number): number | null {
+  const votos = row?.votos ?? [];
+  const alvo = votos[indice];
+  if (!finito(alvo)) return null;
+  let soma = 0;
+  let algum = false;
+  for (const v of votos) {
+    if (finito(v)) {
+      soma += v as number;
+      algum = true;
+    }
+  }
+  if (!algum || soma <= 0) return null;
+  return (alvo as number) / soma;
+}
+
+export function estratificar(
+  rows: MunRow[],
+  varX: VarDemo,
+  varY: VarDemo | { candidatoId: string; candidatos?: { id: string }[] },
+  por: EstratoPor,
+): Estrato[] {
+  const lista = Array.isArray(rows) ? rows : [];
+
+  let yDe: ((row: MunRow) => number | null) | null = null;
+  if (typeof varY === "string") {
+    yDe = (row) => (row?.demo ? row.demo[varY] : null);
+  } else if (varY && typeof (varY as { candidatoId?: unknown }).candidatoId === "string") {
+    const cond = varY as { candidatoId: string; candidatos?: { id: string }[] };
+    const ordem = Array.isArray(cond.candidatos) ? cond.candidatos : [];
+    const indice = ordem.findIndex((c) => c?.id === cond.candidatoId);
+    yDe = indice < 0 ? null : (row) => shareCandidato(row, indice);
+  }
+
+  const grupos = new Map<string, MunRow[]>();
+  if (por === "regiao") {
+    for (const regiao of ORDEM_REGIAO) grupos.set(regiao, []);
+    for (const row of lista) {
+      const regiao = regiaoDeUF(row?.uf);
+      if (regiao === null) continue;
+      grupos.get(regiao)!.push(row);
+    }
+    for (const [chave, membros] of [...grupos]) {
+      if (membros.length === 0) grupos.delete(chave);
+    }
+  } else {
+    const comRenda = lista.filter((r) => r?.demo && finito(r.demo.renda_media));
+    const ordenadas = [...comRenda].sort((a, b) => {
+      const d = (a.demo!.renda_media as number) - (b.demo!.renda_media as number);
+      return d !== 0 ? d : String(a.ibge ?? "").localeCompare(String(b.ibge ?? ""));
+    });
+    const K = 3;
+    const base = Math.floor(ordenadas.length / K);
+    const resto = ordenadas.length % K;
+    let ini = 0;
+    for (let t = 0; t < K; t++) {
+      const tam = base + (t < resto ? 1 : 0);
+      const fatia = ordenadas.slice(ini, ini + tam);
+      ini += tam;
+      if (fatia.length > 0) grupos.set(FAIXAS_RENDA[t], fatia);
+    }
+  }
+
+  const saida: Estrato[] = [];
+  for (const [estrato, membros] of grupos) {
+    const xs = membros.map((r) => (r?.demo ? r.demo[varX] : null) as unknown as number);
+    const ys = yDe ? membros.map((r) => yDe!(r) as unknown as number) : membros.map(() => NaN);
+    const pares = paresValidos(xs, ys);
+    const c = correlacao(xs, ys, "pearson");
+    saida.push({ estrato, r: c ? c.r : null, n: pares.length });
+  }
+  return saida;
+}
+
+/**
+ * Veredito em linguagem leiga sobre a estratificação (spec §4: "por quê?" =
+ * estratificação; o veredito é sustentado/misto/não sustentado — NUNCA
+ * causal; correlação não implica causa).
+ *
+ * Regra exata (brief Task 5):
+ * - elegíveis = estratos com `n >= 30`; fortes = elegíveis com `|r| >= 0,3`;
+ * - fortes com ambos os sinais → "misto" (evidência contraditória);
+ * - fortes de um só sinal em MAIORIA estrita dos elegíveis → "sustentado",
+ *   salvo global forte (`|global| >= 0,3`) de sinal oposto → "misto";
+ * - resto (sem fortes, ou fortes em minoria) → "nao_sustentado".
+ */
+export const LIMIAR_EFEITO_R = 0.3;
+
+export type ConclusaoLeiga = "sustentado" | "misto" | "nao_sustentado";
+
+export function conclusaoLeiga(
+  global: number | null,
+  estratos: Estrato[],
+): ConclusaoLeiga {
+  const lista = Array.isArray(estratos) ? estratos : [];
+  const elegiveis = lista.filter((e) => e && (e.n ?? 0) >= PISO_CORRELACAO_N);
+  const fortes = elegiveis.filter(
+    (e) => finito(e.r) && Math.abs(e.r as number) >= LIMIAR_EFEITO_R,
+  );
+  const positivos = fortes.filter((e) => (e.r as number) > 0).length;
+  const negativos = fortes.filter((e) => (e.r as number) < 0).length;
+  if (positivos > 0 && negativos > 0) return "misto";
+  if (fortes.length > 0 && fortes.length > elegiveis.length / 2) {
+    if (
+      finito(global) &&
+      Math.abs(global as number) >= LIMIAR_EFEITO_R &&
+      Math.sign(global as number) !== Math.sign(fortes[0].r as number)
+    ) {
+      return "misto";
+    }
+    return "sustentado";
+  }
+  return "nao_sustentado";
+}

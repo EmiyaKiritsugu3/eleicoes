@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
+  conclusaoLeiga,
   correlacao,
+  estratificar,
   perfilOndeVenceu,
   quintis,
+  type Estrato,
   type MunRow,
 } from "../lib/motor";
 
@@ -235,5 +238,156 @@ describe("quintis", () => {
     expect(qs).toHaveLength(5);
     expect(qs.map((q) => q.n)).toEqual([9, 9, 8, 8, 8]);
     expect(qs.reduce((acc, q) => acc + q.n, 0)).toBe(42);
+  });
+});
+
+function demoCheia(over: Partial<Record<string, number | null>>): MunRow["demo"] {
+  return {
+    esc_sup: 10,
+    esc_med: 30,
+    esc_fund: 50,
+    renda_media: 2000,
+    pobres_pct: 20,
+    idade_mediana: 35,
+    urbanizacao: 80,
+    pop: 10000,
+    eleitores: 5000,
+    ...over,
+  };
+}
+
+function munXY(ibge: string, uf: string, x: number, y: number): MunRow {
+  return {
+    ibge,
+    uf,
+    nome: "",
+    votos: [0, 0],
+    total: null,
+    abst: null,
+    demo: demoCheia({ esc_sup: x, renda_media: y }),
+  };
+}
+
+describe("estratificar", () => {
+  it("por regiao: efeito some num estrato (SE r=1, NE |r|<0.3, n exatos)", () => {
+    const rows: MunRow[] = [];
+    for (let i = 1; i <= 35; i++) rows.push(munXY(`sp${i}`, "SP", i, 2 * i));
+    for (let i = 1; i <= 35; i++)
+      rows.push(munXY(`ba${i}`, "BA", i, ((i * i * 7 + 3 * i + 1) % 13) - 6));
+    const es = estratificar(rows, "esc_sup", "renda_media", "regiao");
+    expect(es.map((e) => e.estrato)).toEqual(["NE", "SE"]);
+    const [ne, se] = es;
+    expect(ne.n).toBe(35);
+    expect(ne.r).not.toBeNull();
+    expect(Math.abs(ne.r!)).toBeLessThan(0.3);
+    expect(se.n).toBe(35);
+    expect(se.r).toBeCloseTo(1, 10);
+  });
+
+  it("por faixa_renda: tercis rotulados, n=[30,30,30], r=1 em cada", () => {
+    const rows: MunRow[] = [];
+    for (let i = 1; i <= 90; i++) rows.push(munXY(`m${i}`, "MG", i, 3 * i + 7));
+    const es = estratificar(rows, "esc_sup", "renda_media", "faixa_renda");
+    expect(es.map((e) => e.estrato)).toEqual(["baixa", "media", "alta"]);
+    expect(es.map((e) => e.n)).toEqual([30, 30, 30]);
+    for (const e of es) expect(e.r).toBeCloseTo(1, 10);
+  });
+
+  it("varY candidato: share linear -> r=1 exato no estrato", () => {
+    const rows: MunRow[] = Array.from({ length: 30 }, (_, k) => {
+      const x = k + 1;
+      return {
+        ibge: `s${x}`,
+        uf: "SP",
+        nome: "",
+        votos: [x, 100 - x],
+        total: null,
+        abst: null,
+        demo: demoCheia({ esc_sup: x }),
+      } satisfies MunRow;
+    });
+    const es = estratificar(
+      rows,
+      "esc_sup",
+      { candidatoId: "A", candidatos: CANDIDATOS },
+      "regiao",
+    );
+    expect(es).toHaveLength(1);
+    expect(es[0].estrato).toBe("SE");
+    expect(es[0].n).toBe(30);
+    expect(es[0].r).toBeCloseTo(1, 10);
+  });
+
+  it("piso herdado: estrato com n=10 -> r null", () => {
+    const rows: MunRow[] = [];
+    for (let i = 1; i <= 10; i++) rows.push(munXY(`r${i}`, "RJ", i, 2 * i));
+    expect(estratificar(rows, "esc_sup", "renda_media", "regiao")).toEqual([
+      { estrato: "SE", r: null, n: 10 },
+    ]);
+  });
+
+  it("mapa UF->região cobre as 5 regiões", () => {
+    const ufs: [string, string][] = [
+      ["AC", "N"],
+      ["AL", "NE"],
+      ["DF", "CO"],
+      ["ES", "SE"],
+      ["PR", "S"],
+    ];
+    const rows = ufs.map(([uf], k) => munXY(`u${k}`, uf, k + 1, 2 * (k + 1)));
+    const es = estratificar(rows, "esc_sup", "renda_media", "regiao");
+    expect(es.map((e) => e.estrato).sort()).toEqual([
+      "CO",
+      "N",
+      "NE",
+      "S",
+      "SE",
+    ]);
+    for (const [uf, regiao] of ufs) {
+      void uf;
+      expect(es.find((e) => e.estrato === regiao)).toBeDefined();
+    }
+  });
+});
+
+describe("conclusaoLeiga", () => {
+  const E = (estrato: string, r: number | null, n: number): Estrato => ({
+    estrato,
+    r,
+    n,
+  });
+
+  it("sustentado: sinal consistente e |r|>=0.3 na maioria dos n>=30", () => {
+    expect(
+      conclusaoLeiga(0.8, [E("SE", 0.9, 40), E("NE", 0.85, 40), E("S", 0.1, 40)]),
+    ).toBe("sustentado");
+  });
+
+  it("misto: sinais opostos fortes entre estratos", () => {
+    expect(conclusaoLeiga(0.1, [E("SE", 0.9, 40), E("NE", -0.8, 40)])).toBe(
+      "misto",
+    );
+  });
+
+  it("nao_sustentado: nenhum estrato com |r|>=0.3", () => {
+    expect(
+      conclusaoLeiga(0.1, [E("SE", 0.2, 40), E("NE", -0.1, 35), E("S", 0.05, 50)]),
+    ).toBe("nao_sustentado");
+  });
+
+  it("nao_sustentado: forte mas minoria dos estratos (1 de 3)", () => {
+    expect(
+      conclusaoLeiga(0.9, [E("SE", 0.9, 40), E("NE", 0.1, 40), E("S", 0.05, 40)]),
+    ).toBe("nao_sustentado");
+  });
+
+  it("misto: global forte contradiz estratos consistentes", () => {
+    expect(conclusaoLeiga(-0.8, [E("SE", 0.9, 40), E("NE", 0.85, 40)])).toBe(
+      "misto",
+    );
+  });
+
+  it("nao_sustentado: tudo suprimido (r null / n<30)", () => {
+    expect(conclusaoLeiga(null, [E("SE", null, 10)])).toBe("nao_sustentado");
   });
 });
