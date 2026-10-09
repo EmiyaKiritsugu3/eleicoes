@@ -179,6 +179,61 @@ describe("explorar (ver fora do set)", () => {
   });
 });
 
+describe("explorar (tabela honra o filtro onde)", () => {
+  // 20 municípios com vitória de Lula + 20 com Lula em 2º lugar.
+  function linhasMistas(): MunRow[] {
+    const rows: MunRow[] = [];
+    for (let i = 0; i < 20; i++) {
+      rows.push({
+        ibge: `355030${i}`,
+        uf: "SP",
+        nome: `Lula ${i}`,
+        votos: [600, 400],
+        total: 1000,
+        abst: 0,
+        demo: demo(10 + i),
+      });
+    }
+    for (let i = 0; i < 20; i++) {
+      rows.push({
+        ibge: `350010${i}`,
+        uf: "SP",
+        nome: `Bol ${i}`,
+        votos: [400, 600],
+        total: 1000,
+        abst: 0,
+        demo: demo(10 + i),
+      });
+    }
+    return rows;
+  }
+  function secaoTabela(html: string): string {
+    return html.split('aria-label="Perfil de onde venceu"')[1] ?? "";
+  }
+  it("onde=venceu: tabela conta só o recorte (n = 20, não 40)", () => {
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo
+        fato={{ candidatos: CANDIDATOS, municipios: linhasMistas() }}
+        seal={SEAL_OK}
+        initial={{ ...SEL_VALIDA, ver: ["tabela"], onde: "venceu" }}
+      />,
+    );
+    expect(secaoTabela(html)).toContain("n = 20 municípios");
+  });
+  it("onde=2º lugar: tabela não usa o fato inteiro (sem dado; Resultado tem n = 20)", () => {
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo
+        fato={{ candidatos: CANDIDATOS, municipios: linhasMistas() }}
+        seal={SEAL_OK}
+        initial={{ ...SEL_VALIDA, ver: ["tabela"], onde: "segundo" }}
+      />,
+    );
+    expect(html).toContain("n = 20 municípios");
+    expect(secaoTabela(html)).toContain("sem dado oficial");
+    expect(secaoTabela(html)).not.toContain("n = 20 municípios");
+  });
+});
+
 describe("explorar (foco + share)", () => {
   it("honra o foco vindo do painel da região (?foco=<ibge>)", () => {
     const rows = linhasValidas();

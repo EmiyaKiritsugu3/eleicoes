@@ -31,6 +31,7 @@ import {
   type FatoRegiao,
 } from "./PainelRegiao";
 import type { SealState } from "../lib/data";
+import { MALHA_MUNICIPIOS_URL } from "../lib/malha";
 import {
   VAR_DEMO,
   correlacao,
@@ -274,12 +275,21 @@ export function ExplorarConteudo({
     () => (coberto && filtradas.length > 0 ? quintis(xs, ys) : []),
     [coberto, filtradas.length, xs, ys],
   );
+  // Perfil honra o recorte `onde` (mesmo padrão da Curada): filtradas p/
+  // o perfil, fato inteiro p/ a base "Brasil".
   const perfil = useMemo(
     () =>
-      quemOk
+      coberto
+        ? perfilOndeVenceu(filtradas, { candidatoId: sel.quem, candidatos: ordem })
+        : null,
+    [coberto, filtradas, sel.quem, ordem],
+  );
+  const base = useMemo(
+    () =>
+      coberto
         ? perfilOndeVenceu(linhas, { candidatoId: sel.quem, candidatos: ordem })
         : null,
-    [quemOk, linhas, sel.quem, ordem],
+    [coberto, linhas, sel.quem, ordem],
   );
 
   const ranking = useMemo(() => {
@@ -560,7 +570,7 @@ export function ExplorarConteudo({
           <h2>Perfil de onde {quemNome} venceu</h2>
           {badge}
           <p role="note">{ECO_SEAL} — médias de municípios, nunca de pessoas.</p>
-          {!perfil || perfil.nMun === 0 ? (
+          {!perfil || !base || perfil.nMun === 0 ? (
             <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}</p>
           ) : (
             <>
@@ -588,8 +598,8 @@ export function ExplorarConteudo({
                           : SEM_DADO}
                       </td>
                       <td>
-                        {Number.isFinite(perfil.vsBrasil[v as VarDemo])
-                          ? (perfil.vsBrasil[v as VarDemo] as number).toFixed(2)
+                        {Number.isFinite(base.vsBrasil[v as VarDemo])
+                          ? (base.vsBrasil[v as VarDemo] as number).toFixed(2)
                           : SEM_DADO}
                       </td>
                     </tr>
@@ -609,7 +619,7 @@ export function ExplorarConteudo({
             <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}</p>
           ) : (
             <MapaBrasil
-              malhaUrl="/data/malha.json"
+              malhaUrl={MALHA_MUNICIPIOS_URL}
               nivel="municipio"
               onSelectIbge={(s) => setSel((p) => ({ ...p, foco: String(s) }))}
               cores={cores}

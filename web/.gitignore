@@ -3,4 +3,7 @@ node_modules/
 out/
 # Gerados pelo ETL (etl.build_marts) — regenerados a cada ingestão
 public/data/*.json
+# Malha municipal gerada (scripts/malha.py) — artefato regenerável, fora do
+# orçamento de <15MB do repo
+public/data/*.topojson
 !public/data/.gitkeep

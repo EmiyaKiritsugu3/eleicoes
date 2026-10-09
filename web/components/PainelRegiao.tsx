@@ -17,6 +17,7 @@ import { formatVotes, type SealState } from "../lib/data";
 import {
   indiceVencedor,
   perfilOndeVenceu,
+  totalLinha,
   type FatoCandidato,
   type MunRow,
 } from "../lib/motor";
@@ -51,19 +52,6 @@ export interface ResumoVencedor {
 
 function finito(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v);
-}
-
-function totalLinha(row: MunRow): number {
-  if (finito(row.total)) return row.total;
-  let soma = 0;
-  let algum = false;
-  for (const v of row.votos ?? []) {
-    if (finito(v)) {
-      soma += v;
-      algum = true;
-    }
-  }
-  return algum ? soma : 0;
 }
 
 function eleitoresLinha(row: MunRow): number | null {

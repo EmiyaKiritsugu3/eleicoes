@@ -1,10 +1,16 @@
 /** Loader TopoJSON → paths p/ o mapa canvas (<MapaBrasil>).
  *
  *  A malha real (`web/public/data/malha_municipios.topojson`, gerada por
- *  `scripts/malha.py`) é buscada em runtime via `loadMalha(malhaUrl)`; se
- *  ausente, o componente falha fechado (fallback em lista + link TSE).
- *  Testes usam malha FIXTURE inline — nunca o arquivo real.
+ *  `scripts/malha.py --output web/public/data/malha_municipios.topojson`) é
+ *  buscada em runtime via `loadMalha(MALHA_MUNICIPIOS_URL)`; se ausente, o
+ *  componente falha fechado (fallback em lista + link TSE). Testes usam
+ *  malha FIXTURE inline — nunca o arquivo real.
+ *  (Artefato gerado, ignorado pelo git — cf. `web/.gitignore`.)
  */
+
+/** URL canônica da malha municipal (fonte única: call sites usam esta
+ *  constante p/ não divergir do gerador `scripts/malha.py` nem da doc acima). */
+export const MALHA_MUNICIPIOS_URL = "/data/malha_municipios.topojson";
 
 /** Sentinela da unidade Exterior (separada, spec §5). Contrato p/ Tasks 7–8. */
 export const EXTERIOR = "EXTERIOR";

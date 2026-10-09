@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
+import fs from "node:fs";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { act } from "react-dom/test-utils";
@@ -7,6 +8,7 @@ import { createRoot } from "react-dom/client";
 import MapaBrasil, { MapaFallback, precisaFallback } from "../components/MapaBrasil";
 import {
   EXTERIOR,
+  MALHA_MUNICIPIOS_URL,
   decodeTopojson,
   hitTest,
   loadMalha,
@@ -233,6 +235,17 @@ describe("malha indisponível usa o mesmo fallback", () => {
     } finally {
       restorePath();
     }
+  });
+});
+
+describe("malha URL canônica (gerador = docs = call site)", () => {
+  it("MALHA_MUNICIPIOS_URL é o path documentado/gerado", () => {
+    expect(MALHA_MUNICIPIOS_URL).toBe("/data/malha_municipios.topojson");
+  });
+  it("Explorar usa a constante (sem /data/malha.json divergente)", () => {
+    const src = fs.readFileSync("components/Explorar.tsx", "utf8");
+    expect(src).toContain("MALHA_MUNICIPIOS_URL");
+    expect(src).not.toContain("/data/malha.json");
   });
 });
 
