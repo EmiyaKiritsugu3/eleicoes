@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import SourceBadge from "./SourceBadge";
 import SealSlot from "./SealSlot";
+import perguntasJson from "../data/perguntas.json";
 import {
   evolucaoAnual,
   filtrarCandidatos,
@@ -220,6 +221,18 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
             </table>
           </>
         )}
+      </section>
+
+      <section aria-label="Biblioteca curada">
+        <h2>Biblioteca curada — 30 perguntas com resposta auditada</h2>
+        {badge}
+        <ul>
+          {(perguntasJson as { slug: string; titulo: string }[]).map((p) => (
+            <li key={p.slug}>
+              <a href={`/perguntas/${p.slug}`}>{p.titulo}</a>
+            </li>
+          ))}
+        </ul>
       </section>
 
       <section aria-label="Abstenção, nulos e brancos">
