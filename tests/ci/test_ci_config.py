@@ -28,5 +28,5 @@ def test_ci_caches_pip_and_pins_actions_by_sha():
 
 def test_root_gitignore_covers_generated():
     g = pathlib.Path(".gitignore").read_text()
-    for pat in ["__pycache__/", "*.duckdb", "data/manifest.json", "tsconfig.tsbuildinfo"]:
+    for pat in ["__pycache__/", "*.duckdb", "data/manifest.json", "*.bak", "tsconfig.tsbuildinfo"]:
         assert pat in g
