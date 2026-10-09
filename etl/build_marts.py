@@ -216,10 +216,17 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None) -> None:
 
     `web_data_dir` redireciona os agregados JSON (padrão: `web/public/data/`
     na raiz do repo); útil em testes para não mutar a árvore do repo.
+    O manifest canônico é `manifest_path`; uma cópia idêntica é escrita em
+    `<web_data_dir>/manifest.json` para a frente pública ler `/data/manifest.json`
+    (mesmo conteúdo, escrita única a partir do canônico — R2).
     """
     curated = Path(curated_dir)
     df = _load_canonical(curated)
     _write_partitioned_parquet(df, curated)
     _write_duckdb(df, Path(db_path))
-    _write_json_aggs(df, Path(web_data_dir) if web_data_dir is not None else WEB_DATA_DIR)
+    web_dir = Path(web_data_dir) if web_data_dir is not None else WEB_DATA_DIR
+    _write_json_aggs(df, web_dir)
     _register_sources(df, manifest_path)
+    # Cópia idêntica p/ a frente pública (manifest_path segue canônico).
+    web_dir.mkdir(parents=True, exist_ok=True)
+    (web_dir / "manifest.json").write_bytes(Path(manifest_path).read_bytes())

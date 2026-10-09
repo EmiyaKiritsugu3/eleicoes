@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import SourceBadge from "../components/SourceBadge";
 import {
   evolucaoAnual,
@@ -68,6 +68,11 @@ export default function Home() {
   const cands = useMemo(() => filtrarCandidatos(porCand, f), [porCand, f]);
   const maxEv = ev.reduce((m, r) => Math.max(m, r.votos), 0);
   const semDados = !resumo || res.vazio || resumo.total_linhas === 0;
+  const badge = audit ? (
+    <SourceBadge hash={audit.hash} url={audit.url} date={audit.date} />
+  ) : (
+    <SourceBadge hash="" url="" date="" />
+  );
 
   return (
     <>
@@ -83,12 +88,23 @@ export default function Home() {
       <section aria-label="Busca">
         <h2>Busca</h2>
         <form onSubmit={(e) => e.preventDefault()} style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-          {(["ano", "cargo", "uf", "municipio", "candidato"] as const).map((k) => (
+          {(["ano", "cargo", "uf", "candidato"] as const).map((k) => (
             <label key={k}>
               {k}{" "}
               <input value={f[k] ?? ""} onChange={set(k)} placeholder={k} aria-label={k} />
             </label>
           ))}
+          <label>
+            município{" "}
+            <input
+              value=""
+              disabled
+              placeholder="município"
+              aria-label="município"
+              title="por município em breve — V1 agrega por UF"
+            />
+            <small>por município em breve — V1 agrega por UF</small>
+          </label>
         </form>
       </section>
 
@@ -112,6 +128,7 @@ export default function Home() {
 
       <section aria-label="Mapa por UF">
         <h2>Mapa por UF (lista v1 — TopoJSON fora do escopo YAGNI)</h2>
+        {badge}
         {ufs.length === 0 ? (
           <p>{SEM_DADO}</p>
         ) : (
@@ -131,6 +148,7 @@ export default function Home() {
 
       <section aria-label="Ranking de candidatos">
         <h2>Ranking de candidatos</h2>
+        {badge}
         {cands.length === 0 ? (
           <p>{SEM_DADO}</p>
         ) : (
@@ -152,6 +170,7 @@ export default function Home() {
 
       <section aria-label="Evolução">
         <h2>Evolução anual</h2>
+        {badge}
         {ev.length === 0 ? (
           <p>{SEM_DADO}</p>
         ) : (
