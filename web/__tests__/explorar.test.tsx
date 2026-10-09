@@ -91,6 +91,94 @@ describe("explorar (sem cobertura, fail-closed)", () => {
   });
 });
 
+// 5 municípios (abaixo do piso n ≥ 30): correlação suprimida, não zerada.
+function linhasPoucas(): MunRow[] {
+  const rows: MunRow[] = [];
+  for (let i = 0; i < 5; i++) {
+    rows.push({
+      ibge: `350010${i}`,
+      uf: "SP",
+      nome: `Peq ${i}`,
+      votos: [600, 400],
+      total: 1000,
+      abst: 0,
+      demo: demo(10 + i),
+    });
+  }
+  return rows;
+}
+
+describe("explorar (supressão vs sem cobertura)", () => {
+  it("n < 30 com cobertura → nota de supressão (piso), não sem-cobertura", () => {
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo
+        fato={{ candidatos: CANDIDATOS, municipios: linhasPoucas() }}
+        seal={SEAL_OK}
+        initial={SEL_VALIDA}
+      />,
+    );
+    expect(html).toContain("sem dado oficial");
+    expect(html).toContain("suprimida");
+    expect(html).toContain("piso n ≥ 30");
+    expect(html).not.toContain("sem cobertura nos blocos");
+  });
+  it("cruzar fora dos blocos → nota sem-cobertura (não supressão)", () => {
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo
+        fato={{ candidatos: CANDIDATOS, municipios: linhasValidas() }}
+        seal={SEAL_OK}
+        initial={{ ...SEL_VALIDA, cruzar: "zz_var" }}
+      />,
+    );
+    expect(html).toContain("sem dado oficial");
+    expect(html).toContain("sem cobertura nos blocos");
+    expect(html).not.toContain("suprimida");
+  });
+  it("ranking + perfil sem cobertura usam role=alert como as demais seções", () => {
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo
+        fato={{ candidatos: CANDIDATOS, municipios: linhasValidas() }}
+        seal={SEAL_OK}
+        initial={{ ...SEL_VALIDA, quem: "zz-desconhecido", ver: ["ranking", "tabela"] }}
+      />,
+    );
+    const alerts = html.match(/role="alert"/g) ?? [];
+    expect(alerts.length).toBeGreaterThanOrEqual(3);
+    expect(html).toContain("sem dado oficial");
+  });
+});
+
+describe("explorar (ver fora do set)", () => {
+  it("?q= com visão desconhecida → só seções conhecidas, sem crash", () => {
+    const url = buildExplorarShareUrl(
+      { ...SEL_VALIDA, ver: ["dispersao", "vista-fantasma"], foco: "" },
+      "b".repeat(64),
+    );
+    const back = parseExplorarQuery(url.slice("/explorar".length));
+    expect(back.ver).toEqual(["dispersao"]);
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo
+        fato={{ candidatos: CANDIDATOS, municipios: linhasValidas() }}
+        seal={SEAL_OK}
+        initial={back}
+      />,
+    );
+    expect(html).toContain("Dispersão");
+    expect(html).not.toContain("vista-fantasma");
+  });
+  it("initial programático com visão desconhecida não renderiza seção fantasma", () => {
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo
+        fato={{ candidatos: CANDIDATOS, municipios: linhasValidas() }}
+        seal={SEAL_OK}
+        initial={{ ...SEL_VALIDA, ver: ["mapa", "bogus"] }}
+      />,
+    );
+    expect(html).toContain("Mapa — vencedor por município");
+    expect(html).not.toContain("bogus");
+  });
+});
+
 describe("explorar (foco + share)", () => {
   it("honra o foco vindo do painel da região (?foco=<ibge>)", () => {
     const rows = linhasValidas();

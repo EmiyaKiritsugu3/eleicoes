@@ -375,14 +375,32 @@ const ORDEM_REGIAO = ["N", "NE", "CO", "SE", "S"];
 
 const FAIXAS_RENDA = ["baixa", "media", "alta"];
 
+/** Total de votos da linha: `total` finito vence; senão soma dos votos
+ *  finitos; 0 sem nenhum finito. Mesma cadeia do painel da região e do
+ *  `/explorar` (fonte única contra deriva de fórmula). */
+export function totalLinha(row: MunRow): number {
+  if (finito(row.total)) return row.total;
+  let soma = 0;
+  let algum = false;
+  for (const v of row.votos ?? []) {
+    if (finito(v)) {
+      soma += v;
+      algum = true;
+    }
+  }
+  return algum ? soma : 0;
+}
+
 /** Região da UF (`null` quando UF desconhecida — linha excluída). */
 export function regiaoDeUF(uf: unknown): string | null {
   if (typeof uf !== "string") return null;
   return UF_REGIAO[uf.trim().toUpperCase()] ?? null;
 }
 
-/** Share do candidato na linha; `null` quando indefinido. */
-function shareCandidato(row: MunRow, indice: number): number | null {
+/** Share do candidato na linha; `null` quando indefinido (alvo não-finito,
+ *  sem votos finitos ou soma ≤ 0). Centraliza a fórmula usada por
+ *  `estratificar()` e pelo `/explorar` (sem duplicatas que derivem). */
+export function shareCandidato(row: MunRow, indice: number): number | null {
   const votos = row?.votos ?? [];
   const alvo = votos[indice];
   if (!finito(alvo)) return null;

@@ -5,6 +5,8 @@ import {
   estratificar,
   perfilOndeVenceu,
   quintis,
+  shareCandidato,
+  totalLinha,
   type Estrato,
   type MunRow,
 } from "../lib/motor";
@@ -389,5 +391,34 @@ describe("conclusaoLeiga", () => {
 
   it("nao_sustentado: tudo suprimido (r null / n<30)", () => {
     expect(conclusaoLeiga(null, [E("SE", null, 10)])).toBe("nao_sustentado");
+  });
+});
+
+describe("shareCandidato + totalLinha (fonte única p/ /explorar)", () => {
+  const linha = (votos: (number | null)[], total: number | null): MunRow => ({
+    ibge: "1",
+    uf: "SP",
+    nome: "",
+    votos,
+    total,
+    abst: null,
+    demo: null,
+  });
+
+  it("share = alvo / soma dos finitos", () => {
+    expect(shareCandidato(linha([500, 300], 800), 0)).toBeCloseTo(0.625, 10);
+    expect(shareCandidato(linha([100, null], 100), 0)).toBe(1);
+  });
+
+  it("share null: alvo não-finito, sem finitos, soma <= 0", () => {
+    expect(shareCandidato(linha([null, 300], 300), 0)).toBe(null);
+    expect(shareCandidato(linha([null, null], 0), 0)).toBe(null);
+    expect(shareCandidato(linha([0, 0], 0), 0)).toBe(null);
+  });
+
+  it("total: finito vence; senão soma dos finitos; senão 0", () => {
+    expect(totalLinha(linha([500, 300], 800))).toBe(800);
+    expect(totalLinha(linha([500, 300], null))).toBe(800);
+    expect(totalLinha(linha([null, null], null))).toBe(0);
   });
 });

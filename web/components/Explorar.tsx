@@ -37,6 +37,8 @@ import {
   indiceVencedor,
   perfilOndeVenceu,
   quintis,
+  shareCandidato,
+  totalLinha,
   type MunRow,
   type VarDemo,
 } from "../lib/motor";
@@ -66,6 +68,10 @@ export const VER_OPCOES = [
 export const MAX_VISOES = 3;
 const DEBOUNCE_MS = 250;
 
+/** Valores `ver` conhecidos; `?q=` adulterado com visões fora do set é
+ *  descartado no parse (fail-closed) e na renderização (`verSeguro`). */
+const VER_VALIDOS = new Set<string>(VER_OPCOES.map((o) => o.value));
+
 const ALERTA_STYLE: React.CSSProperties = {
   background: "#fff3cd",
   border: "1px solid #b45309",
@@ -74,36 +80,6 @@ const ALERTA_STYLE: React.CSSProperties = {
 
 function finito(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v);
-}
-
-function totalLinha(row: MunRow): number {
-  if (finito(row.total)) return row.total;
-  let soma = 0;
-  let algum = false;
-  for (const v of row.votos ?? []) {
-    if (finito(v)) {
-      soma += v;
-      algum = true;
-    }
-  }
-  return algum ? soma : 0;
-}
-
-/** Share do candidato na linha; `null` quando indefinido (mesma fórmula do motor). */
-function shareLinha(row: MunRow, indice: number): number | null {
-  const votos = row?.votos ?? [];
-  const alvo = votos[indice];
-  if (!finito(alvo)) return null;
-  let soma = 0;
-  let algum = false;
-  for (const v of votos) {
-    if (finito(v)) {
-      soma += v;
-      algum = true;
-    }
-  }
-  if (!algum || soma <= 0) return null;
-  return (alvo as number) / soma;
 }
 
 /** Filtro do bloco "onde" sobre as linhas do fato. Desconhecido → []. */
@@ -217,7 +193,9 @@ export function parseExplorarQuery(search: string): ExplorarSelecao & { hash: st
           onde: typeof obj.onde === "string" ? obj.onde : SEL_PADRAO.onde,
           cruzar: typeof obj.cruzar === "string" ? obj.cruzar : SEL_PADRAO.cruzar,
           ver: Array.isArray(obj.ver)
-            ? obj.ver.filter((v) => typeof v === "string").slice(0, MAX_VISOES)
+            ? obj.ver
+                .filter((v) => typeof v === "string" && VER_VALIDOS.has(v))
+                .slice(0, MAX_VISOES)
             : [...SEL_PADRAO.ver],
           foco: typeof obj.foco === "string" ? obj.foco : "",
         };
@@ -285,7 +263,7 @@ export function ExplorarConteudo({
     [filtradas, sel.cruzar],
   );
   const ys = useMemo(
-    () => filtradas.map((r) => shareLinha(r, idxQuem) as unknown as number),
+    () => filtradas.map((r) => shareCandidato(r, idxQuem) as unknown as number),
     [filtradas, idxQuem],
   );
   const corr = useMemo(
@@ -307,7 +285,7 @@ export function ExplorarConteudo({
   const ranking = useMemo(() => {
     if (!coberto || idxQuem < 0) return [];
     return filtradas
-      .map((r) => ({ row: r, share: shareLinha(r, idxQuem) }))
+      .map((r) => ({ row: r, share: shareCandidato(r, idxQuem) }))
       .filter((e) => e.share !== null)
       .sort((a, b) => (b.share as number) - (a.share as number))
       .slice(0, 10);
@@ -346,7 +324,14 @@ export function ExplorarConteudo({
     });
   };
 
-  const shareUrl = buildExplorarShareUrl(sel, seal.official?.hash ?? "");
+  // Defesa em profundidade: `initial` pode chegar sem passar pelo parse
+  // (uso programático); só visões conhecidas renderizam, teto mantido.
+  const verSeguro = useMemo(
+    () => (Array.isArray(sel.ver) ? sel.ver : []).filter((v) => VER_VALIDOS.has(v)).slice(0, MAX_VISOES),
+    [sel.ver],
+  );
+
+  const shareUrl = buildExplorarShareUrl({ ...sel, ver: verSeguro }, seal.official?.hash ?? "");
   const badge = <SealSlot seal={seal} />;
   const ondeLabel = ONDE_OPCOES.find((o) => o.value === sel.onde)?.label ?? sel.onde;
   const quemNome = ordem.find((c) => c?.id === sel.quem)?.nome ?? sel.quem;
@@ -420,7 +405,7 @@ export function ExplorarConteudo({
               <label key={o.value} style={{ marginRight: "0.5rem" }}>
                 <input
                   type="checkbox"
-                  checked={sel.ver.includes(o.value)}
+                  checked={verSeguro.includes(o.value)}
                   onChange={() => toggleVer(o.value)}
                   aria-label={`ver ${o.label}`}
                 />{" "}
@@ -486,22 +471,30 @@ export function ExplorarConteudo({
             <p>
               {String(focoRow.nome ?? focoRow.ibge)} ({String(focoRow.ibge)}) — UF{" "}
               {String(focoRow.uf ?? "")}
-              {idxQuem >= 0 && shareLinha(focoRow, idxQuem) !== null
-                ? ` · share de ${quemNome}: ${((shareLinha(focoRow, idxQuem) as number) * 100).toFixed(1).replace(".", ",")}%`
+              {idxQuem >= 0 && shareCandidato(focoRow, idxQuem) !== null
+                ? ` · share de ${quemNome}: ${((shareCandidato(focoRow, idxQuem) as number) * 100).toFixed(1).replace(".", ",")}%`
                 : ""}
             </p>
           )}
         </section>
       )}
 
-      {sel.ver.includes("dispersao") && (
+      {verSeguro.includes("dispersao") && (
         <section aria-label="Dispersão">
           <h2>Dispersão — {sel.cruzar} × share de {quemNome}</h2>
           {badge}
           <p role="note">{ECO_SEAL} — cada ponto é um município, nunca uma pessoa.</p>
-          {!coberto || !corr || faixas.length === 0 ? (
+          {!coberto ? (
             <p role="alert" style={ALERTA_STYLE}>
-              {SEM_DADO} — municípios insuficientes (piso n ≥ 30) ou sem cobertura
+              {SEM_DADO} — sem cobertura nos blocos; ajuste quem · onde · cruzar com acima
+            </p>
+          ) : !corr ? (
+            <p role="alert" style={ALERTA_STYLE}>
+              {SEM_DADO} — correlação suprimida (piso n ≥ 30 municípios ou variância zero)
+            </p>
+          ) : faixas.length === 0 ? (
+            <p role="alert" style={ALERTA_STYLE}>
+              {SEM_DADO} — sem cobertura neste recorte
             </p>
           ) : (
             <>
@@ -532,12 +525,12 @@ export function ExplorarConteudo({
         </section>
       )}
 
-      {sel.ver.includes("ranking") && (
+      {verSeguro.includes("ranking") && (
         <section aria-label="Ranking">
           <h2>Ranking — maior share de {quemNome}</h2>
           {badge}
           {!coberto || ranking.length === 0 ? (
-            <p>{SEM_DADO} — sem cobertura neste recorte</p>
+            <p role="alert" style={ALERTA_STYLE}>{SEM_DADO} — sem cobertura neste recorte</p>
           ) : (
             <table>
               <caption>Top municípios por share</caption>
@@ -562,13 +555,13 @@ export function ExplorarConteudo({
         </section>
       )}
 
-      {sel.ver.includes("tabela") && (
+      {verSeguro.includes("tabela") && (
         <section aria-label="Perfil de onde venceu">
           <h2>Perfil de onde {quemNome} venceu</h2>
           {badge}
           <p role="note">{ECO_SEAL} — médias de municípios, nunca de pessoas.</p>
           {!perfil || perfil.nMun === 0 ? (
-            <p>{SEM_DADO}</p>
+            <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}</p>
           ) : (
             <>
               {(perfil.pesoFonte === "misto") && <p role="note">{NOTA_PESO_MISTO}</p>}
@@ -608,7 +601,7 @@ export function ExplorarConteudo({
         </section>
       )}
 
-      {sel.ver.includes("mapa") && (
+      {verSeguro.includes("mapa") && (
         <section aria-label="Mapa">
           <h2>Mapa — vencedor por município</h2>
           {badge}
