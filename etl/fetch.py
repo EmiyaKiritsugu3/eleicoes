@@ -26,10 +26,16 @@ def download_dataset(url, dest, expected_sha256=None, retries=3) -> str:
     só existe como arquivo completo e verificado. Se `expected_sha256`
     for dado e divergir, remove o parcial e levanta `ValueError`.
     Se todas as tentativas falharem, remove o parcial e relança a última
-    exceção de rede. `retries < 1` levanta `ValueError`.
+    exceção de rede. `retries < 1` levanta `ValueError`. URL pendente
+    (None/vazia/não-string, i.e. dataset sem path confirmado) levanta
+    `ValueError` antes de qualquer IO — fail-closed.
     """
     if retries < 1:
         raise ValueError(f"retries must be >= 1, got {retries}")
+    if not isinstance(url, str) or not url:
+        raise ValueError(
+            f"url pendente/ausente, download bloqueado (sem dado oficial): {url!r}"
+        )
     host = (urlparse(url).hostname or "").lower()
     if host not in ALLOWED_HOSTS:
         raise ValueError(

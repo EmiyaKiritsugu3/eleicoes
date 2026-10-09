@@ -1,7 +1,7 @@
 """Ingestão do Censo IBGE 2022 por município (offline-first, custo zero).
 
-`normalize_censo(df) -> DataFrame` aceita variações do header real IBGE/SIDRA
-(case-insensitive) e devolve o schema canônico (ordem exata):
+`normalize_censo(df) -> DataFrame` aceita variações conhecidas/típicas do
+header IBGE/SIDRA por município (case-insensitive) e devolve o schema canônico (ordem exata):
     [ibge7, esc_sup, esc_med, esc_fund, renda_media, pobres_pct,
      idade_mediana, urbanizacao, pop]
 
@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+import re
 import warnings
 from datetime import datetime, timezone
 
@@ -39,8 +40,8 @@ CANONICAL_CENSO_COLUMNS = [
     "pop",
 ]
 
-# Header real do Censo 2022 por município (IBGE/SIDRA) -> campo canônico
-# (comparação upper + strip).
+# Variações conhecidas/típicas do header IBGE/SIDRA por município ->
+# campo canônico (comparação upper + strip).
 _COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     "ibge7": (
         "CD_MUN",
@@ -76,6 +77,8 @@ _COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
         "POPULACAO",
         "POP",
         "QT_POP",
+        # V0001 é código de população em arquivos por setor censitário;
+        # só vale aqui em agregados por município que o reutilizem.
         "V0001",
     ),
 }
@@ -97,8 +100,8 @@ def _pick_column(df: pd.DataFrame, field: str):
     for alias in _COLUMN_ALIASES[field]:
         if alias in normalized:
             return normalized[alias]
-    if field in normalized:
-        return normalized[field]
+    if field.upper() in normalized:
+        return normalized[field.upper()]
     return None
 
 
@@ -157,19 +160,36 @@ def check_censo_sum(df: pd.DataFrame, total_oficial) -> list[str]:
     """Compara a soma de `pop` com o total IBGE declarado; vazio = ok.
 
     Nunca levanta por problema nos dados: qualquer falha vira item da
-    lista. `total_oficial` ausente/não-numérico reprova fail-closed.
+    lista. `total_oficial` precisa ser int (ou string só-dígitos);
+    float/None/outros reprovam fail-closed em vez de truncar silencioso.
+    Nulos em `pop` reprovam antes de qualquer soma.
     """
-    try:
-        expected = int(total_oficial)
-    except (ValueError, TypeError):
+    if isinstance(total_oficial, bool):
+        return [f"soma: total oficial inválido para o Censo ({total_oficial!r})"]
+    if isinstance(total_oficial, int):
+        expected = total_oficial
+    elif (
+        isinstance(total_oficial, str)
+        and re.fullmatch(r"\d+", total_oficial.strip() or " ")
+    ):
+        expected = int(total_oficial.strip())
+    else:
         return [f"soma: total oficial inválido para o Censo ({total_oficial!r})"]
     try:
-        got = int(df["pop"].sum(skipna=True))
+        pop = df["pop"]
+    except (KeyError, AttributeError, TypeError) as exc:
+        return [f"soma: nao foi possivel ler pop do Censo ({exc})"]
+    try:
+        has_null = bool(pop.isna().any())
+    except Exception as exc:
+        return [f"soma: nao foi possivel checar nulos em pop ({exc})"]
+    if has_null:
+        n = int(pop.isna().sum())
+        return [f"soma: {n} linha(s) com pop nulo/nao-numerico no Censo"]
+    try:
+        got = int(pop.sum(skipna=True))
     except Exception as exc:
         return [f"soma: nao foi possivel somar pop do Censo ({exc})"]
-    if df["pop"].isna().any():
-        n = int(df["pop"].isna().sum())
-        return [f"soma: {n} linha(s) com pop nulo/nao-numerico no Censo"]
     if got != expected:
         return [
             f"soma pop diverge do total oficial IBGE: esperado {expected}, obtido {got}"
@@ -183,11 +203,19 @@ def register_censo_ingest(manifest_path, rows=None, sha256=None, dataset=None) -
     `dataset` default = primeira entrada de `CENSO_DATASETS` (Censo 2022).
     `sha256` deve ser o hash de 64-hex (calculado por
     `etl.fetch.download_dataset`); a validação fail-closed acontece em
-    `write_manifest` (Task 6).
+    `write_manifest` (Task 6). URL pendente (None/vazia, i.e. path real
+    ainda não confirmado no FTP) levanta `ValueError` — nunca se registra
+    proveniência sem fonte baixável.
     """
     entry_meta = dataset if isinstance(dataset, dict) else CENSO_DATASETS[0]
+    url = entry_meta.get("url")
+    if not url:
+        raise ValueError(
+            "censo dataset sem url confirmada (PENDING: confirmar path real "
+            "no FTP do IBGE); ingestão bloqueada — sem dado oficial"
+        )
     entry = {
-        "source_url": entry_meta["url"],
+        "source_url": url,
         "sha256": sha256,
         "data": datetime.now(timezone.utc).date().isoformat(),
         "etl_version": ETL_VERSION,

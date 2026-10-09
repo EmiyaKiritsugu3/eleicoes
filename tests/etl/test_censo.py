@@ -90,6 +90,30 @@ def test_censo_sum_gate_vs_ibge_total(tmp_path):
     assert errors and any("soma" in e for e in errors)
 
 
+def test_normalize_censo_rejects_non_dataframe():
+    from etl.censo import normalize_censo
+
+    with pytest.raises(TypeError):
+        normalize_censo([{"CD_MUN": "3550308"}])
+
+
+def test_normalize_censo_rejects_missing_municipio():
+    from etl.censo import normalize_censo
+
+    with pytest.raises(ValueError, match="municipio"):
+        normalize_censo(pd.DataFrame([{"POP": 100}]))
+
+
+def test_censo_sum_rejects_non_int_totals():
+    from etl.censo import check_censo_sum, normalize_censo
+
+    df = normalize_censo(_fixture_ibge())
+    assert check_censo_sum(df, "681000") == []
+    for bad_total in (681000.9, 681000.0, None, True, "abc", ""):
+        errors = check_censo_sum(df, bad_total)
+        assert errors and any("soma" in e for e in errors), bad_total
+
+
 def test_censo_datasets_allowlisted_and_shaped():
     from urllib.parse import urlparse
 
@@ -98,10 +122,30 @@ def test_censo_datasets_allowlisted_and_shaped():
 
     assert isinstance(CENSO_DATASETS, list) and CENSO_DATASETS
     for entry in CENSO_DATASETS:
-        for key in ("url", "ano", "nome", "dataset"):
+        for key in ("ano", "nome", "dataset"):
             assert entry.get(key), f"missing {key} in {entry}"
-        host = (urlparse(entry["url"]).hostname or "").lower()
+        url = entry.get("url")
+        if url is None:
+            continue  # PENDING: path real ainda não confirmado — nunca baixado
+        host = (urlparse(url).hostname or "").lower()
         assert host in ALLOWED_HOSTS, f"Censo url fora da allowlist: {entry['url']}"
+
+
+def test_censo_pending_url_never_downloads_or_registers(tmp_path):
+    from etl.censo import register_censo_ingest
+    from etl.fetch import download_dataset
+    from etl.sources import CENSO_DATASETS
+
+    assert CENSO_DATASETS[0].get("url") is None  # path real ainda pendente
+    with pytest.raises(ValueError):
+        download_dataset(None, str(tmp_path / "x.zip"))
+    pending = {"url": None, "ano": 2022, "nome": "x", "dataset": "y"}
+    with pytest.raises(ValueError):
+        register_censo_ingest(str(tmp_path / "m.json"), rows=1,
+                              sha256="ab" * 32, dataset=pending)
+    with pytest.raises(ValueError):
+        register_censo_ingest(str(tmp_path / "m.json"), rows=1, sha256="ab" * 32)
+    assert not (tmp_path / "m.json").exists()
 
 
 def test_censo_manifest_registers_date_and_version(tmp_path):
@@ -110,8 +154,14 @@ def test_censo_manifest_registers_date_and_version(tmp_path):
     from etl.censo import register_censo_ingest
     from etl.manifest import verify_manifest
 
+    confirmed = {
+        "url": "https://ftp.ibge.gov.br/Censos/Censo_Demografico_2022/confirmado.zip",
+        "ano": 2022,
+        "nome": "censo_demografico_2022_municipios",
+        "dataset": "https://www.ibge.gov.br/estatisticas/sociais/populacao/22827-censo-demografico-2022.html",
+    }
     manifest = tmp_path / "m.json"
-    register_censo_ingest(str(manifest), rows=2, sha256="ab" * 32)
+    register_censo_ingest(str(manifest), rows=2, sha256="ab" * 32, dataset=confirmed)
     assert verify_manifest(str(manifest)) is True
     import json
 
