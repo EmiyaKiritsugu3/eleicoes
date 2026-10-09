@@ -84,8 +84,11 @@ export default function Metodologia() {
           <li>
             <strong>CI / dev local (amostra sintética, via código real do ETL):</strong>{" "}
             <code>python scripts/seed_fixture_data.py</code> — gera 2 linhas / 15
-            votos (2022) e manifest marcado com <code>fixture: true</code>;
-            depois <code>cd web &amp;&amp; npm test -- --run &amp;&amp; npm run build</code>.
+            votos (2022) e manifest marcado com <code>fixture: true</code>
+            (exibido como “amostra sintética — não oficial”, nunca selo oficial);
+            recusa sobrescrever manifest com ingestões oficiais salvo{" "}
+            <code>--force</code> (o CI usa <code>--force</code>); depois{" "}
+            <code>cd web &amp;&amp; npm test -- --run &amp;&amp; npm run build</code>.
           </li>
           <li>
             <strong>Produção (dados oficiais):</strong> rode a ingestão real do

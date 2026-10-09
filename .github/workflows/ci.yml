@@ -29,7 +29,7 @@ jobs:
         run: pytest tests/ -q
 
       - name: Seed fixture data (real ETL path, no TSE download)
-        run: python scripts/seed_fixture_data.py
+        run: python scripts/seed_fixture_data.py --force
 
       - name: Setup Node
         uses: actions/setup-node@v4

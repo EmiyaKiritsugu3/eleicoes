@@ -2,6 +2,8 @@
  *
  * - Formatação pt-BR de votos: 1234567 -> "1.234.567".
  * - `isAudited(obj)`: true somente se houver hash não-vazio (`sha256` ou `hash`).
+ * - `isOfficialDisplay(obj)`: `isAudited` E não-fixture (`fixture:true` tem hash
+ *   para transparência, mas nunca usa o selo oficial — ver /auditoria).
  * - Sem manifest / manifest inválido -> a página mostra banner "dado não auditado"
  *   e nunca apresenta números como oficiais.
  * - Tabelas/JSONs vazios -> a página mostra "sem dado oficial".
@@ -71,6 +73,18 @@ export function isAudited(obj: unknown): boolean {
   return typeof hash === "string" && hash.length > 0;
 }
 
+/** true quando a entrada é amostra sintética (seed de CI/dev): tem hash
+ *  para transparência, mas NUNCA é exibida como oficial. */
+export function isFixtureEntry(obj: unknown): boolean {
+  if (!obj || typeof obj !== "object") return false;
+  return (obj as Record<string, unknown>).fixture === true;
+}
+
+/** Exibição como oficial: hash válido E não-fixture. */
+export function isOfficialDisplay(obj: unknown): boolean {
+  return isAudited(obj) && !isFixtureEntry(obj);
+}
+
 /** Extrai a primeira ingestão auditada do manifest, ou null (dado não auditado). */
 export function getAuditInfo(manifest: unknown): AuditInfo | null {
   if (!manifest || typeof manifest !== "object") return null;
@@ -78,6 +92,26 @@ export function getAuditInfo(manifest: unknown): AuditInfo | null {
   if (!Array.isArray(ingestions)) return null;
   for (const entry of ingestions) {
     if (isAudited(entry)) {
+      const e = entry as ManifestIngestion;
+      return {
+        hash: String(e.sha256 ?? e.hash),
+        url: typeof e.source_url === "string" ? e.source_url : "",
+        date: typeof e.date === "string" ? e.date : typeof e.data === "string" ? e.data : "",
+      };
+    }
+  }
+  return null;
+}
+
+/** Primeira ingestão exibível como OFICIAL (audited + não-fixture), ou null.
+ *  Usado pela /auditoria: fixture tem hash mas nunca usa o selo oficial.
+ */
+export function getOfficialAuditInfo(manifest: unknown): AuditInfo | null {
+  if (!manifest || typeof manifest !== "object") return null;
+  const ingestions = (manifest as Manifest).ingestions;
+  if (!Array.isArray(ingestions)) return null;
+  for (const entry of ingestions) {
+    if (isOfficialDisplay(entry)) {
       const e = entry as ManifestIngestion;
       return {
         hash: String(e.sha256 ?? e.hash),

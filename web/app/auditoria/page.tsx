@@ -3,8 +3,10 @@
 import React, { useEffect, useState } from "react";
 import SourceBadge from "../../components/SourceBadge";
 import {
-  getAuditInfo,
+  getOfficialAuditInfo,
   isAudited,
+  isFixtureEntry,
+  isOfficialDisplay,
   type AuditInfo,
   type Manifest,
   type ManifestIngestion,
@@ -28,8 +30,28 @@ function entryDate(e: ManifestIngestion): string {
   return "";
 }
 
-function isFixture(e: ManifestIngestion): boolean {
-  return (e as Record<string, unknown>).fixture === true;
+/** Selo de amostra sintética: tratamento de aviso, NUNCA o selo oficial —
+ *  mesmo com hash presente. O hash segue visível na tabela (transparência).
+ */
+function FixtureBadge() {
+  return (
+    <p
+      role="note"
+      className="badge"
+      style={{
+        display: "inline-block",
+        padding: "0.25rem 0.5rem",
+        borderRadius: 4,
+        fontSize: "0.85rem",
+        background: "#fff3cd",
+        border: "2px dashed #b45309",
+        color: "#7c2d12",
+        fontWeight: "bold",
+      }}
+    >
+      amostra sintética — não oficial
+    </p>
+  );
 }
 
 function downloadManifest() {
@@ -53,14 +75,14 @@ function downloadManifest() {
 
 export default function Auditoria() {
   const [manifest, setManifest] = useState<Manifest | null>(null);
-  const [audit, setAudit] = useState<AuditInfo | null>(null);
+  const [official, setOfficial] = useState<AuditInfo | null>(null);
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
     (async () => {
       const m = await fetchJson<Manifest>("/data/manifest.json");
       setManifest(m);
-      setAudit(getAuditInfo(m));
+      setOfficial(getOfficialAuditInfo(m));
       setChecked(true);
     })();
   }, []);
@@ -68,22 +90,29 @@ export default function Auditoria() {
   const ingestions = Array.isArray(manifest?.ingestions)
     ? (manifest?.ingestions ?? [])
     : [];
+  const hasFixture = ingestions.some(isFixtureEntry);
+  const canDownload = ingestions.some(isAudited);
 
   return (
     <>
       <h1>SAD Eleições — auditoria</h1>
 
-      {checked && !audit && (
+      {checked && !official && !hasFixture && (
         <p role="alert" className="badge badge-warn">
           dado não auditado — manifest ausente ou inválido; números abaixo não são oficiais
         </p>
       )}
-      {audit && <SourceBadge hash={audit.hash} url={audit.url} date={audit.date} />}
+      {checked && !official && hasFixture && <FixtureBadge />}
+      {official && (
+        <SourceBadge hash={official.hash} url={official.url} date={official.date} />
+      )}
 
       <section aria-label="Ingestões registradas">
         <h2>Ingestões registradas</h2>
-        {audit ? (
-          <SourceBadge hash={audit.hash} url={audit.url} date={audit.date} />
+        {official ? (
+          <SourceBadge hash={official.hash} url={official.url} date={official.date} />
+        ) : checked && hasFixture ? (
+          <FixtureBadge />
         ) : (
           <SourceBadge hash="" url="" date="" />
         )}
@@ -120,15 +149,16 @@ export default function Auditoria() {
                       ) : (
                         SEM_DADO
                       )}
-                      {isFixture(e) && (
-                        <p role="note">
-                          amostra sintética p/ CI — sem valor oficial
-                        </p>
-                      )}
+                      {isFixtureEntry(e) && <FixtureBadge />}
                     </td>
                     <td>
-                      {isAudited(e) ? (
+                      {isOfficialDisplay(e) ? (
                         <code title={hash}>{hash}</code>
+                      ) : isFixtureEntry(e) && isAudited(e) ? (
+                        <>
+                          <code title={hash}>{hash}</code>
+                          <p role="note">hash de amostra — sem valor oficial</p>
+                        </>
                       ) : (
                         <span role="alert">dado não auditado</span>
                       )}
@@ -148,21 +178,21 @@ export default function Auditoria() {
         <p>
           <button
             type="button"
-            disabled={!audit}
+            disabled={!canDownload}
             title={
-              audit
-                ? "Baixar manifest.json com proveniência auditada"
-                : "Download bloqueado — dado não auditado"
+              canDownload
+                ? "Baixar manifest.json (verifique o selo: oficial ou amostra sintética)"
+                : "Download bloqueado — sem ingestão auditada (manifest ausente, vazio ou sem hash)"
             }
             onClick={downloadManifest}
           >
             Baixar manifest
           </button>
         </p>
-        {checked && !audit && (
+        {checked && !canDownload && (
           <p role="alert">
-            download bloqueado — dado não auditado; o manifest só é oferecido
-            com hash válido para que o arquivo seja auto-descritivo
+            download bloqueado — sem ingestão auditada; sem hash válido não há
+            proveniência a oferecer
           </p>
         )}
       </section>
@@ -171,9 +201,12 @@ export default function Auditoria() {
         <h2>Como auditar</h2>
         <p>
           Cada ingestão registra a URL oficial do TSE e o sha256 do conteúdo. Um
-          número só é apresentado como oficial quando há hash válido — sem hash,
-          a página mostra “dado não auditado” e nunca apresenta números como
-          oficiais. Detalhes do pipeline em <a href="/metodologia">/metodologia</a>.
+          número só é apresentado como oficial quando há hash válido em ingestão
+          não-sintética — sem hash, a página mostra “dado não auditado” e nunca
+          apresenta números como oficiais. Amostras sintéticas (<code>fixture:true</code>,
+          geradas pelo seed de CI) exibem o hash para transparência, mas usam o
+          selo “amostra sintética — não oficial”, nunca o selo oficial. Detalhes
+          do pipeline em <a href="/metodologia">/metodologia</a>.
         </p>
       </section>
     </>

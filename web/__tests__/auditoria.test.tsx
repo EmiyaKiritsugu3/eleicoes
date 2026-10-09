@@ -7,6 +7,27 @@ describe("auditoria", () => {
     const { isAudited } = await import("../lib/data");
     expect(isAudited({ sha256: "x" })).toBe(true);
   });
+  it("fixture with hash is audited but never official display", async () => {
+    const { isAudited, isFixtureEntry, isOfficialDisplay } = await import("../lib/data");
+    const fixture = { sha256: "x", fixture: true };
+    expect(isAudited(fixture)).toBe(true);
+    expect(isFixtureEntry(fixture)).toBe(true);
+    expect(isOfficialDisplay(fixture)).toBe(false);
+    expect(isOfficialDisplay({ sha256: "x" })).toBe(true);
+    expect(isOfficialDisplay({})).toBe(false);
+  });
+  it("getOfficialAuditInfo skips fixtures", async () => {
+    const { getOfficialAuditInfo } = await import("../lib/data");
+    const m = {
+      ingestions: [
+        { source_url: "u", sha256: "f", fixture: true },
+        { source_url: "u2", sha256: "abc", date: "2026-01-01" },
+      ],
+    };
+    expect(getOfficialAuditInfo(m)).toEqual({ hash: "abc", url: "u2", date: "2026-01-01" });
+    expect(getOfficialAuditInfo({ ingestions: [{ sha256: "f", fixture: true }] })).toBe(null);
+    expect(getOfficialAuditInfo(null)).toBe(null);
+  });
 });
 
 describe("auditoria page (SSR fail-closed)", () => {
@@ -22,10 +43,13 @@ describe("auditoria page (SSR fail-closed)", () => {
   it("links metodologia for the audit contract", () => {
     expect(html).toContain('href="/metodologia"');
   });
+  it("never renders the official badge without fetched data", () => {
+    expect(html).not.toContain("fonte auditada");
+  });
 });
 
 describe("auditoria data path (CI seed via real build_all)", () => {
-  it("reads seeded /data/*.json from disk as audited and coherent", async () => {
+  it("reads seeded /data/*.json from disk as fixture (non-official) and coherent", async () => {
     const fs = await import("node:fs");
     const path = await import("node:path");
     const dir = path.resolve(__dirname, "../public/data");
@@ -43,7 +67,7 @@ describe("auditoria data path (CI seed via real build_all)", () => {
     } catch {
       throw missing("manifest.json/resumo.json/por_uf.json");
     }
-    const { isAudited } = await import("../lib/data");
+    const { isAudited, isOfficialDisplay } = await import("../lib/data");
     const manifest = JSON.parse(manifestRaw) as {
       ingestions?: unknown[];
     };
@@ -56,7 +80,9 @@ describe("auditoria data path (CI seed via real build_all)", () => {
     expect(Array.isArray(manifest.ingestions)).toBe(true);
     expect((manifest.ingestions ?? []).length).toBeGreaterThan(0);
     for (const entry of manifest.ingestions ?? []) {
+      // Hash preservado para transparência, mas seed é fixture: nunca oficial.
       expect(isAudited(entry)).toBe(true);
+      expect(isOfficialDisplay(entry)).toBe(false);
     }
     // Valores determinísticos do seed (scripts/seed_fixture_data.py).
     expect(resumo.total_votos).toBe(15);
