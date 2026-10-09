@@ -15,7 +15,7 @@ TIMEOUT_S = 60
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RAW_ROOT = REPO_ROOT / "data" / "raw"
-ALLOWED_HOSTS = frozenset({"cdn.tse.jus.br", "dadosabertos.tse.jus.br"})
+ALLOWED_HOSTS = frozenset({"cdn.tse.jus.br", "dadosabertos.tse.jus.br", "ftp.ibge.gov.br"})
 
 
 def download_dataset(url, dest, expected_sha256=None, retries=3) -> str:
