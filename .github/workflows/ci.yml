@@ -1,0 +1,51 @@
+# CI do SAD Eleições — custo zero (runners gratuitos ubuntu-latest, sem serviços pagos).
+#
+# Passo de dados (obrigatório): web/public/data/*.json é gitignored, então o
+# checkout vem sem dados. scripts/seed_fixture_data.py gera a amostra
+# sintética determinística pelo caminho REAL do ETL (etl.build_marts.build_all),
+# sem download do TSE. Sem esse passo, o front mostra "dado não auditado"
+# por design (fail-closed) e o teste de data path falha.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python deps
+        run: pip install .
+
+      - name: Run pytest
+        run: pytest tests/ -q
+
+      - name: Seed fixture data (real ETL path, no TSE download)
+        run: python scripts/seed_fixture_data.py
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web deps
+        run: npm ci
+        working-directory: web
+
+      - name: Run web tests (incl. data-path assert on seeded JSONs)
+        run: npm test -- --run
+        working-directory: web
+
+      - name: Build web
+        run: npm run build
+        working-directory: web

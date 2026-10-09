@@ -9,7 +9,11 @@ def test_normalize_resultados_columns():
 
 def test_build_all_creates_duckdb(tmp_path):
     from etl.build_marts import build_all
-    build_all(str(tmp_path), str(tmp_path / "t.duckdb"), str(tmp_path / "m.json"))
+    # web_data_dir redirecionado: o build nunca muta web/public/data do repo
+    # (o CI semeia esses JSONs via scripts/seed_fixture_data.py; sem o
+    # redirect este teste os sobrescreveria com dados vazios).
+    build_all(str(tmp_path), str(tmp_path / "t.duckdb"), str(tmp_path / "m.json"),
+              web_data_dir=tmp_path / "webdata")
     import os
     assert os.path.exists(tmp_path / "t.duckdb")
 

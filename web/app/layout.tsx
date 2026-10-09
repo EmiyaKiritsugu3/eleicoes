@@ -9,6 +9,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="pt-BR">
       <body style={{ fontFamily: "system-ui, sans-serif", margin: 0, color: "#111" }}>
+        <header style={{ maxWidth: 960, margin: "0 auto", padding: "1rem 1rem 0" }}>
+          <nav aria-label="Principal" style={{ display: "flex", gap: "1rem" }}>
+            <a href="/">Início</a>
+            <a href="/analisar">Analisar</a>
+            <a href="/metodologia">Metodologia</a>
+            <a href="/auditoria">Auditoria</a>
+          </nav>
+        </header>
         <main style={{ maxWidth: 960, margin: "0 auto", padding: "1rem" }}>{children}</main>
       </body>
     </html>
