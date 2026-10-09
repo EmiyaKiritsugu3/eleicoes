@@ -219,3 +219,28 @@ def test_build_500k_rows_counts(tmp_path):
     for uf in ufs:
         assert (curated / "ano=2022" / "cargo=PRESIDENTE" / f"uf={uf}"
                 / "data.parquet").exists()
+
+
+def _censo_entry_date(manifest_path):
+    manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    for entry in manifest.get("ingestions", []):
+        if isinstance(entry, dict) and entry.get("tipo") == "censo_ibge_2022":
+            return entry.get("data")
+    raise AssertionError("seed sem entry censo_ibge_2022 no manifest")
+
+
+def test_seed_censo_entry_date_is_pinned(tmp_path):
+    """Task 11 fix: data do Censo fixture é fixa entre runs (determinismo).
+
+    Roda seed() duas vezes em dirs isolados: as datas do entry
+    censo_ibge_2022 devem ser iguais entre si e ao valor fixo
+    (ingestões reais seguem com a data da coleta).
+    """
+    mod = _load_seed_module()
+    dates = []
+    for i in ("a", "b"):
+        d = tmp_path / i
+        d.mkdir()
+        mod.seed(d / "manifest.json", d / "webdata")
+        dates.append(_censo_entry_date(d / "manifest.json"))
+    assert dates[0] == dates[1] == "2022-01-01"

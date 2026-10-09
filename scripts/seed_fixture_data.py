@@ -62,6 +62,11 @@ _FIXTURE_CENSO_CSV = (
     "3304557;25.0;35.0;40.0;2600.0;18.0;34.0;85.0;12000\n"
 )
 
+# Data fixa do entry Censo fixture (determinismo do seed): a amostra é
+# sempre a mesma, então a data nunca varia entre runs. Ingestões REAIS
+# usam a data da coleta (register_censo_ingest) — só o fixture é fixo.
+_FIXTURE_CENSO_DATA = "2022-01-01"
+
 # Triple coberta pelo fixture TSE acima (turno ausente vira 1, M7).
 _FATO_TRIPLE = (2022, 1, "presidente")
 
@@ -92,7 +97,6 @@ def seed(manifest_path: Path, web_data_dir: Path, force: bool = False) -> dict:
     import hashlib
     import io
     import sys
-    from datetime import datetime, timezone
     sys.path.insert(0, str(_REPO_ROOT))
     from etl import ETL_VERSION
     from etl.build_fato import build_fato
@@ -149,7 +153,7 @@ def seed(manifest_path: Path, web_data_dir: Path, force: bool = False) -> dict:
                 "source_url": CENSO_DATASETS[0]["dataset"],
                 "sha256": hashlib.sha256(
                     _FIXTURE_CENSO_CSV.encode("utf-8")).hexdigest(),
-                "data": datetime.now(timezone.utc).date().isoformat(),
+                "data": _FIXTURE_CENSO_DATA,
                 "etl_version": ETL_VERSION,
                 "dataset": CENSO_DATASETS[0]["nome"],
                 "ano": CENSO_DATASETS[0]["ano"],
