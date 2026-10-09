@@ -179,3 +179,125 @@ export function perfilOndeVenceu(
     vsBrasil,
   };
 }
+
+/** Piso amostral honesto (spec §4): abaixo de 30 municípios, suprime. */
+export const PISO_CORRELACAO_N = 30;
+
+export type MetodoCorrelacao = "pearson" | "spearman";
+
+export interface CorrelacaoResult {
+  r: number;
+  n: number;
+}
+
+/** Pares válidos: trunca no menor comprimento, exclui não-finitos (null/NaN). */
+function paresValidos(xs: number[], ys: number[]): [number, number][] {
+  const n = Math.min(xs?.length ?? 0, ys?.length ?? 0);
+  const pares: [number, number][] = [];
+  for (let i = 0; i < n; i++) {
+    const x = xs[i];
+    const y = ys[i];
+    if (finito(x) && finito(y)) pares.push([x as number, y as number]);
+  }
+  return pares;
+}
+
+function pearsonDePares(pares: [number, number][]): number {
+  const n = pares.length;
+  let sx = 0;
+  let sy = 0;
+  for (const [x, y] of pares) {
+    sx += x;
+    sy += y;
+  }
+  const mx = sx / n;
+  const my = sy / n;
+  let sxy = 0;
+  let sxx = 0;
+  let syy = 0;
+  for (const [x, y] of pares) {
+    const dx = x - mx;
+    const dy = y - my;
+    sxy += dx * dy;
+    sxx += dx * dx;
+    syy += dy * dy;
+  }
+  return sxy / Math.sqrt(sxx * syy);
+}
+
+/** Ranks médios (empates dividem o rank médio). */
+function ranksMedios(valores: number[]): number[] {
+  const ordem = valores.map((_, i) => i).sort((a, b) => valores[a] - valores[b]);
+  const ranks = new Array<number>(valores.length);
+  let i = 0;
+  while (i < ordem.length) {
+    let j = i;
+    while (j + 1 < ordem.length && valores[ordem[j + 1]] === valores[ordem[i]]) j++;
+    const medio = (i + j) / 2 + 1;
+    for (let k = i; k <= j; k++) ranks[ordem[k]] = medio;
+    i = j + 1;
+  }
+  return ranks;
+}
+
+/**
+ * Correlação honesta (spec §4): Pearson direto ou Spearman por ranks médios.
+ * Pares com null/NaN são excluídos ANTES de contar `n`; `n < 30` → `null`
+ * (supressão, nunca zero silencioso). Variância zero → `null` (indefinida).
+ * Os dois `r` (pearson + spearman) devem ser reportados juntos no front —
+ * divergência entre eles denuncia outlier / não-linearidade.
+ */
+export function correlacao(
+  xs: number[],
+  ys: number[],
+  metodo: MetodoCorrelacao,
+): CorrelacaoResult | null {
+  const pares = paresValidos(xs, ys);
+  if (pares.length < PISO_CORRELACAO_N) return null;
+  const dados =
+    metodo === "spearman"
+      ? (() => {
+          const rx = ranksMedios(pares.map(([x]) => x));
+          const ry = ranksMedios(pares.map(([, y]) => y));
+          return rx.map((x, i) => [x, ry[i]] as [number, number]);
+        })()
+      : pares;
+  const r = pearsonDePares(dados);
+  if (!finito(r)) return null;
+  return { r, n: pares.length };
+}
+
+export interface Quintil {
+  faixa: string;
+  mediaY: number;
+  n: number;
+}
+
+/**
+ * Tabela por quintis (spec §4): ordena pares válidos por x, divide em 5
+ * faixas contíguas tão iguais quanto possível (as primeiras absorvem o
+ * resto) e reporta a média de y por faixa. `n` das faixas soma o total.
+ */
+export function quintis(xs: number[], ys: number[]): Quintil[] {
+  const pares = paresValidos(xs, ys).sort((a, b) => a[0] - b[0]);
+  const n = pares.length;
+  const K = 5;
+  const base = Math.floor(n / K);
+  const resto = n % K;
+  const faixas: Quintil[] = [];
+  let ini = 0;
+  for (let q = 0; q < K; q++) {
+    const tam = base + (q < resto ? 1 : 0);
+    const fatia = pares.slice(ini, ini + tam);
+    ini += tam;
+    faixas.push({
+      faixa: `Q${q + 1}`,
+      mediaY:
+        fatia.length === 0
+          ? NaN
+          : fatia.reduce((acc, [, y]) => acc + y, 0) / fatia.length,
+      n: fatia.length,
+    });
+  }
+  return faixas;
+}
