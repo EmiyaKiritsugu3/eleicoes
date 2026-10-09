@@ -75,7 +75,11 @@ def _pick_column(df: pd.DataFrame, field: str):
 def normalize_resultados(df: pd.DataFrame) -> pd.DataFrame:
     """Normaliza um DataFrame bruto do TSE para o schema canônico.
 
-    Levanta `ValueError` se não houver coluna de ano (impossível particionar).
+    Levanta `ValueError` se não houver coluna de ano (impossível particionar)
+    ou coluna de votos (zero silencioso é pior que falhar: E2).
+    Votos não-numéricos viram nulos (`Int64` anulável), nunca 0 (E3);
+    os quality gates reprovam nulos em vez de somar lixo.
+    `turno` ausente/não-numérico vira 1 (M7).
     Linhas de município sem IBGE oficial são mantidas (ver módulo docstring).
     """
     if not isinstance(df, pd.DataFrame):
@@ -85,15 +89,21 @@ def normalize_resultados(df: pd.DataFrame) -> pd.DataFrame:
 
     out = pd.DataFrame(index=df.index)
 
-    for field in ("ano", "turno", "votos"):
-        col = _pick_column(df, field)
-        if col is None:
-            default = 1 if field == "turno" else 0
-            out[field] = default
-        else:
-            out[field] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype("int64")
+    col = _pick_column(df, "ano")
+    out["ano"] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype("int64")
+
+    col = _pick_column(df, "turno")
+    if col is None:
+        out["turno"] = 1
+    else:
+        out["turno"] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype("int64")
     # turno ausente nas linhas como 0 -> 1º turno.
     out["turno"] = out["turno"].replace(0, 1)
+
+    col = _pick_column(df, "votos")
+    if col is None:
+        raise ValueError("input sem coluna de votos (QT_VOTOS)")
+    out["votos"] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
 
     for field in ("cargo", "uf"):
         col = _pick_column(df, field)

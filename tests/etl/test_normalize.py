@@ -25,4 +25,20 @@ def test_normalize_latin1_and_missing_ibge():
     df = pd.DataFrame([{"ANO_ELEICAO": 2022, "DS_CARGO": "PRESIDENTE", "SG_UF": "SP", "CD_MUNICIPIO": "9999999", "NM_URNA": "Y", "QT_VOTOS": 5}])
     out = normalize_resultados(df)
     assert out.iloc[0]["municipio_ibge"] == "9999999"
-    assert "sem_ibge" in out.columns or out.iloc[0]["municipio_ibge"] == "9999999"
+    assert "sem_ibge" not in out.columns and out.iloc[0]["municipio_ibge"] == "9999999"
+
+
+def test_missing_votos_column_raises(tmp_path=None):
+    import pandas as pd
+    from etl.normalize import normalize_resultados
+    df = pd.DataFrame([{"ANO_ELEICAO": 2022, "DS_CARGO": "PRESIDENTE", "SG_UF": "SP"}])
+    with __import__("pytest").raises(ValueError):
+        normalize_resultados(df)
+
+
+def test_nonnumeric_votes_stay_null_not_zero():
+    import pandas as pd
+    from etl.normalize import normalize_resultados
+    df = pd.DataFrame([{"ANO_ELEICAO": 2022, "QT_VOTOS": "abc", "SG_UF": "SP"}])
+    out = normalize_resultados(df)
+    assert str(out["votos"].dtype) == "Int64" and out["votos"].isna().all()

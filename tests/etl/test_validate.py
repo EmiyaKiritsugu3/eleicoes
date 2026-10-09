@@ -171,3 +171,26 @@ def test_gate_empty_totals_dict_fails_closed(tmp_path):
     manifest = _make_manifest(tmp_path / "m.json")
     errors = run_gates(db, manifest_path=manifest, totais_oficiais={})
     assert errors != [], "totais {} explicito deve reprovar, nao passar"
+
+
+def test_garbage_votes_fail_gates_e2e(tmp_path):
+    import warnings
+
+    from etl.build_marts import build_all
+    from etl.validate import run_gates
+
+    curated = tmp_path / "curated"
+    curated.mkdir()
+    (curated / "res.csv").write_text(
+        "ANO_ELEICAO;NUM_TURNO;DS_CARGO;SG_UF;CD_MUNICIPIO;SQ_CANDIDATO;"
+        "NM_URNA_CANDIDATO;SG_PARTIDO;QT_VOTOS\n"
+        "2022;1;PRESIDENTE;SP;3550308;1;X;P;abc\n",
+        encoding="utf-8",
+    )
+    db = tmp_path / "t.duckdb"
+    manifest = tmp_path / "m.json"
+    build_all(str(curated), str(db), str(manifest), web_data_dir=tmp_path / "webdata")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        errors = run_gates(db, manifest_path=manifest)
+    assert any("soma" in e for e in errors), f"esperava erro de soma, veio: {errors}"
