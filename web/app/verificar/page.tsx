@@ -2,9 +2,10 @@
 
 /** Índice /verificar: destino do link `?regiao=` do painel da região.
  *
- * Com `?regiao=<ibge|UF>`, lista só os checks curados daquela região
- * (`checksParaRegiao`); sem checks p/ a região → sugestão (biblioteca
- * completa), nunca veredito. Sem parâmetro, lista a biblioteca inteira.
+ * Com `?regiao=<UF>` (sigla, ex. "SP"), lista só os checks curados daquela
+ * UF (`checksParaRegiao`); sem checks p/ a região → sugestão (biblioteca
+ * completa), nunca veredito. Códigos IBGE não casam (UF-only, ver
+ * `checksParaRegiao`). Sem parâmetro, lista a biblioteca inteira.
  * Os vereditos vivem nas páginas `/verificar/[slug]` — este índice não
  * computa nenhum número (sem fato carregado aqui).
  */

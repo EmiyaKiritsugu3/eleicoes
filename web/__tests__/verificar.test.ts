@@ -7,6 +7,7 @@ import {
   verificarAfirmacao,
   checksParaRegiao,
   type Check,
+  type TipoComputacao,
 } from "../app/verificar/Verificar";
 import type { SealState } from "../lib/data";
 import type { MunRow } from "../lib/motor";
@@ -120,7 +121,7 @@ describe("verificar (checks.json: 12 entradas, shape exato)", () => {
     expect(checks).toHaveLength(12);
     const slugs = checks.map((c) => c.slug);
     expect(new Set(slugs).size).toBe(12);
-    const tipos = new Set([
+    const tipos: Set<TipoComputacao> = new Set([
       "vencedor_regiao",
       "comparar_medias",
       "correlacao_sinal",
@@ -221,5 +222,94 @@ describe("verificar (?regiao= do painel: filtro ou sugestão)", () => {
     expect(sp.length).toBeGreaterThan(0);
     for (const c of sp) expect(c.regiao).toBe("SP");
     expect(checksParaRegiao(checks, "ZZ")).toHaveLength(0);
+  });
+});
+
+// Fato de 40 municípios a partir de pares (x = esc_sup, share de cand-a).
+// Calibragem (Pearson sobre votos inteiros, mesmo cálculo do motor):
+// tilt -0.00011 → r ≈ +0,0005; tilt -0.00012 → r ≈ -0,004;
+// base 0,62, inclinação -0,004, ruído ±0,03 → r ≈ -0,83.
+function fatoDe(pontos: { x: number; share: number }[]): FatoSintetico {
+  return {
+    candidatos: CANDIDATOS,
+    municipios: pontos.map((p, i) => {
+      const a = Math.round(p.share * 1000);
+      return {
+        ibge: `355030${i}`,
+        uf: "SP",
+        nome: `Município ${i}`,
+        votos: [a, 1000 - a],
+        total: 1000,
+        abst: 150,
+        demo: demo({ esc_sup: p.x }),
+      };
+    }),
+  };
+}
+
+function pontos40(fn: (i: number) => number): { x: number; share: number }[] {
+  const pts: { x: number; share: number }[] = [];
+  for (let i = 0; i < 40; i++) pts.push({ x: 5 + i * 0.5, share: fn(i) });
+  return pts;
+}
+
+const CHECK_SINAL_POSITIVO: Check = {
+  slug: "sint-sinal",
+  frase: "Lugares mais escolarizados votaram mais em A",
+  computacao: {
+    tipo: "correlacao_sinal",
+    params: { quem: "cand-a", variavel: "esc_sup", sinal: "positivo" },
+  },
+  fontes: FONTES,
+};
+
+describe("verificar (correlação: nunca falso sobre ruído)", () => {
+  it("ruído positivo (r ≈ +0,0005) → enganoso, nunca falso", () => {
+    const fato = fatoDe(pontos40((i) => 0.5 - 0.00011 * i + (i % 2 ? 0.03 : -0.03)));
+    const v = verificarAfirmacao(CHECK_SINAL_POSITIVO, fato);
+    expect(v.veredito).toBe("enganoso");
+    expect(v.veredito).not.toBe("falso");
+    expect(v.numeros).toHaveLength(3);
+  });
+  it("ruído negativo (r ≈ -0,004) → enganoso, nunca falso", () => {
+    const fato = fatoDe(pontos40((i) => 0.5 - 0.00012 * i + (i % 2 ? 0.03 : -0.03)));
+    const v = verificarAfirmacao(CHECK_SINAL_POSITIVO, fato);
+    expect(v.veredito).toBe("enganoso");
+    expect(v.veredito).not.toBe("falso");
+    expect(typeof v.engano).toBe("string");
+    expect(v.engano as string).toContain("ruído");
+  });
+  it("sinal oposto claro (r ≈ -0,83) → falso preservado", () => {
+    const fato = fatoDe(pontos40((i) => 0.62 - 0.004 * i + (i % 2 ? 0.03 : -0.03)));
+    const v = verificarAfirmacao(CHECK_SINAL_POSITIVO, fato);
+    expect(v.veredito).toBe("falso");
+    expect(v.numeros).toHaveLength(3);
+  });
+});
+
+describe("verificar (vencedor_regiao: piso de margem padrão 1%)", () => {
+  function fatoFio(): FatoSintetico {
+    // Agregado: A 100 × B 99 → margem 1/199 ≈ 0,5% < 1%.
+    return {
+      candidatos: CANDIDATOS,
+      municipios: [
+        { ibge: "1", uf: "SP", nome: "M1", votos: [100, 0], total: 100, abst: 10, demo: demo() },
+        { ibge: "2", uf: "SP", nome: "M2", votos: [0, 99], total: 99, abst: 10, demo: demo() },
+      ],
+    };
+  }
+  it("vitória por 1 voto → enganoso com explicação (nunca sustentado sem ressalva)", () => {
+    const v = verificarAfirmacao(CHECK_SUSTENTADO, fatoFio());
+    expect(v.veredito).toBe("enganoso");
+    expect(v.veredito).not.toBe("sustentado");
+    expect(v.numeros).toHaveLength(3);
+    expect(typeof v.engano).toBe("string");
+    expect(v.engano as string).toContain("fio");
+  });
+  it("vitória confortável → sustentado sem ressalva preservado", () => {
+    const v = verificarAfirmacao(CHECK_SUSTENTADO, fato40());
+    expect(v.veredito).toBe("sustentado");
+    expect(v.engano).toBeUndefined();
+    expect(v.numeros).toHaveLength(3);
   });
 });

@@ -15,12 +15,15 @@
  *
  * Tipos de computação (1 por check, regra de veredito própria):
  * - `vencedor_regiao`: agregado de votos no recorte (BR ou UF); falso se
- *   outro candidato venceu; enganoso se venceu mas abaixo de `margem_min`.
+ *   outro candidato venceu; enganoso se venceu mas abaixo de `margem_min`
+ *   (ou do piso padrão de 1% quando o check não fixa margem — vitória no
+ *   fio nunca é "sem ressalva").
  * - `comparar_medias`: média ponderada onde `quem` venceu vs Brasil;
  *   direção errada → falso; direção certa com diferença relativa < 5% →
  *   enganoso (tecnicamente na direção, mas irrelevante).
- * - `correlacao_sinal`: Pearson (+ Spearman) com piso n ≥ 30; sinal
- *   oposto → falso; sinal certo com |r| < 0,3 → enganoso (efeito fraco).
+ * - `correlacao_sinal`: Pearson (+ Spearman) com piso n ≥ 30; falso SÓ com
+ *   sinal oposto E efeito claro (|r| ≥ 0,3); |r| < 0,3 p/ qualquer lado →
+ *   enganoso (ruído, nunca falso sobre ruído).
  * - `serie_temporal`: SEMPRE fora de escopo (fato cobre um pleito) →
  *   fail-closed, nunca veredito.
  * - `soma_condicional`: fração de municípios com medida acima/abaixo do
@@ -93,6 +96,11 @@ const LIMIAR_RELEVANCIA_MEDIA = 0.05;
 /** Maioria folgada p/ `soma_condicional` sustentar (≥ 60%). */
 const MAIORIA_FOLGADA = 0.6;
 
+/** Piso de margem padrão p/ `vencedor_regiao` quando o check não fixa
+ *  `margem_min` (1% — judgment call como os 5%/60% acima: abaixo disso a
+ *  vitória é no fio e nunca sai como sustentado "sem ressalva"). */
+const MARGEM_MIN_PADRAO = 0.01;
+
 const NOTA_SERIE_TEMPORAL =
   "série temporal fora do escopo: o fato municipal cobre um pleito — evolução exige múltiplos pleitos auditados";
 
@@ -138,7 +146,8 @@ function verificarVencedorRegiao(
 ): Verificacao {
   const metodo =
     "Agregado de votos no recorte (soma finita por candidato; vencedor = maior soma). " +
-    "Veredito: outro vencedor → falso; venceu mas abaixo da margem mínima afirmada → enganoso.";
+    "Veredito: outro vencedor → falso; venceu mas abaixo da margem mínima afirmada " +
+    `(ou do piso padrão de ${MARGEM_MIN_PADRAO * 100}% quando o check não fixa margem) → enganoso.`;
   const linhas = linhasDoRecorte(fato.municipios ?? [], str(params.regiao) || "BR");
   if (linhas.length === 0) return semProva("nenhum município neste recorte", metodo);
   const ordem = fato.candidatos ?? [];
@@ -180,16 +189,23 @@ function verificarVencedorRegiao(
       nomeQuem: afirmado.nome,
     };
   }
-  const margemMin = params.margem_min;
-  if (finito(margemMin) && (margem === null || (margem as number) < (margemMin as number))) {
+  const pisoMargem = finito(params.margem_min)
+    ? (params.margem_min as number)
+    : MARGEM_MIN_PADRAO;
+  const pisoRotulo = finito(params.margem_min)
+    ? `dos ${(params.margem_min as number) * 100}% afirmados`
+    : `do piso padrão de ${MARGEM_MIN_PADRAO * 100}%`;
+  if (margem === null || (margem as number) < pisoMargem) {
     return {
       veredito: "enganoso",
       numeros,
       metodo,
       nomeQuem: afirmado.nome,
       engano:
-        `venceu, mas por margem ${margem === null ? "indeterminada" : "de " + ((margem as number) * 100).toFixed(1).replace(".", ",") + "%"}, ` +
-        `abaixo dos ${(margemMin as number) * 100}% afirmados — a vitória existe, a "folga" não.`,
+        margem === null
+          ? "venceu, mas a margem é indeterminada (total de votos zerado) — vitória sem número que a sustente."
+          : `venceu por margem de ${((margem as number) * 100).toFixed(1).replace(".", ",")}% ` +
+            `— abaixo ${pisoRotulo}: a vitória existe, mas é no fio, insuficiente para "sem ressalva".`,
     };
   }
   return { veredito: "sustentado", numeros, metodo, nomeQuem: afirmado.nome };
@@ -259,7 +275,8 @@ function verificarCorrelacaoSinal(
   const metodo =
     "Correlação de Pearson (e Spearman) entre a variável e o share do candidato, " +
     `com piso n ≥ 30. Sinal afirmado com |r| ≥ ${String(LIMIAR_EFEITO_R).replace(".", ",")} → sustentado; ` +
-    "sinal certo com efeito fraco → enganoso; sinal oposto → falso. Correlação não implica causa.";
+    `|r| < ${String(LIMIAR_EFEITO_R).replace(".", ",")} p/ qualquer lado → enganoso (ruído: nunca falso sobre ruído); ` +
+    "sinal oposto com efeito claro → falso. Correlação não implica causa.";
   const variavel = str(params.variavel);
   if (!VAR_DEMO_SET.has(variavel)) return semProva("variável sem cobertura auditada", metodo);
   const ordem = fato.candidatos ?? [];
@@ -281,19 +298,26 @@ function verificarCorrelacaoSinal(
   ];
   const esperado = str(params.sinal) === "negativo" ? -1 : 1;
   const sinalObs = Math.sign(corrP.r);
-  if (sinalObs !== esperado) {
+  const forte = Math.abs(corrP.r) >= LIMIAR_EFEITO_R;
+  // Sem penhasco de sinal em r≈0: falso exige sinal oposto COM efeito
+  // claro; |r| fraco p/ qualquer lado é ruído → enganoso, nunca falso.
+  if (sinalObs !== esperado && forte) {
     return { veredito: "falso", numeros, metodo, nomeQuem: afirmado.nome };
   }
-  if (Math.abs(corrP.r) < LIMIAR_EFEITO_R) {
+  if (!forte) {
     return {
       veredito: "enganoso",
       numeros,
       metodo,
       nomeQuem: afirmado.nome,
       engano:
-        `o sinal é o afirmado, mas r = ${corrP.r.toFixed(3).replace(".", ",")} (efeito fraco, abaixo de ` +
-        `${String(LIMIAR_EFEITO_R).replace(".", ",")}) — a relação existe nos números, mas é pequena ` +
-        "demais para sustentar a leitura sugerida. Cada ponto é um município, nunca uma pessoa.",
+        sinalObs !== esperado
+          ? `r = ${corrP.r.toFixed(3).replace(".", ",")} — efeito fraco (|r| abaixo de ` +
+            `${String(LIMIAR_EFEITO_R).replace(".", ",")}), indistinguível de ruído com n = ${corrP.n}: ` +
+            "os números não derrubam a direção afirmada com segurança, mas a certeza sugerida não existe."
+          : `o sinal é o afirmado, mas r = ${corrP.r.toFixed(3).replace(".", ",")} (efeito fraco, abaixo de ` +
+            `${String(LIMIAR_EFEITO_R).replace(".", ",")}) — a relação existe nos números, mas é pequena ` +
+            "demais para sustentar a leitura sugerida. Cada ponto é um município, nunca uma pessoa.",
     };
   }
   return { veredito: "sustentado", numeros, metodo, nomeQuem: afirmado.nome };
@@ -403,7 +427,10 @@ export function resolverFrase(check: Check, fato: FatoRegiao | null): string {
   return frase;
 }
 
-/** Filtro do link `/verificar?regiao=` do painel: checks daquela região. */
+/** Filtro do link `/verificar?regiao=` do painel: checks daquela UF
+ *  (sigla, ex. "SP"). Códigos IBGE de município NÃO casam aqui — o painel
+ *  emite a UF no link; mapear IBGE→UF é fora de escopo (sem tabela UF no
+ *  front). Sem match → lista vazia e o índice sugere a biblioteca. */
 export function checksParaRegiao(checks: Check[], regiao: string): Check[] {
   const r = str(regiao).trim().toUpperCase();
   if (r === "") return [];
@@ -446,6 +473,11 @@ export function VerificarConteudo({
   const badge = <SealSlot seal={seal} />;
   const lista = Array.isArray(checks) ? checks : [];
 
+  // Ramificação de segurança testada por `unknown_claim_suggests`: em rota,
+  // slugs fora da lib caem no 404 do Next (`dynamicParams = false` em
+  // `[slug]/page.tsx`), então este ramo nunca executa em produção — a
+  // propriedade "slug desconhecido nunca recebe veredito" vale por 404, e
+  // este ramo a preserva onde o componente é reusado (índice, testes).
   if (!check) {
     return (
       <>
