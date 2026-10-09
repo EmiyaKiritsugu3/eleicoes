@@ -5,6 +5,7 @@ logo devem FALHAR até a implementação.
 """
 
 import duckdb
+import pytest
 
 from etl.normalize import CANONICAL_COLUMNS
 
@@ -127,3 +128,46 @@ def test_quarantine_moves_csv_with_unexpected_columns(tmp_path):
     assert (raw / "quarentena" / "estranho.csv").exists()
     assert (raw / "bom.csv").exists()
     assert len(moved) == 1
+
+
+def test_gate_absent_group_reports_sem_dado_oficial(tmp_path):
+    from etl.validate import run_gates
+
+    db = tmp_path / "t.duckdb"
+    _make_db(db, [_fato_row(uf="SP", votos=100)], [("1", "X", "P")])
+    manifest = _make_manifest(tmp_path / "m.json")
+    # RJ esperado mas ausente no fato: erro dedicado, nunca "obtido 0".
+    totais = {(2022, "PRESIDENTE", "RJ"): 50}
+    errors = run_gates(db, manifest_path=manifest, totais_oficiais=totais)
+    assert any("sem dado oficial" in e for e in errors), f"veio: {errors}"
+    assert not any("obtido 0" in e for e in errors), f"coagiu ausente a 0: {errors}"
+
+
+def test_gate_no_totals_warns_and_passes_internal(tmp_path):
+    from etl.validate import run_gates
+
+    db = tmp_path / "t.duckdb"
+    _make_db(db, [_fato_row()], [("1", "X", "P")])
+    manifest = _make_manifest(tmp_path / "m.json")
+    with pytest.warns(UserWarning, match="totais oficiais ausentes"):
+        assert run_gates(db, manifest_path=manifest) == []
+
+
+def test_gate_missing_manifest_everywhere(tmp_path):
+    from etl.validate import run_gates
+
+    db = tmp_path / "t.duckdb"
+    _make_db(db, [_fato_row()], [("1", "X", "P")])
+    with pytest.warns(UserWarning, match="totais oficiais ausentes"):
+        errors = run_gates(db)
+    assert any("manifest" in e for e in errors), f"esperava erro de manifest, veio: {errors}"
+
+
+def test_gate_empty_totals_dict_fails_closed(tmp_path):
+    from etl.validate import run_gates
+
+    db = tmp_path / "t.duckdb"
+    _make_db(db, [_fato_row()], [("1", "X", "P")])
+    manifest = _make_manifest(tmp_path / "m.json")
+    errors = run_gates(db, manifest_path=manifest, totais_oficiais={})
+    assert errors != [], "totais {} explicito deve reprovar, nao passar"

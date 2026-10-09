@@ -1,17 +1,29 @@
 """Quality gates + quarentena (offline-first, custo zero).
 
 `run_gates(db_path, manifest_path=None, totais_oficiais=None) -> list[str]`:
-lista de erros (vazia = ok). O ETL deve falhar quando não vazia e manter
-a versão anterior.
+lista de erros (vazia = ok).
+
+Contrato do chamador (orquestrador ETL, fora do escopo v1): se a lista
+for não vazia, o ETL DEVE falhar a ingestão e manter a versão anterior
+dos marts (nunca sobrescrever versão boa com dados reprovados). Para
+habilitar a comparação externa (soma por UF == total oficial), o
+orquestrador DEVE passar `totais_oficiais` (dict `(ano, cargo, uf) ->
+total` ou `uf -> total`); sem eles roda só a integridade interna e um
+`UserWarning` ("totais oficiais ausentes...") é emitido — explícito,
+nunca silencioso (R1: em v1 não há orquestrador, fail-closed bricaria
+o pipeline).
 
 Gates (spec §7):
 1. soma: votos nulos/não-numéricos ou negativos reprovam; quando
-   `totais_oficiais` é informado (dict `(ano, cargo, uf) -> total` ou
-   `uf -> total`), a soma por UF no `fato_voto` deve bater com o total
-   oficial — divergência devolve erro contendo "soma".
+   `totais_oficiais` é informado, a soma por UF no `fato_voto` deve
+   bater com o total oficial — divergência devolve erro contendo
+   "soma"; grupo esperado ausente no `fato_voto` devolve erro
+   "sem dado oficial ..." (nunca coage ausente para 0).
 2. orfãos: fração de linhas de `fato_voto` sem `dim_candidato` acima de
    0,1% reprova.
-3. manifest: `verify_manifest` falso (ou arquivo ausente) reprova.
+3. manifest: `verify_manifest` falso reprova; sem manifest localizável
+   (caminho explícito ou `<db dir>/manifest.json`) reprova fail-closed
+   — nunca valida manifest de outro diretório por acidente.
 
 `quarantine_invalid_csvs(raw_dir, quarantine_dir=None) -> list[Path]`:
 move para `quarentena/` (padrão: `<raw_dir>/quarentena/`, i.e.
@@ -27,14 +39,13 @@ quarentenado fica excluído por construção.
 from __future__ import annotations
 
 import shutil
+import warnings
 from pathlib import Path
 
 import duckdb
 import pandas as pd
 
 from etl.manifest import verify_manifest
-
-_REPO_ROOT = Path(__file__).resolve().parent.parent
 
 ORPHAN_THRESHOLD = 0.001  # spec: reprova "acima de 0,1%"
 
@@ -43,17 +54,15 @@ _ANO_ALIASES = {"ANO_ELEICAO", "ANO"}
 
 
 def _resolve_manifest(db_path: Path, manifest_path=None) -> Path | None:
+    """Manifest explícito ou `<db dir>/manifest.json`; senão None (fail-closed).
+
+    Nunca cai para manifest de outro diretório (repo/CWD): validar o
+    manifest errado seria aprovar proveniência que não é a do banco.
+    """
     if manifest_path is not None:
         return Path(manifest_path)
-    candidates = [
-        db_path.parent / "manifest.json",
-        _REPO_ROOT / "data" / "manifest.json",
-        Path.cwd() / "data" / "manifest.json",
-    ]
-    for cand in candidates:
-        if cand.is_file():
-            return cand
-    return None
+    cand = db_path.parent / "manifest.json"
+    return cand if cand.is_file() else None
 
 
 def _tables(con) -> set[str]:
@@ -82,7 +91,13 @@ def _gate_sum(con, totais_oficiais) -> list[str]:
         return errors
     if negatives:
         errors.append(f"soma: {negatives} linha(s) com votos negativos em fato_voto")
-    if totais_oficiais:
+    if totais_oficiais is not None:
+        if not totais_oficiais:
+            # Dict explícito vazio: fail-closed — nada para comparar.
+            errors.append(
+                "soma: totais oficiais vazios, comparacao externa impossivel"
+            )
+            return errors
         try:
             rows = con.execute(
                 "SELECT ano, cargo, uf, SUM(TRY_CAST(votos AS BIGINT)) FROM fato_voto "
@@ -94,20 +109,33 @@ def _gate_sum(con, totais_oficiais) -> list[str]:
         actual: dict[tuple, int] = {}
         actual_uf: dict[str, int] = {}
         for ano, cargo, uf, total in rows:
+            if total is None:
+                continue  # grupo sem votos válidos: já coberto pelo gate de nulos
             key = (int(ano), str(cargo).strip().upper(), str(uf).strip().upper())
-            value = int(total) if total is not None else 0
-            actual[key] = value
-            actual_uf[key[2]] = actual_uf.get(key[2], 0) + value
+            actual[key] = int(total)
+            actual_uf[key[2]] = actual_uf.get(key[2], 0) + int(total)
         for raw_key, expected in totais_oficiais.items():
             exp = int(expected)
             if isinstance(raw_key, (tuple, list)) and len(raw_key) == 3:
                 key = (int(raw_key[0]), str(raw_key[1]).strip().upper(), str(raw_key[2]).strip().upper())
-                got = actual.get(key, 0)
                 label = f"{key[0]}/{key[1]}/{key[2]}"
+                if key not in actual:
+                    errors.append(
+                        f"sem dado oficial em fato_voto para {label}: "
+                        f"esperado {exp}, grupo ausente"
+                    )
+                    continue
+                got = actual[key]
             else:
                 uf = str(raw_key).strip().upper()
-                got = actual_uf.get(uf, 0)
                 label = uf
+                if uf not in actual_uf:
+                    errors.append(
+                        f"sem dado oficial em fato_voto para {label}: "
+                        f"esperado {exp}, grupo ausente"
+                    )
+                    continue
+                got = actual_uf[uf]
             if got != exp:
                 errors.append(
                     f"soma por UF diverge do total oficial em {label}: esperado {exp}, obtido {got}"
@@ -141,15 +169,29 @@ def _gate_orphans(con, tables: set[str]) -> list[str]:
 
 
 def run_gates(db_path, manifest_path=None, totais_oficiais=None) -> list[str]:
-    """Roda os quality gates sobre o DuckDB; devolve erros (vazia = ok)."""
+    """Roda os quality gates sobre o DuckDB; devolve erros (vazia = ok).
+
+    Nunca levanta por problema nos dados: qualquer falha vira item da
+    lista (contrato `-> list[str]`). Sem `totais_oficiais`, emite
+    `UserWarning` e checa só integridade interna.
+    """
     db_path = Path(db_path)
     errors: list[str] = []
+    if totais_oficiais is None:
+        warnings.warn(
+            "totais oficiais ausentes: comparacao externa pendente",
+            UserWarning,
+            stacklevel=2,
+        )
     try:
         con = duckdb.connect(str(db_path), read_only=True)
     except Exception as exc:
         return [f"banco: nao foi possivel abrir {db_path} ({exc})"]
     try:
-        tables = _tables(con)
+        try:
+            tables = _tables(con)
+        except Exception as exc:
+            return [f"banco: nao foi possivel listar tabelas em {db_path} ({exc})"]
         if "fato_voto" not in tables:
             return [f"banco: tabela fato_voto ausente em {db_path}"]
         errors.extend(_gate_sum(con, totais_oficiais))
