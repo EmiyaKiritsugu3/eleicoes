@@ -9,7 +9,13 @@ def _ci():
 def test_ci_installs_pytest_before_running_it():
     runs = [s.get("run", "") for s in _ci()["jobs"]["ci"]["steps"]]
     joined = "\n".join(runs)
-    assert "pytest" in joined.split("pytest tests")[0]  # instalado antes de usado
+    pre_use = joined.split("pytest tests")[0]
+    # instalado antes de usado: extra test (ou pytest explícito) no pip install
+    assert '".[test]"' in pre_use or "pytest" in pre_use
+    import tomllib
+    with open("pyproject.toml", "rb") as f:
+        test_extra = tomllib.load(f)["project"]["optional-dependencies"]["test"]
+    assert any(e.startswith("pytest") for e in test_extra)  # extra test provê pytest
 
 
 def test_ci_caches_pip_and_pins_actions_by_sha():

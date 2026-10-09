@@ -24,9 +24,7 @@ jobs:
           cache: pip
 
       - name: Install Python deps
-        run: |
-          # instala pytest via extra test, antes de usa-lo
-          pip install ".[test]"
+        run: pip install ".[test]"
 
       - name: Run pytest
         run: pytest tests/ -q
