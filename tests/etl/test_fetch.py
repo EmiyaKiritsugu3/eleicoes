@@ -7,6 +7,16 @@ class _FakeResponse:
     def __init__(self, payload: bytes):
         self._payload = payload
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+        return False
+
+    def close(self):
+        return None
+
     def raise_for_status(self):
         return None
 

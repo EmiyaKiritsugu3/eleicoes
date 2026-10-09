@@ -12,6 +12,8 @@ Schema canônico (ordem exata):
 
 from __future__ import annotations
 
+import warnings
+
 import pandas as pd
 
 CANONICAL_COLUMNS = [
@@ -38,8 +40,6 @@ _COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     "partido": ("SG_PARTIDO", "PARTIDO"),
     "votos": ("QT_VOTOS_NOMINAIS", "QT_VOTOS", "VOTOS"),
 }
-
-_TEXT_FIELDS = ("cargo", "uf", "municipio_ibge", "candidato_id", "nome_urna", "partido")
 
 
 def _fix_text(value):
@@ -117,8 +117,20 @@ def normalize_resultados(df: pd.DataFrame) -> pd.DataFrame:
     out["uf"] = out["uf"].map(_fix_text).str.strip().str.upper()
 
     col = _pick_column(df, "municipio_ibge")
-    ibge = df[col].astype("string").fillna("") if col is not None else pd.Series("", index=df.index)
-    ibge = ibge.map(_fix_text).str.strip().str.replace(r"\D", "", regex=True).str.zfill(7)
+    ibge_raw = df[col].astype("string").fillna("") if col is not None else pd.Series("", index=df.index)
+    digits = ibge_raw.map(_fix_text).str.strip().str.replace(r"\D", "", regex=True)
+    # M1: só 7 dígitos é IBGE válido; valida os dígitos crus (antes do
+    # zfill, que mascararia "123" como "0000123") e descarta o resto p/ "".
+    bad = ~digits.str.fullmatch(r"\d{7}").fillna(False)
+    n_bad = int(bad.sum())
+    if n_bad:
+        warnings.warn(
+            f"normalize_resultados: {n_bad} codigo(s) IBGE fora do padrao "
+            "de 7 digitos descartados (vazio)",
+            UserWarning,
+            stacklevel=2,
+        )
+    ibge = digits.where(~bad, "").str.zfill(7)
     out["municipio_ibge"] = ibge.replace("0000000", "")
 
     col = _pick_column(df, "candidato_id")

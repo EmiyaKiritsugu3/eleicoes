@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import shutil
 import warnings
+from datetime import datetime, timezone
 from pathlib import Path
 
 import duckdb
@@ -115,7 +116,11 @@ def _gate_sum(con, totais_oficiais) -> list[str]:
             actual[key] = int(total)
             actual_uf[key[2]] = actual_uf.get(key[2], 0) + int(total)
         for raw_key, expected in totais_oficiais.items():
-            exp = int(expected)
+            try:
+                exp = int(expected)
+            except (ValueError, TypeError):
+                errors.append(f"soma: total oficial inválido para {raw_key!r}")
+                continue
             if isinstance(raw_key, (tuple, list)) and len(raw_key) == 3:
                 key = (int(raw_key[0]), str(raw_key[1]).strip().upper(), str(raw_key[2]).strip().upper())
                 label = f"{key[0]}/{key[1]}/{key[2]}"
@@ -159,7 +164,9 @@ def _gate_orphans(con, tables: set[str]) -> list[str]:
         ).fetchone()[0]
     except Exception as exc:
         return [f"orfaos: nao foi possivel checar fato sem dim ({exc})"]
-    if orphans / total > ORPHAN_THRESHOLD:
+    # M8: matemática inteira (orphans*1000 > total == fração acima de
+    # ORPHAN_THRESHOLD), sem float.
+    if orphans * 1000 > total:
         pct = 100 * orphans / total
         return [
             f"orfaos em fato_voto sem dim_candidato acima de 0,1%: "
@@ -208,7 +215,7 @@ def run_gates(db_path, manifest_path=None, totais_oficiais=None) -> list[str]:
 
 def _csv_has_ano(path: Path) -> bool:
     """True se o header do CSV traz coluna de ano reconhecível."""
-    for encoding in ("utf-8", "latin1"):
+    for encoding in ("utf-8-sig", "utf-8", "latin1"):
         for sep in (";", ","):
             try:
                 df = pd.read_csv(path, sep=sep, encoding=encoding, dtype="string", nrows=0)
@@ -229,9 +236,11 @@ def quarantine_invalid_csvs(raw_dir, quarantine_dir=None) -> list[Path]:
     if not raw.is_dir():
         return []
     qdir = Path(quarantine_dir) if quarantine_dir is not None else raw / "quarentena"
+    if qdir.resolve() == raw.resolve():
+        raise ValueError(f"quarantine_dir ({qdir}) deve ser diferente de raw_dir ({raw})")
     qdir.mkdir(parents=True, exist_ok=True)
     moved: list[Path] = []
-    for path in sorted(raw.glob("*.csv")):
+    for path in sorted(raw.glob("*.[Cc][Ss][Vv]")):
         if path.resolve() == qdir.resolve() or qdir in path.resolve().parents:
             continue
         try:
@@ -240,6 +249,13 @@ def quarantine_invalid_csvs(raw_dir, quarantine_dir=None) -> list[Path]:
             valid = False
         if not valid:
             dest = qdir / path.name
+            if dest.exists():
+                stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f")
+                dest = qdir / f"{path.stem}.{stamp}.csv"
+                n = 1
+                while dest.exists():
+                    n += 1
+                    dest = qdir / f"{path.stem}.{stamp}.{n}.csv"
             shutil.move(str(path), str(dest))
             moved.append(dest)
     return moved

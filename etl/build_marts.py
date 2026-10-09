@@ -36,9 +36,6 @@ from etl.validate import run_gates
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 WEB_DATA_DIR = _REPO_ROOT / "web" / "public" / "data"
 
-ELEITORADO_SCHEMA = ["ano", "uf", "municipio_ibge", "eleitorado", "abstencoes"]
-FIN_SCHEMA = ["ano", "candidato_id", "receita", "despesa"]
-
 
 def _empty_canonical() -> pd.DataFrame:
     out = pd.DataFrame({c: pd.Series(dtype="string") for c in CANONICAL_COLUMNS})
@@ -57,7 +54,7 @@ def _read_input_file(path: Path) -> pd.DataFrame | None:
         if path.suffix.lower() == ".parquet":
             return pd.read_parquet(path)
         if path.suffix.lower() == ".csv":
-            for encoding in ("utf-8", "latin1"):
+            for encoding in ("utf-8-sig", "utf-8", "latin1"):
                 try:
                     return pd.read_csv(path, sep=";", encoding=encoding, dtype="string")
                 except (UnicodeDecodeError, pd.errors.ParserError):
@@ -93,9 +90,24 @@ def _load_canonical(curated_dir: Path) -> pd.DataFrame:
         sources = [p for p in paths if not _is_generated(p)]
         for path in sources or paths:
             df = _read_input_file(path)
-            if df is None or df.empty:
+            if df is None:
                 continue
-            frames.append(df if _is_canonical(df) else normalize_resultados(df))
+            if df.empty:
+                warnings.warn(
+                    f"build_marts: arquivo vazio ignorado: {path.name}",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                continue
+            try:
+                frames.append(df if _is_canonical(df) else normalize_resultados(df))
+            except ValueError as exc:
+                warnings.warn(
+                    f"build_marts: skipping file with drifted header {path.name}: {exc}",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                continue
     if not frames:
         return _empty_canonical()
     out = pd.concat(frames, ignore_index=True)
