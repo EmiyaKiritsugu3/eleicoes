@@ -103,6 +103,70 @@ export default function Metodologia() {
         </ul>
       </section>
 
+      <section aria-label="Motor Verdade">
+        <h2>Motor Verdade (guardrails travados)</h2>
+        <p>
+          Toda tela de perfil ou correlação carrega o selo “dado de município,
+          não de pessoa”: os perfis são SEMPRE ecológicos (município) e nunca
+          autorizam leitura sobre pessoas — a falácia ecológica (inferir o
+          indivíduo a partir da média do lugar) é proibida pelo layout, com a
+          frase leiga embutida em cada resposta.
+        </p>
+        <ul>
+          <li>
+            <strong>Piso n ≥ 30:</strong> correlações (Pearson + Spearman)
+            exigem ao menos 30 municípios válidos; abaixo disso, a correlação é
+            suprimida (equivale a sem dados). Todo r publicado sai com n,
+            dispersão com reta + pontos por UF, tabela por quintis e outliers
+            nomeados.
+          </li>
+          <li>
+            <strong>Vereditos tricolores</strong> (só com prova; só estes três —
+            nunca meio-termo fora da escala): <strong>sustentado</strong> /{" "}
+            <strong>enganoso</strong> / <strong>falso</strong>, cada um com os 3
+            números que decidem + método + fonte + hash:
+            <ul>
+              <li>
+                quem venceu na região: vitória abaixo do piso padrão de 1% de
+                margem é no fio → enganoso, nunca sustentado sem ressalva;
+                outro vencedor → falso;
+              </li>
+              <li>
+                comparação de médias (ponderadas pelo eleitorado, onde venceu
+                vs Brasil): diferença relativa ≥ 5% na direção afirmada →
+                sustentado; direção certa com diferença menor → enganoso;
+                direção errada → falso;
+              </li>
+              <li>
+                sinal de correlação: sinal afirmado com |r| ≥ 0,3 →
+                sustentado; |r| &lt; 0,3 para qualquer lado → enganoso (ruído:
+                nunca falso sobre ruído); sinal oposto com efeito claro →
+                falso, com piso n ≥ 30;
+              </li>
+              <li>
+                maioria condicional: maioria folgada (≥ 60%) no sentido
+                afirmado → sustentado; maioria apertada (50–60%) → enganoso (a
+                afirmação exagera a certeza); maioria observada ≠ afirmada →
+                falso.
+              </li>
+            </ul>
+          </li>
+          <li>
+            <strong>Por quê (nunca causal):</strong> estratificação por
+            região/faixa de renda + correlação parcial; a conclusão sai em
+            linguagem leiga (sustentado/misto/não sustentado). Correlação nunca
+            é apresentada como causa.
+          </li>
+          <li>
+            <strong>Fontes do motor:</strong> TSE (votos) + IBGE Censo 2022
+            (perfil do lugar), unidos no fato municipal{" "}
+            <code>fato_ano_turno_cargo.json</code>. Sem Censo auditado, as
+            seções de perfil exibem “sem dado oficial”. Toda resposta exibe a
+            query + o hash do manifest.
+          </li>
+        </ul>
+      </section>
+
       <section aria-label="Escopo V1">
         <h2>Escopo V1</h2>
         <p>

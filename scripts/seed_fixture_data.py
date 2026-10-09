@@ -1,8 +1,10 @@
 """Seed determinístico de dados de amostra p/ CI e dev local (custo zero).
 
-Gera `web/public/data/*.json` (resumo, por_uf, por_candidato, manifest)
-através do caminho REAL do ETL (`etl.build_marts.build_all`) a partir de
-um CSV sintético fixo — sem download do TSE, hermético e idempotente.
+Gera `web/public/data/*.json` (resumo, por_uf, por_candidato, manifest,
+fato_2022_1_presidente + ingestões do Censo fixture) através do caminho
+REAL do ETL (`etl.build_marts.build_all` + `normalize_censo` +
+`etl.build_fato.build_fato`) a partir de CSVs sintéticos fixos — sem
+download do TSE/IBGE, hermético e idempotente.
 
 Uso:
     python scripts/seed_fixture_data.py [--force] [--manifest PATH] [--web-data-dir DIR]
@@ -48,6 +50,21 @@ _FIXTURE_NOTA = (
     "produção exige ingestão real do TSE"
 )
 
+# Censo fixture mínimo (Task 11): um par por município do _FIXTURE_CSV,
+# header estilo IBGE/SIDRA p/ normalize_censo (mesmo padrão de
+# tests/etl/test_fato.py::_censo_raw). Sem Censo auditado o fato não
+# existe (build_fato reprova 100% órfãos) e o motor/painel exibe
+# "sem dado oficial" — o CI precisa deste passo antes dos testes web.
+_FIXTURE_CENSO_CSV = (
+    "CD_MUN;P_SUPERIOR;P_MEDIO;P_FUNDAMENTAL;RENDIMENTO_MEDIO;TX_POBREZA;"
+    "IDADE_MEDIANA;TX_URBANIZACAO;POP_RESIDENTE\n"
+    "3550308;20.0;35.0;45.0;2500.0;15.0;33.0;90.0;10000\n"
+    "3304557;25.0;35.0;40.0;2600.0;18.0;34.0;85.0;12000\n"
+)
+
+# Triple coberta pelo fixture TSE acima (turno ausente vira 1, M7).
+_FATO_TRIPLE = (2022, 1, "presidente")
+
 
 def _has_official_entries(manifest_path: Path) -> bool:
     """True se o manifest existente contém ingestões não-fixture (oficiais).
@@ -72,9 +89,17 @@ def _has_official_entries(manifest_path: Path) -> bool:
 
 def seed(manifest_path: Path, web_data_dir: Path, force: bool = False) -> dict:
     """Roda o build real sobre o fixture e marca as entradas como sintéticas."""
+    import hashlib
+    import io
     import sys
+    from datetime import datetime, timezone
     sys.path.insert(0, str(_REPO_ROOT))
+    from etl import ETL_VERSION
+    from etl.build_fato import build_fato
     from etl.build_marts import build_all
+    from etl.censo import normalize_censo
+    from etl.manifest import write_manifest
+    from etl.sources import CENSO_DATASETS
 
     manifest_path = Path(manifest_path)
     web_data_dir = Path(web_data_dir)
@@ -99,8 +124,47 @@ def seed(manifest_path: Path, web_data_dir: Path, force: bool = False) -> dict:
             curated = Path(tmp) / "curated"
             curated.mkdir()
             (curated / "fixture.csv").write_text(_FIXTURE_CSV, encoding="utf-8")
-            build_all(curated, Path(tmp) / "seed.duckdb", manifest_path,
+            db_tmp = Path(tmp) / "seed.duckdb"
+            build_all(curated, db_tmp, manifest_path,
                       web_data_dir=web_data_dir)
+            # Motor Verdade: Censo fixture -> dim_municipio -> fato sintético,
+            # pelo caminho REAL (normalize_censo + build_fato). O Censo real
+            # segue indisponível (URL pendente, Task 1): o entry do Censo
+            # abaixo usa a página do catálogo IBGE como source_url e o sha256
+            # do payload sintético — sempre marcado fixture:true adiante.
+            import duckdb
+            import pandas as pd
+            censo_raw = pd.read_csv(io.StringIO(_FIXTURE_CENSO_CSV), sep=";",
+                                    dtype="string")
+            con = duckdb.connect(str(db_tmp))
+            try:
+                con.register("censo_df", normalize_censo(censo_raw))
+                con.execute(
+                    "CREATE OR REPLACE TABLE dim_municipio AS "
+                    "SELECT * FROM censo_df"
+                )
+            finally:
+                con.close()
+            write_manifest(manifest_path, {
+                "source_url": CENSO_DATASETS[0]["dataset"],
+                "sha256": hashlib.sha256(
+                    _FIXTURE_CENSO_CSV.encode("utf-8")).hexdigest(),
+                "data": datetime.now(timezone.utc).date().isoformat(),
+                "etl_version": ETL_VERSION,
+                "dataset": CENSO_DATASETS[0]["nome"],
+                "ano": CENSO_DATASETS[0]["ano"],
+                "tipo": "censo_ibge_2022",
+                "rows": 2,
+            })
+            ano, turno, cargo = _FATO_TRIPLE
+            build_fato(db_tmp, web_data_dir, ano, turno, cargo)
+            # build_fato anexa ao <db dir>/manifest.json (aqui o tmp):
+            # promove o entry do fato p/ o manifest real.
+            tmp_manifest = json.loads(
+                (db_tmp.parent / "manifest.json").read_text(encoding="utf-8"))
+            for entry in tmp_manifest.get("ingestions", []):
+                if isinstance(entry, dict):
+                    write_manifest(manifest_path, entry)
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         for entry in manifest.get("ingestions", []):
             if isinstance(entry, dict):
@@ -137,11 +201,15 @@ def main() -> None:
     resumo = json.loads((args.web_data_dir / "resumo.json").read_text(encoding="utf-8"))
     ingestions = manifest.get("ingestions", [])
     first = ingestions[0] if ingestions else {}
+    ano, turno, cargo = _FATO_TRIPLE
+    fato_name = f"fato_{ano}_{turno}_{cargo}.json"
+    fato = json.loads((args.web_data_dir / fato_name).read_text(encoding="utf-8"))
     print(f"ingestions={len(ingestions)} "
           f"sha256={str(first.get('sha256', ''))[:12]}… "
           f"total_votos={resumo.get('total_votos')} "
           f"total_linhas={resumo.get('total_linhas')} "
-          f"anos={resumo.get('anos')}")
+          f"anos={resumo.get('anos')} "
+          f"fato_municipios={len(fato.get('municipios', []))}")
 
 
 if __name__ == "__main__":
