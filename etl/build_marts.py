@@ -41,21 +41,38 @@ _CAPITAIS_PATH = Path(__file__).resolve().parent / "capitais_ibge.json"
 def _load_capitais() -> set:
     """Códigos IBGE (7 dígitos) das 27 capitais (E8).
 
-    Falha aberta com `UserWarning` se o arquivo estiver ausente ou
-    corrompido — o build não deve derrubar por falta do filtro, mas o
-    operador precisa saber que o escopo de prefeito não foi aplicado.
+    Fail-closed: arquivo ausente levanta `FileNotFoundError`; JSON
+    ilegível ou fora do formato (lista de 27 strings únicas de 7
+    dígitos) levanta `ValueError`. O filtro de prefeito nunca é
+    desativado silenciosamente — sem escopo válido, o build falha em
+    vez de deixar prefeito do interior vazar para os marts.
     """
     try:
         codes = json.loads(_CAPITAIS_PATH.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        warnings.warn(
-            f"build_marts: capitais_ibge.json ilegível ({exc}); "
-            "filtro de prefeito desativado",
-            UserWarning,
-            stacklevel=3,
+    except FileNotFoundError:
+        raise FileNotFoundError(
+            "build_marts: arquivo de escopo ausente "
+            f"({_CAPITAIS_PATH}); prefeito restrito às 27 capitais (E8)"
         )
-        return set()
-    return {str(c) for c in codes}
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            "build_marts: escopo de capitais ilegível "
+            f"({_CAPITAIS_PATH}): {exc}"
+        ) from exc
+    if (
+        not isinstance(codes, list)
+        or len(codes) != 27
+        or len(set(map(str, codes))) != 27
+        or not all(
+            isinstance(c, str) and len(c) == 7 and c.isdigit() for c in codes
+        )
+    ):
+        raise ValueError(
+            "build_marts: escopo de capitais inválido "
+            f"({_CAPITAIS_PATH}): esperada lista de 27 strings IBGE "
+            "de 7 dígitos únicas"
+        )
+    return set(codes)
 
 
 def _empty_canonical() -> pd.DataFrame:
@@ -134,12 +151,13 @@ def _load_canonical(curated_dir: Path) -> pd.DataFrame:
     out = pd.concat(frames, ignore_index=True)
     out = out if _is_canonical(out) else normalize_resultados(out)
     # E8: prefeito restrito às 27 capitais; demais cargos intactos.
+    # Fail-closed: _load_capitais levanta sem escopo válido (nunca pula
+    # o filtro).
     capitais = _load_capitais()
-    if capitais:
-        is_prefeito_fora = (out["cargo"].astype(str).str.upper() == "PREFEITO") & (
-            ~out["municipio_ibge"].astype(str).isin(capitais)
-        )
-        out = out[~is_prefeito_fora].reset_index(drop=True)
+    is_prefeito_fora = (out["cargo"].astype(str).str.upper() == "PREFEITO") & (
+        ~out["municipio_ibge"].astype(str).isin(capitais)
+    )
+    out = out[~is_prefeito_fora].reset_index(drop=True)
     return out
 
 
