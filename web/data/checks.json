@@ -1,0 +1,116 @@
+[
+  {
+    "slug": "vencedor-nacional",
+    "titulo": "O vencedor nacional venceu no Brasil?",
+    "frase": "@vencedor venceu no Brasil",
+    "computacao": { "tipo": "vencedor_regiao", "params": { "quem": "@vencedor", "regiao": "BR" } },
+    "fontes": ["https://dadosabertos.tse.jus.br/"],
+    "regiao": null
+  },
+  {
+    "slug": "vencedor-sp",
+    "titulo": "Quem venceu em São Paulo?",
+    "frase": "@vencedor venceu em São Paulo",
+    "computacao": { "tipo": "vencedor_regiao", "params": { "quem": "@vencedor", "regiao": "SP" } },
+    "fontes": ["https://dadosabertos.tse.jus.br/"],
+    "regiao": "SP"
+  },
+  {
+    "slug": "vencedor-ba",
+    "titulo": "Quem venceu na Bahia?",
+    "frase": "@vencedor venceu na Bahia",
+    "computacao": { "tipo": "vencedor_regiao", "params": { "quem": "@vencedor", "regiao": "BA" } },
+    "fontes": ["https://dadosabertos.tse.jus.br/"],
+    "regiao": "BA"
+  },
+  {
+    "slug": "margem-folgada-nacional",
+    "titulo": "O vencedor nacional venceu com folga?",
+    "frase": "@vencedor venceu com folga (margem acima de 10 pontos)",
+    "computacao": {
+      "tipo": "vencedor_regiao",
+      "params": { "quem": "@vencedor", "regiao": "BR", "margem_min": 0.1 }
+    },
+    "fontes": ["https://dadosabertos.tse.jus.br/"],
+    "regiao": null
+  },
+  {
+    "slug": "abstencao-alta-maioria",
+    "titulo": "A abstenção passou de 20% na maioria dos municípios?",
+    "frase": "Na maioria dos municípios, a abstenção passou de 20%",
+    "computacao": {
+      "tipo": "soma_condicional",
+      "params": { "medida": "abst", "limiar": 0.2, "lado": "acima", "afirma_maioria": true }
+    },
+    "fontes": ["https://dadosabertos.tse.jus.br/", "https://www.ibge.gov.br/"],
+    "regiao": null
+  },
+  {
+    "slug": "margem-apertada-maioria",
+    "titulo": "A disputa foi apertada na maioria dos municípios?",
+    "frase": "Na maioria dos municípios a disputa foi apertada (margem abaixo de 5 pontos)",
+    "computacao": {
+      "tipo": "soma_condicional",
+      "params": { "medida": "margem", "limiar": 0.05, "lado": "abaixo", "afirma_maioria": true }
+    },
+    "fontes": ["https://dadosabertos.tse.jus.br/"],
+    "regiao": null
+  },
+  {
+    "slug": "vice-venceu-sp",
+    "titulo": "O segundo colocado virou e venceu em São Paulo?",
+    "frase": "@vice virou e venceu em São Paulo",
+    "computacao": { "tipo": "vencedor_regiao", "params": { "quem": "@vice", "regiao": "SP" } },
+    "fontes": ["https://dadosabertos.tse.jus.br/"],
+    "regiao": "SP"
+  },
+  {
+    "slug": "vice-venceu-rs",
+    "titulo": "O segundo colocado venceu no Rio Grande do Sul?",
+    "frase": "@vice venceu no Rio Grande do Sul",
+    "computacao": { "tipo": "vencedor_regiao", "params": { "quem": "@vice", "regiao": "RS" } },
+    "fontes": ["https://dadosabertos.tse.jus.br/"],
+    "regiao": "RS"
+  },
+  {
+    "slug": "renda-vencedor-maior",
+    "titulo": "O vencedor venceu em lugares mais ricos?",
+    "frase": "@vencedor venceu em lugares mais ricos",
+    "computacao": {
+      "tipo": "comparar_medias",
+      "params": { "quem": "@vencedor", "variavel": "renda_media", "direcao": "maior" }
+    },
+    "fontes": ["https://dadosabertos.tse.jus.br/", "https://www.ibge.gov.br/"],
+    "regiao": null
+  },
+  {
+    "slug": "estudo-voto-positivo",
+    "titulo": "Lugares mais escolarizados votaram mais no vencedor?",
+    "frase": "Lugares mais escolarizados votaram mais em @vencedor",
+    "computacao": {
+      "tipo": "correlacao_sinal",
+      "params": { "quem": "@vencedor", "variavel": "esc_sup", "sinal": "positivo" }
+    },
+    "fontes": ["https://dadosabertos.tse.jus.br/", "https://www.ibge.gov.br/"],
+    "regiao": null
+  },
+  {
+    "slug": "pobreza-voto-vencedor",
+    "titulo": "Lugares mais pobres votaram mais no vencedor?",
+    "frase": "Lugares mais pobres votaram mais em @vencedor",
+    "computacao": {
+      "tipo": "correlacao_sinal",
+      "params": { "quem": "@vencedor", "variavel": "pobres_pct", "sinal": "positivo" }
+    },
+    "fontes": ["https://dadosabertos.tse.jus.br/", "https://www.ibge.gov.br/"],
+    "regiao": null
+  },
+  {
+    "slug": "evolucao-abstencao",
+    "titulo": "A abstenção cresceu entre pleitos?",
+    "frase": "A abstenção cresceu entre pleitos",
+    "computacao": { "tipo": "serie_temporal", "params": { "assunto": "abstencao" } },
+    "fontes": ["https://dadosabertos.tse.jus.br/"],
+    "regiao": null
+  }
+]
