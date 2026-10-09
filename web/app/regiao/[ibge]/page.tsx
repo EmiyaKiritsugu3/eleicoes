@@ -11,6 +11,7 @@
 import React, { useEffect, useState } from "react";
 import PainelRegiao, { type FatoRegiao } from "../../../components/PainelRegiao";
 import { getSealState, type SealState } from "../../../lib/data";
+import { fatoDatasetDe } from "../../../lib/regiao";
 
 async function fetchJson<T>(path: string): Promise<T | null> {
   try {
@@ -20,21 +21,6 @@ async function fetchJson<T>(path: string): Promise<T | null> {
   } catch {
     return null;
   }
-}
-
-interface ManifestFato {
-  tipo?: string;
-  dataset?: string;
-}
-
-function fatoDatasetDe(manifest: unknown, override?: string): string | null {
-  if (override && override.trim() !== "") return override.trim();
-  const ing = (manifest as { ingestions?: ManifestFato[] } | null)?.ingestions;
-  if (!Array.isArray(ing)) return null;
-  const entry = ing.find(
-    (e) => e?.tipo === "fato_municipal" && typeof e?.dataset === "string" && e.dataset.startsWith("fato_"),
-  );
-  return entry?.dataset ?? null;
 }
 
 export default function PaginaRegiao({ params }: { params: { ibge: string } }) {

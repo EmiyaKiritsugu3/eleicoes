@@ -157,28 +157,116 @@ describe("PainelRegiao (município)", () => {
 });
 
 describe("pixel-mentiroso (toda resposta exibe fonte+hash)", () => {
+  // Stem de 12 chars do hash do selo oficial (SourceBadge renderiza
+  // `<code>{stem}…</code>` + `title="sha256: {hash cheio}"`).
+  const HASH_SHORT = "abc123def456";
+  /** Outcome honesto POR SEÇÃO: hash curto, selo oficial ou aviso fail-closed. */
+  function secaoHonesta(s: string): boolean {
+    return (
+      s.includes(HASH_SHORT) ||
+      s.includes("fonte auditada") ||
+      s.includes("dado não auditado")
+    );
+  }
+  function secoesDe(html: string): string[] {
+    const ss = html.split("<section").slice(1);
+    expect(ss.length).toBeGreaterThan(0);
+    return ss;
+  }
   it("com selo oficial: cada seção com número tem badge visível", () => {
     const html = renderToStaticMarkup(
       <PainelRegiao ibge="3550308" fato={FATO} seal={SEAL_OFICIAL} manifestChecked />,
     );
-    const secoes = html.split("<section").slice(1);
-    expect(secoes.length).toBeGreaterThan(0);
-    for (const s of secoes) {
-      expect(s).toContain("badge");
+    for (const s of secoesDe(html)) {
+      expect(secaoHonesta(s)).toBe(true);
     }
     expect(html).toContain("fonte auditada");
-    expect(html).toContain("abc123def456"); // hash curto visível
+    expect(html).toContain(HASH_SHORT); // hash curto visível
   });
   it("sem selo: nenhuma seção apresenta número como oficial (badge de aviso em cada)", () => {
     const html = renderToStaticMarkup(
       <PainelRegiao ibge="3550308" fato={FATO} seal={SEAL_NULO} manifestChecked />,
     );
     expect(html).not.toContain("fonte auditada");
-    const secoes = html.split("<section").slice(1);
-    expect(secoes.length).toBeGreaterThan(0);
-    for (const s of secoes) {
-      expect(s).toContain("badge");
+    for (const s of secoesDe(html)) {
+      expect(secaoHonesta(s)).toBe(true);
     }
     expect(html).toContain("dado não auditado");
+  });
+  it("fail-closed (ibge ausente): cada seção honesta mesmo sem números", () => {
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="9999999" fato={FATO} seal={SEAL_NULO} manifestChecked />,
+    );
+    for (const s of secoesDe(html)) {
+      expect(secaoHonesta(s)).toBe(true);
+    }
+  });
+});
+
+describe("nota de pesos mistos inclui o baseline", () => {
+  it("restrito em eleitores + baseline misto -> nota renderiza (município)", () => {
+    const fato: FatoRegiao = {
+      candidatos: CANDIDATOS,
+      municipios: [
+        mun("3550308", "SP", [600, 400], demoCompleta(), 1000), // A vence, peso eleitores
+        mun("3550309", "SP", [700, 100], { ...demoCompleta(), eleitores: null }, 1000), // A vence, fallback total
+        mun("3550310", "SP", [100, 900], demoCompleta(), 1000), // B vence
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="3550308" fato={fato} seal={SEAL_OFICIAL} manifestChecked />,
+    );
+    expect(html).toContain(NOTA_PESO_MISTO);
+  });
+  it("restrito em eleitores + baseline misto -> nota renderiza (UF)", () => {
+    const fato: FatoRegiao = {
+      candidatos: CANDIDATOS,
+      municipios: [
+        mun("3550308", "SP", [100, 900], demoCompleta(), 1000), // B vence, peso eleitores
+        mun("3550309", "SP", [200, 800], demoCompleta(), 1000), // B vence, peso eleitores
+        mun("3304557", "RJ", [100, 900], { ...demoCompleta(), eleitores: null }, 1000), // B vence, fallback total
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="SP" fato={fato} seal={SEAL_OFICIAL} manifestChecked />,
+    );
+    expect(html).toContain(NOTA_PESO_MISTO);
+  });
+  it("restrito e baseline em eleitores -> sem nota", () => {
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="3550308" fato={FATO} seal={SEAL_OFICIAL} manifestChecked />,
+    );
+    expect(html).not.toContain(NOTA_PESO_MISTO);
+  });
+});
+
+describe("fatoDatasetDe (?fato= com allowlist)", () => {
+  const MANIFEST = {
+    ingestions: [{ tipo: "fato_municipal", dataset: "fato_2022_1_presidente" }],
+  };
+  it("sem override: default do manifest; override válido vence", async () => {
+    const { fatoDatasetDe } = await import("../lib/regiao");
+    expect(fatoDatasetDe(MANIFEST)).toBe("fato_2022_1_presidente");
+    expect(fatoDatasetDe(MANIFEST, "")).toBe("fato_2022_1_presidente");
+    expect(fatoDatasetDe(MANIFEST, "fato_2022_2_governador")).toBe("fato_2022_2_governador");
+    expect(fatoDatasetDe(MANIFEST, "  fato_2022_2_governador  ")).toBe("fato_2022_2_governador");
+  });
+  it("override fora do allowlist é rejeitado -> default do manifest (fail-closed)", async () => {
+    const { fatoDatasetDe } = await import("../lib/regiao");
+    expect(fatoDatasetDe(MANIFEST, "fato_../manifest")).toBe("fato_2022_1_presidente");
+    expect(fatoDatasetDe(MANIFEST, "resumo")).toBe("fato_2022_1_presidente");
+    expect(fatoDatasetDe(MANIFEST, "fato_2022_1_presi dente")).toBe("fato_2022_1_presidente");
+    expect(fatoDatasetDe(null, "fato_../manifest")).toBe(null);
+    expect(fatoDatasetDe(null)).toBe(null);
+  });
+  it("isFatoDataset: shape fato_* exato, sem traversal", async () => {
+    const { isFatoDataset } = await import("../lib/regiao");
+    expect(isFatoDataset("fato_2022_1_presidente")).toBe(true);
+    expect(isFatoDataset("fato_2022_2_governador")).toBe(true);
+    expect(isFatoDataset("fato_../manifest")).toBe(false);
+    expect(isFatoDataset("fato_2022_presidente")).toBe(false);
+    expect(isFatoDataset("resumo")).toBe(false);
+    expect(isFatoDataset("")).toBe(false);
+    expect(isFatoDataset(null)).toBe(false);
   });
 });

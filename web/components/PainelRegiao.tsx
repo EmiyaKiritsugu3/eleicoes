@@ -285,7 +285,7 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked }: Pain
           <h2>Perfil do lugar</h2>
           {badge}
           <p role="note">{ECO_SEAL} — médias de municípios onde {ag.vencedorNome} venceu, nunca de pessoas.</p>
-          {perfil.pesoFonte === "misto" && <p role="note">{NOTA_PESO_MISTO}</p>}
+          {(perfil.pesoFonte === "misto" || baseUF.pesoFonte === "misto") && <p role="note">{NOTA_PESO_MISTO}</p>}
           {perfil.nMun === 0 ? (
             <p>{SEM_DADO}</p>
           ) : (
@@ -368,7 +368,7 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked }: Pain
         <h2>Perfil do lugar</h2>
         {badge}
         <p role="note">{ECO_SEAL} — médias do município, nunca de pessoas.</p>
-        {perfil.pesoFonte === "misto" && <p role="note">{NOTA_PESO_MISTO}</p>}
+        {(perfil.pesoFonte === "misto" || base.pesoFonte === "misto") && <p role="note">{NOTA_PESO_MISTO}</p>}
         {perfil.nMun === 0 ? (
           <p>{SEM_DADO} — Censo sem par para este município; votos acima intactos</p>
         ) : (
