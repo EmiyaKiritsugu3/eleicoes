@@ -5,5 +5,8 @@ description = "SAD Eleições — pipeline offline-first sobre dados oficiais TS
 requires-python = ">=3.10"
 dependencies = ["requests>=2.31", "pandas>=2", "pyarrow>=14", "duckdb>=1"]
 
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

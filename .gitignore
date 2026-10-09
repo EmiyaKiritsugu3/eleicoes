@@ -1,0 +1,6 @@
+# Gerados — nunca rastrear (decisão: gerado, fail-closed cobre ausência).
+__pycache__/
+*.pyc
+*.duckdb
+data/manifest.json
+web/tsconfig.tsbuildinfo
