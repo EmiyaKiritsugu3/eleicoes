@@ -631,7 +631,7 @@ git commit -m "fix: full share state, csv context, hermetic web tests"
 
 ## Self-Review (feita inline)
 
-1. **Cobertura:** E1→T3, E2/E3→T2(+T5 e2e), E4/E5/M15/M16→T4, E6→T7, E7→T6, E8→T9, F1/F2→T10, F3/F4→T11, F5→T12, C1→T1, C2-contrato→T5; médios M1/M2/M4/M5/M6/M8/M10/M11→T8, M7→T2, M8-front/M9/M12-finito→T11, M10-front/M11-lib/M12-form/M14→T12, M13→T13, M9-web→T13, M17/M18→T1, M19→T5, M20→T8. Sem lacunas.
+1. **Cobertura:** E1→T3, E2/E3→T2(+T5 e2e), E4/E5/M15/M16→T4, E6→T7, E7→T6, E8→T9, F1/F2→T10, F3/F4→T11, F5→T12, C1→T1, C2-contrato→T5; médios M1/M2/M4/M5/M6/M8/M10/M11→T8, M7→T2, M8-front/M9/M12-finito→T11, M10-front/M11-lib/M12-form/M14→T12, M13→T13, M9-web→T13, M17/M18→T1, M19→T5, M20→T8, M3→final fix wave (lacuna detectada na revisão final — corrigida: sandbox+allowlist em fetch.py). Sem lacunas remanescentes.
 2. **Consistência de tipos:** `source_shas` `(ano, UPPER)` bate com cargo uppercased do normalize; `sha_origin`/`data`/`etl_version` extras são ignoradas pelo front (index signature — contrato 20/21); `Int64` fluindo p/ DuckDB/JSON é exercido nos testes T2/T4/T5; `getAuditInfo` removido só após grep (T12).
 3. **Review Focus:** 5 linhas, cada uma com teste na task dona (T8 ×2, T13, T12, T7).
 4. **Proporção:** plano detalha decisões que o implementador não pode tomar sozinho (semânticas fail-closed, formatos, match case-insensitive); corpos de função ficam com o implementador.
