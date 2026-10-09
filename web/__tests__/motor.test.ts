@@ -162,6 +162,46 @@ describe("correlacao", () => {
     expect(p!.r).toBeLessThan(0.2);
     expect(s!.r).toBeGreaterThan(0.8);
   });
+
+  it("variância zero em x -> null (ambos os métodos)", () => {
+    const xs = Array(40).fill(5);
+    expect(correlacao(xs, XS40, "pearson")).toBeNull();
+    expect(correlacao(xs, XS40, "spearman")).toBeNull();
+  });
+
+  it("variância zero em y -> null (ambos os métodos)", () => {
+    const ys = Array(40).fill(7);
+    expect(correlacao(XS40, ys, "pearson")).toBeNull();
+    expect(correlacao(XS40, ys, "spearman")).toBeNull();
+  });
+
+  it("empates usam rank médio: xs=[1,2,2,3,4..39] dá spearman exato", () => {
+    const xs = [1, 2, 2, 3];
+    for (let v = 4; v <= 39; v++) xs.push(v);
+    expect(xs).toHaveLength(40);
+    const r = correlacao(xs, XS40, "spearman");
+    expect(r).not.toBeNull();
+    expect(r!.n).toBe(40);
+    // Rank médio do par empatado = 2.5 (não min-rank 2): 0.99995309...,
+    // distinto da alternativa min-rank (0.99991450...) na 5ª casa.
+    expect(r!.r).toBeCloseTo(0.99995309, 6);
+    expect(r!.r).toBeLessThan(1);
+  });
+
+  it("fronteira do piso: n=29 -> null, n=30 -> não-nulo", () => {
+    const xs29 = Array.from({ length: 29 }, (_, i) => i + 1);
+    const ys29 = xs29.map((x) => 2 * x);
+    expect(correlacao(xs29, ys29, "pearson")).toBeNull();
+    expect(correlacao(xs29, ys29, "spearman")).toBeNull();
+    const xs30 = Array.from({ length: 30 }, (_, i) => i + 1);
+    const ys30 = xs30.map((x) => 2 * x);
+    const p = correlacao(xs30, ys30, "pearson");
+    const s = correlacao(xs30, ys30, "spearman");
+    expect(p).not.toBeNull();
+    expect(s).not.toBeNull();
+    expect(p!.n).toBe(30);
+    expect(p!.r).toBeCloseTo(1, 10);
+  });
 });
 
 describe("quintis", () => {
@@ -176,5 +216,24 @@ describe("quintis", () => {
     for (let i = 1; i < 5; i++) {
       expect(qs[i].mediaY).toBeGreaterThan(qs[i - 1].mediaY);
     }
+  });
+
+  it("supressão na fonte: n=20 -> [] (suprimido ≡ sem dados)", () => {
+    const xs = Array.from({ length: 20 }, (_, i) => i + 1);
+    const ys = xs.map((x) => 2 * x);
+    expect(quintis(xs, ys)).toEqual([]);
+  });
+
+  it("supressão na fonte: entrada vazia -> []", () => {
+    expect(quintis([], [])).toEqual([]);
+  });
+
+  it("n não-divisível (42): tamanhos [9,9,8,8,8], soma 42", () => {
+    const xs = Array.from({ length: 42 }, (_, i) => i + 1);
+    const ys = xs.map((x) => 2 * x);
+    const qs = quintis(xs, ys);
+    expect(qs).toHaveLength(5);
+    expect(qs.map((q) => q.n)).toEqual([9, 9, 8, 8, 8]);
+    expect(qs.reduce((acc, q) => acc + q.n, 0)).toBe(42);
   });
 });

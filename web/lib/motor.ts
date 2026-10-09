@@ -277,9 +277,18 @@ export interface Quintil {
  * Tabela por quintis (spec §4): ordena pares válidos por x, divide em 5
  * faixas contíguas tão iguais quanto possível (as primeiras absorvem o
  * resto) e reporta a média de y por faixa. `n` das faixas soma o total.
+ *
+ * Supressão aplicada UMA VEZ na fonte (decisão do controller): abaixo de
+ * `PISO_CORRELACAO_N` pares válidos retorna `[]` — o mesmo sinal de
+ * `correlacao() === null`. Suprimido ≡ sem dados p/ renderização.
+ *
+ * Contrato p/ Tasks 7–9: `quintis(...).length === 0` → o front renderiza a
+ * nota de supressão ("municípios insuficientes"), NUNCA tabela vazia ou
+ * zeros silenciosos. Consumidores NÃO rechecam o piso.
  */
 export function quintis(xs: number[], ys: number[]): Quintil[] {
   const pares = paresValidos(xs, ys).sort((a, b) => a[0] - b[0]);
+  if (pares.length < PISO_CORRELACAO_N) return [];
   const n = pares.length;
   const K = 5;
   const base = Math.floor(n / K);
@@ -287,15 +296,13 @@ export function quintis(xs: number[], ys: number[]): Quintil[] {
   const faixas: Quintil[] = [];
   let ini = 0;
   for (let q = 0; q < K; q++) {
+    // Com n >= piso (30), base >= 6: toda faixa é não-vazia.
     const tam = base + (q < resto ? 1 : 0);
     const fatia = pares.slice(ini, ini + tam);
     ini += tam;
     faixas.push({
       faixa: `Q${q + 1}`,
-      mediaY:
-        fatia.length === 0
-          ? NaN
-          : fatia.reduce((acc, [, y]) => acc + y, 0) / fatia.length,
+      mediaY: fatia.reduce((acc, [, y]) => acc + y, 0) / fatia.length,
       n: fatia.length,
     });
   }
