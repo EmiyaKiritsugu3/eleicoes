@@ -11,8 +11,7 @@ describe("manifest guard", () => {
     expect(isAudited({})).toBe(false);
   });
 });
-describe("ledger rulings", () => {
-  it("isAudited true com sha256 presente", async () => {
+describe("ledger rulings", () => {  it("isAudited true com sha256 presente", async () => {
     const { isAudited } = await import("../lib/data");
     expect(isAudited({ sha256: "abc123" })).toBe(true);
   });
@@ -36,5 +35,51 @@ describe("ledger rulings", () => {
     expect(getResumo(porUf, {}).totalVotos).toBe(180);
     expect(getResumo(porUf, { ano: "2022" }).totalVotos).toBe(150);
     expect(getResumo(porUf, { uf: "sp" }).totalVotos).toBe(130);
+  });
+});
+describe("getSealState (selo único de /, /analisar e /auditoria)", () => {
+  const FIXTURE_HASH =
+    "879f5504a9918fde9b31045fe810285e8c285ce82a72693a2b4d6e2bc20af07a";
+  const fixtureManifest = {
+    ingestions: [
+      { source_url: "https://cdn.tse.jus.br/x.zip", sha256: FIXTURE_HASH, fixture: true },
+    ],
+  };
+  it("fixture-only: nunca oficial, hash cheio preservado p/ transparência", async () => {
+    const { getSealState } = await import("../lib/data");
+    const seal = getSealState(fixtureManifest);
+    expect(seal.official).toBe(null);
+    expect(seal.hasFixture).toBe(true);
+    expect(seal.fixtureHash).toBe(FIXTURE_HASH);
+  });
+  it("manifest misto: oficial vence p/ o selo, fixture segue sinalizada", async () => {
+    const { getSealState } = await import("../lib/data");
+    const seal = getSealState({
+      ingestions: [
+        { source_url: "u", sha256: "f", fixture: true },
+        { source_url: "u2", sha256: "abc", date: "2026-01-01" },
+      ],
+    });
+    expect(seal.official).toEqual({ hash: "abc", url: "u2", date: "2026-01-01" });
+    expect(seal.hasFixture).toBe(true);
+    expect(seal.fixtureHash).toBe("f");
+  });
+  it("oficial-only: selo oficial, sem fixture", async () => {
+    const { getSealState } = await import("../lib/data");
+    const seal = getSealState({
+      ingestions: [{ source_url: "u2", sha256: "abc", date: "2026-01-01" }],
+    });
+    expect(seal.official).toEqual({ hash: "abc", url: "u2", date: "2026-01-01" });
+    expect(seal.hasFixture).toBe(false);
+    expect(seal.fixtureHash).toBe("");
+  });
+  it("ausente/vazio/sem-hash: sem selo e sem fixture (fail-closed)", async () => {
+    const { getSealState } = await import("../lib/data");
+    for (const m of [null, {}, { ingestions: [] }, { ingestions: [{ source_url: "x" }] }]) {
+      const seal = getSealState(m);
+      expect(seal.official).toBe(null);
+      expect(seal.hasFixture).toBe(false);
+      expect(seal.fixtureHash).toBe("");
+    }
   });
 });

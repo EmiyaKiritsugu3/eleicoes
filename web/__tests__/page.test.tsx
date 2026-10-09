@@ -28,3 +28,20 @@ describe("badge de aviso", () => {
     expect(html).toContain("#fff3cd");
   });
 });
+
+describe("fixture-never-official em / (selo via getSealState)", () => {
+  it("sem dado buscado: nunca renderiza o selo oficial", () => {
+    expect(html).not.toContain("fonte auditada");
+    expect(html).not.toContain("fonte oficial");
+  });
+  it("manifest só-fixture: selo oficial nulo, fixture sinalizada", async () => {
+    const { getSealState } = await import("../lib/data");
+    const seal = getSealState({
+      ingestions: [
+        { source_url: "https://cdn.tse.jus.br/x.zip", sha256: "f".repeat(64), fixture: true },
+      ],
+    });
+    expect(seal.official).toBe(null);
+    expect(seal.hasFixture).toBe(true);
+  });
+});

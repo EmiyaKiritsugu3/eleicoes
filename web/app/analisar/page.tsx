@@ -2,18 +2,19 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import SourceBadge from "../../components/SourceBadge";
+import SealSlot from "../../components/SealSlot";
 import Comparator, { type CompareSide } from "../../components/Comparator";
 import {
   evolucaoAnual,
   formatVotes,
-  getAuditInfo,
+  getSealState,
   getResumo,
   rankingUf,
-  type AuditInfo,
   type Filtros,
   type PorCandidatoRow,
   type PorUfRow,
   type ResumoJson,
+  type SealState,
 } from "../../lib/data";
 import {
   buildCsvExport,
@@ -76,7 +77,7 @@ export default function Analisar() {
   const [porUf, setPorUf] = useState<PorUfRow[]>([]);
   const [porCand, setPorCand] = useState<PorCandidatoRow[]>([]);
   const [resumo, setResumo] = useState<ResumoJson | null>(null);
-  const [audit, setAudit] = useState<AuditInfo | null>(null);
+  const [seal, setSeal] = useState<SealState>({ official: null, hasFixture: false, fixtureHash: "" });
   const [manifestChecked, setManifestChecked] = useState(false);
   const [f, setF] = useState<AnalisarFiltros>({});
   const [pivo, setPivo] = useState<"uf" | "partido" | "ano">("uf");
@@ -105,7 +106,7 @@ export default function Analisar() {
       setPorCand(
         (await fetchJson<PorCandidatoRow[]>("/data/por_candidato.json")) ?? [],
       );
-      setAudit(getAuditInfo(await fetchJson("/data/manifest.json")));
+      setSeal(getSealState(await fetchJson("/data/manifest.json")));
       setManifestChecked(true);
     })();
   }, []);
@@ -227,7 +228,9 @@ export default function Analisar() {
     () => getResumo(porUfFiltrado, baseFiltros),
     [porUfFiltrado, baseFiltros],
   );
-  const hash = audit?.hash ?? "";
+  // Selo oficial só com ingestão oficial; fixture nunca ancora ?hash= nem
+  // export (sem proveniência oficial a citar).
+  const hash = seal.official?.hash ?? "";
   // Contrato de reprodutibilidade: serializa TODA chave que a página hidrata
   // (round-trip: abrir a URL restaura o mesmo estado de filtros).
   const shareUrl = buildShareUrl(
@@ -244,11 +247,7 @@ export default function Analisar() {
   );
   const hashDivergente = urlHash !== "" && hash !== "" && urlHash !== hash;
 
-  const badge = audit ? (
-    <SourceBadge hash={audit.hash} url={audit.url} date={audit.date} />
-  ) : (
-    <SourceBadge hash="" url="" date="" />
-  );
+  const badge = <SealSlot seal={seal} />;
 
   const csvRows = useMemo(
     () =>
@@ -267,17 +266,20 @@ export default function Analisar() {
     <>
       <h1>SAD Eleições — analisar</h1>
 
-      {manifestChecked && !audit && (
+      {manifestChecked && !seal.official && !seal.hasFixture && (
         <p role="alert" className="badge badge-warn">
           dado não auditado — manifest ausente ou inválido; números abaixo não são oficiais
         </p>
+      )}
+      {manifestChecked && !seal.official && seal.hasFixture && (
+        <SealSlot seal={seal} />
       )}
       {hashDivergente && (
         <p role="alert" className="badge badge-warn">
           hash da URL diverge do manifest atual — revalide a fonte antes de citar
         </p>
       )}
-      {audit && <SourceBadge hash={audit.hash} url={audit.url} date={audit.date} />}
+      {seal.official && <SourceBadge hash={seal.official.hash} url={seal.official.url} date={seal.official.date} />}
 
       <section aria-label="Filtros">
         <h2>Filtros</h2>
@@ -505,26 +507,33 @@ export default function Analisar() {
         <p>
           <button
             type="button"
-            disabled={!audit}
+            disabled={!seal.official}
             title={
-              audit
+              seal.official
                 ? "Baixar CSV com proveniência auditada"
                 : "Exportação bloqueada — dado não auditado"
             }
             onClick={() =>
               downloadCsv(
                 "analisar.csv",
-                buildCsvExport(csvRows, audit),
+                buildCsvExport(csvRows, seal.official),
               )
             }
           >
             Exportar CSV
           </button>
         </p>
-        {manifestChecked && !audit && (
+        {manifestChecked && !seal.official && !seal.hasFixture && (
           <p role="alert">
             exportação bloqueada — dado não auditado; o CSV só é gerado com
             manifest válido para que o arquivo seja auto-descritivo
+          </p>
+        )}
+        {manifestChecked && !seal.official && seal.hasFixture && (
+          <p role="note">
+            exportação bloqueada — amostra sintética sem valor oficial; o CSV
+            só é gerado com ingestão oficial para que o arquivo seja
+            auto-descritivo
           </p>
         )}
         <p>

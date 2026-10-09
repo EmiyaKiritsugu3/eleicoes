@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import SourceBadge from "../../components/SourceBadge";
+import FixtureBadge from "../../components/FixtureBadge";
 import {
   getOfficialAuditInfo,
   isAudited,
@@ -30,29 +31,10 @@ function entryDate(e: ManifestIngestion): string {
   return "";
 }
 
-/** Selo de amostra sintética: tratamento de aviso, NUNCA o selo oficial —
- *  mesmo com hash presente. O hash segue visível na tabela (transparência).
+/** Selo de amostra sintética compartilhado (components/FixtureBadge):
+ *  tratamento de aviso, NUNCA o selo oficial — mesmo com hash presente.
+ *  O hash segue visível na tabela (transparência).
  */
-function FixtureBadge() {
-  return (
-    <p
-      role="note"
-      className="badge"
-      style={{
-        display: "inline-block",
-        padding: "0.25rem 0.5rem",
-        borderRadius: 4,
-        fontSize: "0.85rem",
-        background: "#fff3cd",
-        border: "2px dashed #b45309",
-        color: "#7c2d12",
-        fontWeight: "bold",
-      }}
-    >
-      amostra sintética — não oficial
-    </p>
-  );
-}
 
 function downloadManifest() {
   fetch("/data/manifest.json", { cache: "no-store" })

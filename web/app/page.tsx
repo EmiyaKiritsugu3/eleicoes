@@ -2,18 +2,19 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import SourceBadge from "../components/SourceBadge";
+import SealSlot from "../components/SealSlot";
 import {
   evolucaoAnual,
   filtrarCandidatos,
   formatVotes,
-  getAuditInfo,
+  getSealState,
   getResumo,
   rankingUf,
-  type AuditInfo,
   type Filtros,
   type PorCandidatoRow,
   type PorUfRow,
   type ResumoJson,
+  type SealState,
 } from "../lib/data";
 
 const SEM_DADO = "sem dado oficial";
@@ -45,7 +46,7 @@ export default function Home() {
   const [resumo, setResumo] = useState<ResumoJson | null>(null);
   const [porUf, setPorUf] = useState<PorUfRow[]>([]);
   const [porCand, setPorCand] = useState<PorCandidatoRow[]>([]);
-  const [audit, setAudit] = useState<AuditInfo | null>(null);
+  const [seal, setSeal] = useState<SealState>({ official: null, hasFixture: false, fixtureHash: "" });
   const [manifestChecked, setManifestChecked] = useState(false);
   const [f, setF] = useState<Filtros>({});
 
@@ -54,7 +55,7 @@ export default function Home() {
       setResumo(await fetchJson<ResumoJson>("/data/resumo.json"));
       setPorUf((await fetchJson<PorUfRow[]>("/data/por_uf.json")) ?? []);
       setPorCand((await fetchJson<PorCandidatoRow[]>("/data/por_candidato.json")) ?? []);
-      setAudit(getAuditInfo(await fetchJson("/data/manifest.json")));
+      setSeal(getSealState(await fetchJson("/data/manifest.json")));
       setManifestChecked(true);
     })();
   }, []);
@@ -68,22 +69,21 @@ export default function Home() {
   const cands = useMemo(() => filtrarCandidatos(porCand, f), [porCand, f]);
   const maxEv = ev.reduce((m, r) => Math.max(m, r.votos), 0);
   const semDados = !resumo || res.vazio || resumo.total_linhas === 0;
-  const badge = audit ? (
-    <SourceBadge hash={audit.hash} url={audit.url} date={audit.date} />
-  ) : (
-    <SourceBadge hash="" url="" date="" />
-  );
+  const badge = <SealSlot seal={seal} />;
 
   return (
     <>
       <h1>SAD Eleições — resultados</h1>
 
-      {manifestChecked && !audit && (
+      {manifestChecked && !seal.official && !seal.hasFixture && (
         <p role="alert" className="badge badge-warn">
           dado não auditado — manifest ausente ou inválido; números abaixo não são oficiais
         </p>
       )}
-      {audit && <SourceBadge hash={audit.hash} url={audit.url} date={audit.date} />}
+      {manifestChecked && !seal.official && seal.hasFixture && (
+        <SealSlot seal={seal} />
+      )}
+      {seal.official && <SourceBadge hash={seal.official.hash} url={seal.official.url} date={seal.official.date} />}
 
       <section aria-label="Busca">
         <h2>Busca</h2>
@@ -119,10 +119,10 @@ export default function Home() {
             <li>Anos: {(resumo?.anos ?? []).join(", ") || SEM_DADO}</li>
           </ul>
         )}
-        {audit ? (
-          <SourceBadge hash={audit.hash} url={audit.url} date={audit.date} />
+        {seal.official ? (
+          <SourceBadge hash={seal.official.hash} url={seal.official.url} date={seal.official.date} />
         ) : (
-          <SourceBadge hash="" url="" date="" />
+          <SealSlot seal={seal} />
         )}
       </section>
 

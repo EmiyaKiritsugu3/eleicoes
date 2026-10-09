@@ -104,7 +104,8 @@ export function getAuditInfo(manifest: unknown): AuditInfo | null {
 }
 
 /** Primeira ingestão exibível como OFICIAL (audited + não-fixture), ou null.
- *  Usado pela /auditoria: fixture tem hash mas nunca usa o selo oficial.
+ *  Usado pela /auditoria (e, via `getSealState`, por / e /analisar): fixture
+ *  tem hash mas nunca usa o selo oficial.
  */
 export function getOfficialAuditInfo(manifest: unknown): AuditInfo | null {
   if (!manifest || typeof manifest !== "object") return null;
@@ -121,6 +122,36 @@ export function getOfficialAuditInfo(manifest: unknown): AuditInfo | null {
     }
   }
   return null;
+}
+
+export interface SealState {
+  official: AuditInfo | null;
+  hasFixture: boolean;
+  fixtureHash: string;
+}
+
+/** Estado único do selo p/ /, /analisar e /auditoria, derivado do manifest.
+ *  Selo oficial só via `getOfficialAuditInfo`; fixture (`fixture:true`) nunca
+ *  é oficial — o hash cheio da primeira fixture auditada é preservado em
+ *  `fixtureHash` para transparência (exibido fora do selo oficial).
+ */
+export function getSealState(manifest: unknown): SealState {
+  const official = getOfficialAuditInfo(manifest);
+  let hasFixture = false;
+  let fixtureHash = "";
+  const raw = manifest as Manifest | null;
+  const ingestions = raw && Array.isArray(raw.ingestions) ? raw.ingestions : [];
+  for (const entry of ingestions) {
+    if (isFixtureEntry(entry)) {
+      hasFixture = true;
+      if (!fixtureHash && isAudited(entry)) {
+        const e = entry as ManifestIngestion;
+        const h = e.sha256 ?? e.hash;
+        if (typeof h === "string" && h.length > 0) fixtureHash = h;
+      }
+    }
+  }
+  return { official, hasFixture, fixtureHash };
 }
 
 function matchAno(rowAno: number, filtro: string): boolean {
