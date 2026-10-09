@@ -35,6 +35,27 @@ from etl.validate import run_gates
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 WEB_DATA_DIR = _REPO_ROOT / "web" / "public" / "data"
+_CAPITAIS_PATH = Path(__file__).resolve().parent / "capitais_ibge.json"
+
+
+def _load_capitais() -> set:
+    """Códigos IBGE (7 dígitos) das 27 capitais (E8).
+
+    Falha aberta com `UserWarning` se o arquivo estiver ausente ou
+    corrompido — o build não deve derrubar por falta do filtro, mas o
+    operador precisa saber que o escopo de prefeito não foi aplicado.
+    """
+    try:
+        codes = json.loads(_CAPITAIS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        warnings.warn(
+            f"build_marts: capitais_ibge.json ilegível ({exc}); "
+            "filtro de prefeito desativado",
+            UserWarning,
+            stacklevel=3,
+        )
+        return set()
+    return {str(c) for c in codes}
 
 
 def _empty_canonical() -> pd.DataFrame:
@@ -111,7 +132,15 @@ def _load_canonical(curated_dir: Path) -> pd.DataFrame:
     if not frames:
         return _empty_canonical()
     out = pd.concat(frames, ignore_index=True)
-    return out if _is_canonical(out) else normalize_resultados(out)
+    out = out if _is_canonical(out) else normalize_resultados(out)
+    # E8: prefeito restrito às 27 capitais; demais cargos intactos.
+    capitais = _load_capitais()
+    if capitais:
+        is_prefeito_fora = (out["cargo"].astype(str).str.upper() == "PREFEITO") & (
+            ~out["municipio_ibge"].astype(str).isin(capitais)
+        )
+        out = out[~is_prefeito_fora].reset_index(drop=True)
+    return out
 
 
 def _safe_part(value: str) -> str:
