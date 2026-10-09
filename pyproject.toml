@@ -3,7 +3,7 @@ name = "sad-eleicoes"
 version = "0.1.0"
 description = "SAD Eleições — pipeline offline-first sobre dados oficiais TSE"
 requires-python = ">=3.10"
-dependencies = ["requests>=2.31"]
+dependencies = ["requests>=2.31", "pandas>=2", "pyarrow>=14", "duckdb>=1"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

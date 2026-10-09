@@ -1,0 +1,131 @@
+"""Normalização dos resultados TSE para o schema canônico (offline-first, custo zero).
+
+Schema canônico (ordem exata):
+    [ano, turno, cargo, uf, municipio_ibge, candidato_id, nome_urna, partido, votos]
+
+- Aceita variações de nome de coluna do TSE entre anos (case-insensitive).
+- Repara mojibake latin1/utf-8 em colunas de texto.
+- `municipio_ibge` é string de 7 dígitos (zero-padded); municípios sem IBGE
+  oficial (ex.: código fictício 9999999) são MANTIDOS na linha — a camada do
+  mapa deriva a flag `sem_ibge` por join (exibe "sem dado oficial").
+"""
+
+from __future__ import annotations
+
+import pandas as pd
+
+CANONICAL_COLUMNS = [
+    "ano",
+    "turno",
+    "cargo",
+    "uf",
+    "municipio_ibge",
+    "candidato_id",
+    "nome_urna",
+    "partido",
+    "votos",
+]
+
+# Variantes TSE por ano -> campo canônico (comparação upper + strip).
+_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
+    "ano": ("ANO_ELEICAO", "ANO"),
+    "turno": ("NUM_TURNO", "TURNO"),
+    "cargo": ("DS_CARGO", "CARGO"),
+    "uf": ("SG_UF", "UF"),
+    "municipio_ibge": ("CD_MUNICIPIO", "COD_MUNICIPIO_IBGE", "CD_MUNICIPIO_IBGE"),
+    "candidato_id": ("SQ_CANDIDATO", "NR_CANDIDATO", "NR_VOTAVEL"),
+    "nome_urna": ("NM_URNA_CANDIDATO", "NM_URNA", "NM_VOTAVEL"),
+    "partido": ("SG_PARTIDO", "PARTIDO"),
+    "votos": ("QT_VOTOS_NOMINAIS", "QT_VOTOS", "VOTOS"),
+}
+
+_TEXT_FIELDS = ("cargo", "uf", "municipio_ibge", "candidato_id", "nome_urna", "partido")
+
+
+def _fix_text(value):
+    """Repara texto lido com encoding errado (bytes UTF-8 decodificados como latin1).
+
+    Devolve o valor intacto quando já está correto (inclusive acentos válidos
+    como "SÃO", cujo re-decode falha e cai no fallback) ou não é string.
+    """
+    if not isinstance(value, str):
+        return value
+    try:
+        fixed = value.encode("latin1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return value
+    # Heurística: só troca se o reparo reduzir marcadores de mojibake.
+    mojibake = ("Ã", "Â", "�", "ƒ")
+    if any(m in value for m in mojibake) and not any(m in fixed for m in mojibake):
+        return fixed
+    return value
+
+
+def _pick_column(df: pd.DataFrame, field: str):
+    """Devolve a coluna de `df` que corresponde ao campo canônico, ou None."""
+    normalized = {str(c).strip().upper(): c for c in df.columns}
+    for alias in _COLUMN_ALIASES[field]:
+        if alias in normalized:
+            return normalized[alias]
+    if field in normalized:
+        return normalized[field]
+    return None
+
+
+def normalize_resultados(df: pd.DataFrame) -> pd.DataFrame:
+    """Normaliza um DataFrame bruto do TSE para o schema canônico.
+
+    Levanta `ValueError` se não houver coluna de ano (impossível particionar).
+    Linhas de município sem IBGE oficial são mantidas (ver módulo docstring).
+    """
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError(f"df must be a pandas DataFrame, got {type(df).__name__}")
+    if _pick_column(df, "ano") is None:
+        raise ValueError("input sem coluna de ano (ANO_ELEICAO)")
+
+    out = pd.DataFrame(index=df.index)
+
+    for field in ("ano", "turno", "votos"):
+        col = _pick_column(df, field)
+        if col is None:
+            default = 1 if field == "turno" else 0
+            out[field] = default
+        else:
+            out[field] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype("int64")
+    # turno ausente nas linhas como 0 -> 1º turno.
+    out["turno"] = out["turno"].replace(0, 1)
+
+    for field in ("cargo", "uf"):
+        col = _pick_column(df, field)
+        out[field] = df[col].astype("string").fillna("") if col is not None else ""
+    out["cargo"] = out["cargo"].map(_fix_text).str.strip().str.upper()
+    out["uf"] = out["uf"].map(_fix_text).str.strip().str.upper()
+
+    col = _pick_column(df, "municipio_ibge")
+    ibge = df[col].astype("string").fillna("") if col is not None else pd.Series("", index=df.index)
+    ibge = ibge.map(_fix_text).str.strip().str.replace(r"\D", "", regex=True).str.zfill(7)
+    out["municipio_ibge"] = ibge.replace("0000000", "")
+
+    col = _pick_column(df, "candidato_id")
+    if col is not None:
+        out["candidato_id"] = df[col].astype("string").fillna("").map(_fix_text).str.strip()
+    else:  # fallback estável quando o ano não traz id de candidato
+        nome_col = _pick_column(df, "nome_urna")
+        part_col = _pick_column(df, "partido")
+        nome = df[nome_col].astype("string").fillna("") if nome_col is not None else ""
+        part = df[part_col].astype("string").fillna("") if part_col is not None else ""
+        out["candidato_id"] = (
+            pd.Series(nome, index=df.index).map(_fix_text).str.strip()
+            + "|"
+            + pd.Series(part, index=df.index).map(_fix_text).str.strip()
+        )
+
+    for field in ("nome_urna", "partido"):
+        col = _pick_column(df, field)
+        out[field] = (
+            df[col].astype("string").fillna("").map(_fix_text).str.strip()
+            if col is not None
+            else ""
+        )
+
+    return out[CANONICAL_COLUMNS].reset_index(drop=True)
