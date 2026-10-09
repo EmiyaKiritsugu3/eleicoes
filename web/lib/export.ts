@@ -40,6 +40,24 @@ export function emptyStateFor(rows: unknown): string {
   return "";
 }
 
+/** Agregado V1 não tem turno/zona: filtro ativo => zero linhas honestas.
+ *  Retorna true quando há filtro turno/zona mas nenhuma linha carrega a coluna.
+ */
+export function semCoberturaTurnoZona(
+  porUf: unknown[],
+  porCand: unknown[],
+  f: { turno?: string; zona?: string },
+): boolean {
+  const querTurno = (f.turno ?? "").trim() !== "";
+  const querZona = (f.zona ?? "").trim() !== "";
+  if (!querTurno && !querZona) return false;
+  const temColuna = [...(porUf ?? []), ...(porCand ?? [])].some((r) => {
+    const rec = (r ?? {}) as Record<string, unknown>;
+    return rec.turno !== undefined || rec.zona !== undefined;
+  });
+  return !temColuna;
+}
+
 function csvEscape(v: unknown): string {
   const s = v === null || v === undefined ? "" : String(v);
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;

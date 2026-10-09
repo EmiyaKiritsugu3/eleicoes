@@ -15,7 +15,12 @@ import {
   type PorUfRow,
   type ResumoJson,
 } from "../../lib/data";
-import { buildCsvExport, buildShareUrl, emptyStateFor } from "../../lib/export";
+import {
+  buildCsvExport,
+  buildShareUrl,
+  emptyStateFor,
+  semCoberturaTurnoZona,
+} from "../../lib/export";
 
 const SEM_DADO = "sem dado oficial";
 const SEM_COBERTURA_AGG =
@@ -37,6 +42,14 @@ async function fetchJson<T>(path: string): Promise<T | null> {
   }
 }
 
+/** Filtra linhas genéricas por partido quando o agregado carrega a coluna. */
+function matchPartido(row: unknown, partido?: string): boolean {
+  if (!partido || partido.trim() === "") return true;
+  const rec = (row ?? {}) as Record<string, unknown>;
+  if (rec.partido === undefined) return true;
+  return String(rec.partido ?? "").toLowerCase().includes(partido.trim().toLowerCase());
+}
+
 /** Filtra candidatos por partido (agregado V1 tem partido; turno/zona não). */
 function filtrarPorPartido(
   rows: PorCandidatoRow[],
@@ -45,24 +58,6 @@ function filtrarPorPartido(
   if (!partido || partido.trim() === "") return [...rows];
   const q = partido.trim().toLowerCase();
   return rows.filter((r) => String(r.partido ?? "").toLowerCase().includes(q));
-}
-
-/** Agregado V1 não tem turno/zona: filtro ativo => zero linhas honestas. */
-function semCoberturaTurnoZona(
-  porUf: PorUfRow[],
-  porCand: (PorCandidatoRow & Record<string, unknown>)[],
-  f: AnalisarFiltros,
-): boolean {
-  const querTurno = (f.turno ?? "").trim() !== "";
-  const querZona = (f.zona ?? "").trim() !== "";
-  if (!querTurno && !querZona) return false;
-  const temColuna =
-    [...porUf, ...porCand].some(
-      (r) =>
-        (r as Record<string, unknown>).turno !== undefined ||
-        (r as Record<string, unknown>).zona !== undefined,
-    );
-  return !temColuna;
 }
 
 function downloadCsv(filename: string, csv: string) {
@@ -120,14 +115,27 @@ export default function Analisar() {
       setF((prev) => ({ ...prev, [k]: e.target.value }));
 
   const semCob = useMemo(
-    () =>
-      semCoberturaTurnoZona(
-        porUf,
-        porCand as (PorCandidatoRow & Record<string, unknown>)[],
-        f,
-      ),
+    () => semCoberturaTurnoZona(porUf, porCand, f),
     [porUf, porCand, f],
   );
+
+  // Partido aplica-se uniformemente: onde o agregado carrega a coluna, filtra;
+  // onde não carrega (por_uf no V1), as seções exibem nota de divulgação.
+  const partidoAtivo = (f.partido ?? "").trim() !== "";
+  const porUfTemPartido = useMemo(
+    () => porUf.some((r) => (r as unknown as Record<string, unknown>).partido !== undefined),
+    [porUf],
+  );
+  const porUfFiltrado = useMemo(
+    () =>
+      porUfTemPartido
+        ? porUf.filter((r) => matchPartido(r, f.partido))
+        : porUf,
+    [porUf, porUfTemPartido, f.partido],
+  );
+  const partidoIgnoradoUF = partidoAtivo && !porUfTemPartido;
+  const NOTA_PARTIDO =
+    "nota: filtro partido sem cobertura no agregado por UF (V1) — números desta seção ignoram partido";
 
   const baseFiltros: Filtros = useMemo(
     () => ({ ano: f.ano, cargo: f.cargo, uf: f.uf }),
@@ -135,12 +143,12 @@ export default function Analisar() {
   );
 
   const ufs = useMemo(
-    () => (semCob ? [] : rankingUf(porUf, baseFiltros)),
-    [porUf, baseFiltros, semCob],
+    () => (semCob ? [] : rankingUf(porUfFiltrado, baseFiltros)),
+    [porUfFiltrado, baseFiltros, semCob],
   );
   const ev = useMemo(
-    () => (semCob ? [] : evolucaoAnual(porUf, baseFiltros)),
-    [porUf, baseFiltros, semCob],
+    () => (semCob ? [] : evolucaoAnual(porUfFiltrado, baseFiltros)),
+    [porUfFiltrado, baseFiltros, semCob],
   );
   const cands = useMemo(() => {
     if (semCob) return [];
@@ -215,10 +223,23 @@ export default function Analisar() {
       }));
   }, [porCand]);
 
-  const res = useMemo(() => getResumo(porUf, baseFiltros), [porUf, baseFiltros]);
+  const res = useMemo(
+    () => getResumo(porUfFiltrado, baseFiltros),
+    [porUfFiltrado, baseFiltros],
+  );
   const hash = audit?.hash ?? "";
+  // Contrato de reprodutibilidade: serializa TODA chave que a página hidrata
+  // (round-trip: abrir a URL restaura o mesmo estado de filtros).
   const shareUrl = buildShareUrl(
-    { ano: f.ano, cargo: f.cargo, uf: f.uf, partido: f.partido },
+    {
+      ano: f.ano,
+      cargo: f.cargo,
+      uf: f.uf,
+      turno: f.turno,
+      zona: f.zona,
+      partido: f.partido,
+      candidato: f.candidato,
+    },
     hash,
   );
   const hashDivergente = urlHash !== "" && hash !== "" && urlHash !== hash;
@@ -301,6 +322,7 @@ export default function Analisar() {
       <section aria-label="Resumo filtrado">
         <h2>Resumo filtrado</h2>
         {badge}
+        {partidoIgnoradoUF && !semCob && <p role="note">{NOTA_PARTIDO}</p>}
         {!resumo || res.vazio || semCob ? (
           <p>{SEM_DADO}</p>
         ) : (
@@ -311,6 +333,9 @@ export default function Analisar() {
       <section aria-label="Pivô">
         <h2>Pivô</h2>
         {badge}
+        {partidoIgnoradoUF && !semCob && pivo !== "partido" && (
+          <p role="note">{NOTA_PARTIDO}</p>
+        )}
         <div style={{ display: "flex", gap: "0.5rem" }}>
           {(["uf", "partido", "ano"] as const).map((d) => (
             <label key={d}>
@@ -367,6 +392,9 @@ export default function Analisar() {
             </label>
           ))}
         </div>
+        {partidoIgnoradoUF && !semCob && compMode === "anos" && (
+          <p role="note">{NOTA_PARTIDO}</p>
+        )}
         {compMode === "municipios" ? (
           <>
             <p>
@@ -444,6 +472,7 @@ export default function Analisar() {
       <section aria-label="Série histórica">
         <h2>Série histórica</h2>
         {badge}
+        {partidoIgnoradoUF && !semCob && <p role="note">{NOTA_PARTIDO}</p>}
         {emptyStateFor(ev) ? (
           <p>{SEM_DADO}</p>
         ) : (
@@ -476,6 +505,12 @@ export default function Analisar() {
         <p>
           <button
             type="button"
+            disabled={!audit}
+            title={
+              audit
+                ? "Baixar CSV com proveniência auditada"
+                : "Exportação bloqueada — dado não auditado"
+            }
             onClick={() =>
               downloadCsv(
                 "analisar.csv",
@@ -486,6 +521,12 @@ export default function Analisar() {
             Exportar CSV
           </button>
         </p>
+        {manifestChecked && !audit && (
+          <p role="alert">
+            exportação bloqueada — dado não auditado; o CSV só é gerado com
+            manifest válido para que o arquivo seja auto-descritivo
+          </p>
+        )}
         <p>
           <small>
             O CSV inclui header de proveniência <code>fonte,url,hash,data</code>.
