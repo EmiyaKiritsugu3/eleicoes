@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import warnings
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,7 +28,7 @@ import duckdb
 import pandas as pd
 
 from etl import ETL_VERSION
-from etl.manifest import write_manifest
+from etl.manifest import _validate_entry, load_manifest
 from etl.normalize import CANONICAL_COLUMNS, normalize_resultados
 from etl.sources import V1_DATASETS
 from etl.validate import run_gates
@@ -107,6 +108,16 @@ def _safe_part(value: str) -> str:
 
 def _write_partitioned_parquet(df: pd.DataFrame, curated_dir: Path) -> None:
     curated_dir.mkdir(parents=True, exist_ok=True)
+    # Idempotência (E6): remove as árvores `ano=*/` geradas por builds
+    # anteriores para que fonte encolhida não ressuscite partições
+    # obsoletas. Só o gerado — nunca CSVs fonte (nome `ano=`).
+    for child in sorted(curated_dir.iterdir()):
+        if not child.name.startswith("ano="):
+            continue
+        if child.is_symlink() or child.is_file():
+            child.unlink()
+        elif child.is_dir():
+            shutil.rmtree(child)
     if df.empty:
         return
     for (ano, cargo, uf), part in df.groupby(["ano", "cargo", "uf"], sort=True):
@@ -190,6 +201,33 @@ def _write_json_aggs(df: pd.DataFrame, web_data_dir: Path = WEB_DATA_DIR) -> Non
     )
 
 
+def _dedupe_key(entry: dict) -> tuple:
+    """Chave de idempotência da entry: `(ano, cargo.upper(), source_url)`."""
+    return (entry.get("ano"), str(entry.get("cargo", "")).upper(),
+            entry.get("source_url"))
+
+
+def _read_existing_ingestions(manifest_path) -> list:
+    """Ingestions já registradas; tolera ausente/vazio/corrompido.
+
+    Arquivo corrompido é preservado como `<path>.corrupt.<UTC-ts>` antes
+    de recomeçar (mesmo contrato de `write_manifest`, Task 6).
+    """
+    manifest_file = Path(manifest_path)
+    try:
+        loaded = load_manifest(manifest_file)
+    except FileNotFoundError:
+        return []
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+        manifest_file.rename(f"{manifest_file}.corrupt.{stamp}")
+        return []
+    if not isinstance(loaded, dict):
+        return []
+    ingestions = loaded.get("ingestions", [])
+    return ingestions if isinstance(ingestions, list) else []
+
+
 def _matched_entries(df: pd.DataFrame) -> list[dict]:
     """Entries V1 que correspondem aos pares `(ano, cargo)` presentes no df.
 
@@ -222,6 +260,9 @@ def _register_sources(df: pd.DataFrame, manifest_path, source_shas=None) -> None
     (ISO yyyy-mm-dd UTC, M15) e `etl_version` (M15). `rows` conta só as
     linhas do próprio par (M16). df vazio escreve `{"ingestions": []}` (E5).
     Tolerante a `votos` nulo (contrato Task 2: só usa ano/cargo + CSV).
+    Idempotente (E6): dedupe por `(ano, cargo.upper(), source_url)` mantendo
+    a última — rebuild com a mesma fonte atualiza em vez de duplicar; runs
+    distintas (outro par ou outra fonte) preservam o histórico.
     """
     if df.empty:
         Path(manifest_path).write_text(
@@ -233,6 +274,7 @@ def _register_sources(df: pd.DataFrame, manifest_path, source_shas=None) -> None
     entries = _matched_entries(df)
     cargos_upper = df["cargo"].astype(str).str.upper()
     today = datetime.now(timezone.utc).date().isoformat()
+    new_entries = []
     for entry in entries:
         cargo_upper = entry["cargo"].upper()
         mask = (df["ano"] == entry["ano"]) & (cargos_upper == cargo_upper)
@@ -242,8 +284,7 @@ def _register_sources(df: pd.DataFrame, manifest_path, source_shas=None) -> None
         else:
             payload = df[mask][CANONICAL_COLUMNS].to_csv(index=False)
             sha, origin = hashlib.sha256(payload.encode("utf-8")).hexdigest(), "derived"
-        write_manifest(
-            manifest_path,
+        new_entries.append(
             {
                 "source_url": entry["url"],  # ruling: fonte = campo `url` (CDN)
                 "sha256": sha,
@@ -255,8 +296,23 @@ def _register_sources(df: pd.DataFrame, manifest_path, source_shas=None) -> None
                 "cargo": entry["cargo"],
                 "tipo": entry["tipo"],
                 "rows": int(mask.sum()),
-            },
+            }
         )
+    for new_entry in new_entries:
+        _validate_entry(new_entry)  # fail-closed Task 6 antes de escrever
+    merged = _read_existing_ingestions(manifest_path) + new_entries
+    by_key: dict = {}
+    for item in merged:
+        if isinstance(item, dict):
+            by_key[_dedupe_key(item)] = item
+    deduped = list(by_key.values())
+    legacy = [item for item in merged if not isinstance(item, dict)]
+    manifest_file = Path(manifest_path)
+    tmp_path = f"{manifest_file}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump({"ingestions": deduped + legacy}, f, ensure_ascii=False,
+                  indent=2)
+    os.replace(tmp_path, manifest_file)
 
 
 def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,

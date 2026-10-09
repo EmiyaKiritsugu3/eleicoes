@@ -131,3 +131,91 @@ def test_seed_backs_up_manifest_on_failure(tmp_path, monkeypatch):
     bak = tmp_path / "manifest.json.bak"
     assert json.loads(bak.read_text(encoding="utf-8")) == official
     assert json.loads(manifest_path.read_text(encoding="utf-8")) == official
+
+
+# --- Task 7 (E6): idempotência ---
+
+def _ingestions(manifest):
+    return json.loads(Path(manifest).read_text(encoding="utf-8"))["ingestions"]
+
+
+def test_rebuild_does_not_duplicate_entries(tmp_path):
+    curated = tmp_path / "curated"
+    curated.mkdir()
+    _seed(curated)
+    webdata = tmp_path / "webdata"
+    db = tmp_path / "t.duckdb"
+    manifest = tmp_path / "m.json"
+    build_all(curated, db, manifest, web_data_dir=webdata)
+    first_entries = _ingestions(manifest)
+    first_votos = _total_votos(db)
+    build_all(curated, db, manifest, web_data_dir=webdata)
+    second_entries = _ingestions(manifest)
+    second_votos = _total_votos(db)
+    assert len(second_entries) == len(first_entries) == 1
+    assert second_votos == first_votos == 15
+
+
+_SP_ONLY_CSV = (
+    "ANO_ELEICAO;DS_CARGO;SG_UF;CD_MUNICIPIO;NM_URNA;QT_VOTOS\n"
+    "2022;PRESIDENTE;SP;3550308;X;10\n"
+)
+
+
+def test_shrunk_source_drops_partitions(tmp_path):
+    curated = tmp_path / "curated"
+    curated.mkdir()
+    _seed(curated)  # SP + RJ
+    webdata = tmp_path / "webdata"
+    db = tmp_path / "t.duckdb"
+    manifest = tmp_path / "m.json"
+    build_all(curated, db, manifest, web_data_dir=webdata)
+    assert _total_votos(db) == 15
+    (curated / "raw.csv").write_text(_SP_ONLY_CSV, encoding="utf-8")
+    build_all(curated, db, manifest, web_data_dir=webdata)
+    leftovers = [p for p in curated.rglob("*.parquet") if "uf=RJ" in p.parts]
+    assert leftovers == []
+    assert _total_votos(db) == 10
+
+
+def test_build_500k_rows_counts(tmp_path):
+    import pandas as pd
+
+    from etl.normalize import CANONICAL_COLUMNS
+
+    n = 500_000
+    ufs = ["SP", "RJ", "MG"]
+    uf_col = [ufs[i % 3] for i in range(n)]
+    votos_col = [(i % 100) + 1 for i in range(n)]  # 1..100, sem nulos
+    df = pd.DataFrame({
+        "ano": pd.Series([2022] * n, dtype="int64"),
+        "turno": pd.Series([1] * n, dtype="int64"),
+        "cargo": pd.Series(["PRESIDENTE"] * n, dtype="string"),
+        "uf": pd.Series(uf_col, dtype="string"),
+        "municipio_ibge": pd.Series(
+            [f"{3550308 + (i % 1000):07d}" for i in range(n)], dtype="string"),
+        "candidato_id": pd.Series([str(10 + (i % 5)) for i in range(n)],
+                                  dtype="string"),
+        "nome_urna": pd.Series([f"CAND{i % 5}" for i in range(n)],
+                               dtype="string"),
+        "partido": pd.Series([f"P{i % 5}" for i in range(n)], dtype="string"),
+        "votos": pd.Series(votos_col, dtype="int64"),
+    })[CANONICAL_COLUMNS]
+    expected_total = int(df["votos"].sum())
+    expected_by_uf = {
+        uf: int(df.loc[df["uf"] == uf, "votos"].sum()) for uf in ufs
+    }
+    curated = tmp_path / "curated"
+    curated.mkdir()
+    df.to_parquet(curated / "big.parquet", index=False)
+    webdata = tmp_path / "webdata"
+    db = tmp_path / "t.duckdb"
+    manifest = tmp_path / "m.json"
+    build_all(curated, db, manifest, web_data_dir=webdata)
+    assert _total_votos(db) == expected_total
+    por_uf = json.loads((webdata / "por_uf.json").read_text(encoding="utf-8"))
+    got_by_uf = {r["uf"]: r["votos"] for r in por_uf}
+    assert got_by_uf == expected_by_uf
+    for uf in ufs:
+        assert (curated / "ano=2022" / "cargo=PRESIDENTE" / f"uf={uf}"
+                / "data.parquet").exists()
