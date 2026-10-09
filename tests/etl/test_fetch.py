@@ -78,6 +78,53 @@ def test_exhausted_retries_reraise(tmp_path, monkeypatch):
     assert calls["n"] == 3
 
 
+class _FlakyResponse(_FakeResponse):
+    def iter_content(self, chunk_size=1):
+        yield self._payload[:4]
+        import requests
+
+        raise requests.ConnectionError("caiu no meio")
+
+
+def test_midstream_failure_leaves_no_partial(tmp_path, monkeypatch):
+    import requests
+
+    from etl import fetch
+
+    def fake_get(url, stream=True, timeout=None):
+        return _FlakyResponse(b"parcial-xyz")
+
+    monkeypatch.setattr(fetch.requests, "get", fake_get)
+    dest = tmp_path / "v.zip"
+    try:
+        fetch.download_dataset("https://x/v.zip", str(dest), retries=2)
+    except requests.ConnectionError:
+        pass
+    else:
+        raise AssertionError("expected ConnectionError after retries")
+    assert not dest.exists()
+    assert not dest.with_name(dest.name + ".part").exists()
+
+
+def test_retries_zero_raises_valueerror(tmp_path, monkeypatch):
+    from etl import fetch
+
+    calls = {"n": 0}
+
+    def fake_get(url, stream=True, timeout=None):
+        calls["n"] += 1
+        raise AssertionError("must not attempt any request")
+
+    monkeypatch.setattr(fetch.requests, "get", fake_get)
+    try:
+        fetch.download_dataset("https://x/v.zip", str(tmp_path / "v.zip"), retries=0)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError for retries=0")
+    assert calls["n"] == 0
+
+
 def test_v1_datasets_table_shape():
     from etl.sources import V1_DATASETS
 
