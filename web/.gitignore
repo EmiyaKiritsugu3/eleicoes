@@ -1,0 +1,6 @@
+node_modules/
+.next/
+out/
+# Gerados pelo ETL (etl.build_marts) — regenerados a cada ingestão
+public/data/*.json
+!public/data/.gitkeep

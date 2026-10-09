@@ -1,0 +1,163 @@
+/** Regras de auditoria visível (ledger rulings a/b/c — Task 5, reusado pela Task 6).
+ *
+ * - Formatação pt-BR de votos: 1234567 -> "1.234.567".
+ * - `isAudited(obj)`: true somente se houver hash não-vazio (`sha256` ou `hash`).
+ * - Sem manifest / manifest inválido -> a página mostra banner "dado não auditado"
+ *   e nunca apresenta números como oficiais.
+ * - Tabelas/JSONs vazios -> a página mostra "sem dado oficial".
+ */
+
+export interface Filtros {
+  ano?: string;
+  cargo?: string;
+  uf?: string;
+  municipio?: string;
+  candidato?: string;
+}
+
+export interface ResumoJson {
+  total_votos: number;
+  total_linhas: number;
+  anos: number[];
+  tabelas: string[];
+}
+
+export interface PorUfRow {
+  ano: number;
+  cargo: string;
+  uf: string;
+  votos: number;
+}
+
+export interface PorCandidatoRow {
+  candidato_id: string;
+  nome_urna: string;
+  partido: string;
+  votos: number;
+}
+
+export interface ManifestIngestion {
+  source_url?: string;
+  sha256?: string;
+  hash?: string;
+  date?: string;
+  data?: string;
+  [key: string]: unknown;
+}
+
+export interface Manifest {
+  ingestions?: ManifestIngestion[];
+  [key: string]: unknown;
+}
+
+export interface AuditInfo {
+  hash: string;
+  url: string;
+  date: string;
+}
+
+/** 1234567 -> "1.234.567" (pt-BR, sem Intl para manter o bundle leve). */
+export function formatVotes(n: number): string {
+  if (!Number.isFinite(n)) return "0";
+  const neg = n < 0 ? "-" : "";
+  return neg + Math.trunc(Math.abs(n)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+/** false quando o objeto não carrega hash (`sha256` ou `hash`). */
+export function isAudited(obj: unknown): boolean {
+  if (!obj || typeof obj !== "object") return false;
+  const o = obj as Record<string, unknown>;
+  const hash = o.sha256 ?? o.hash;
+  return typeof hash === "string" && hash.length > 0;
+}
+
+/** Extrai a primeira ingestão auditada do manifest, ou null (dado não auditado). */
+export function getAuditInfo(manifest: unknown): AuditInfo | null {
+  if (!manifest || typeof manifest !== "object") return null;
+  const ingestions = (manifest as Manifest).ingestions;
+  if (!Array.isArray(ingestions)) return null;
+  for (const entry of ingestions) {
+    if (isAudited(entry)) {
+      const e = entry as ManifestIngestion;
+      return {
+        hash: String(e.sha256 ?? e.hash),
+        url: typeof e.source_url === "string" ? e.source_url : "",
+        date: typeof e.date === "string" ? e.date : typeof e.data === "string" ? e.data : "",
+      };
+    }
+  }
+  return null;
+}
+
+function matchAno(rowAno: number, filtro: string): boolean {
+  return String(rowAno) === filtro.trim();
+}
+
+function matchTexto(valor: unknown, filtro: string): boolean {
+  return String(valor ?? "").toLowerCase().includes(filtro.trim().toLowerCase());
+}
+
+/** Total de votos em `por_uf` respeitando ano/cargo/UF.
+ *  `municipio`/`candidato` não existem no agregado por UF (V1) e são ignorados
+ *  aqui — o filtro de candidato aplica-se ao ranking via `filtrarCandidatos`.
+ */
+export function getResumo(
+  porUf: PorUfRow[],
+  filtros: Filtros,
+): { totalVotos: number; vazio: boolean } {
+  const rows = (Array.isArray(porUf) ? porUf : []).filter(
+    (r) =>
+      (!filtros.ano || matchAno(r.ano, filtros.ano)) &&
+      (!filtros.cargo || matchTexto(r.cargo, filtros.cargo)) &&
+      (!filtros.uf || matchTexto(r.uf, filtros.uf)),
+  );
+  return { totalVotos: rows.reduce((acc, r) => acc + (Number(r.votos) || 0), 0), vazio: rows.length === 0 };
+}
+
+/** Ranking de UFs (base da seção "mapa" v1: lista ordenada + tabela acessível). */
+export function rankingUf(
+  porUf: PorUfRow[],
+  filtros: Filtros,
+): { uf: string; votos: number }[] {
+  const acc = new Map<string, number>();
+  for (const r of Array.isArray(porUf) ? porUf : []) {
+    if (filtros.ano && !matchAno(r.ano, filtros.ano)) continue;
+    if (filtros.cargo && !matchTexto(r.cargo, filtros.cargo)) continue;
+    if (filtros.uf && !matchTexto(r.uf, filtros.uf)) continue;
+    acc.set(r.uf, (acc.get(r.uf) ?? 0) + (Number(r.votos) || 0));
+  }
+  return [...acc.entries()]
+    .map(([uf, votos]) => ({ uf, votos }))
+    .sort((a, b) => b.votos - a.votos);
+}
+
+/** Evolução anual dos votos (base do gráfico de evolução + tabela acessível). */
+export function evolucaoAnual(
+  porUf: PorUfRow[],
+  filtros: Filtros,
+): { ano: number; votos: number }[] {
+  const acc = new Map<number, number>();
+  for (const r of Array.isArray(porUf) ? porUf : []) {
+    if (filtros.cargo && !matchTexto(r.cargo, filtros.cargo)) continue;
+    if (filtros.uf && !matchTexto(r.uf, filtros.uf)) continue;
+    acc.set(r.ano, (acc.get(r.ano) ?? 0) + (Number(r.votos) || 0));
+  }
+  return [...acc.entries()]
+    .map(([ano, votos]) => ({ ano, votos }))
+    .sort((a, b) => a.ano - b.ano);
+}
+
+/** Ranking de candidatos com busca por nome/partido. */
+export function filtrarCandidatos(
+  rows: PorCandidatoRow[],
+  filtros: Filtros,
+): PorCandidatoRow[] {
+  const q = (filtros.candidato ?? "").trim().toLowerCase();
+  const out = (Array.isArray(rows) ? rows : []).filter(
+    (r) =>
+      !q ||
+      String(r.nome_urna ?? "").toLowerCase().includes(q) ||
+      String(r.partido ?? "").toLowerCase().includes(q),
+  );
+  return [...out].sort((a, b) => (Number(b.votos) || 0) - (Number(a.votos) || 0));
+}

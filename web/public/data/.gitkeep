@@ -1,0 +1,2 @@
+ETL gera agregados JSON neste diretório (resumo.json, por_uf.json,
+por_candidato.json) + manifest.json. Não commitar gerados.
