@@ -78,6 +78,12 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   const semDados = !resumo || res.vazio || resumo.total_linhas === 0;
   const badge = <SealSlot seal={seal} />;
   const candidatoAtivo = (f.candidato ?? "").trim() !== "";
+  // Alerta honesto sem depender de CSS externo (M4-web): fundo/borda inline.
+  const ALERTA_STYLE: React.CSSProperties = {
+    background: "#fff3cd",
+    border: "1px solid #b45309",
+    fontWeight: "bold",
+  };
   const escopoIgnoradoNoRanking =
     (f.ano ?? "").trim() !== "" ||
     (f.cargo ?? "").trim() !== "" ||
@@ -88,7 +94,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
       <h1>SAD Eleições — resultados</h1>
 
       {manifestChecked && !seal.official && !seal.hasFixture && (
-        <p role="alert" className="badge badge-warn">
+        <p role="alert" className="badge badge-warn" style={ALERTA_STYLE}>
           dado não auditado — manifest ausente ou inválido; números abaixo não são oficiais
         </p>
       )}

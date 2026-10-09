@@ -73,6 +73,12 @@ export default function Auditoria() {
   const ingestions = Array.isArray(manifest?.ingestions)
     ? (manifest?.ingestions ?? [])
     : [];
+  // Alerta honesto sem depender de CSS externo (M4-web): fundo/borda inline.
+  const ALERTA_STYLE: React.CSSProperties = {
+    background: "#fff3cd",
+    border: "1px solid #b45309",
+    fontWeight: "bold",
+  };
   const hasFixture = ingestions.some(isFixtureEntry);
   const canDownload = ingestions.some(isAudited);
 
@@ -81,7 +87,7 @@ export default function Auditoria() {
       <h1>SAD Eleições — auditoria</h1>
 
       {checked && !official && !hasFixture && (
-        <p role="alert" className="badge badge-warn">
+        <p role="alert" className="badge badge-warn" style={ALERTA_STYLE}>
           dado não auditado — manifest ausente ou inválido; números abaixo não são oficiais
         </p>
       )}

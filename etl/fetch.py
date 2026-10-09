@@ -6,11 +6,16 @@ import hashlib
 import os
 import threading
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 
 CHUNK_SIZE = 1024 * 64
 TIMEOUT_S = 60
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+RAW_ROOT = REPO_ROOT / "data" / "raw"
+ALLOWED_HOSTS = frozenset({"cdn.tse.jus.br", "dadosabertos.tse.jus.br"})
 
 
 def download_dataset(url, dest, expected_sha256=None, retries=3) -> str:
@@ -25,7 +30,18 @@ def download_dataset(url, dest, expected_sha256=None, retries=3) -> str:
     """
     if retries < 1:
         raise ValueError(f"retries must be >= 1, got {retries}")
+    host = (urlparse(url).hostname or "").lower()
+    if host not in ALLOWED_HOSTS:
+        raise ValueError(
+            f"url host not allowlisted: {url!r} "
+            f"(allowed: {sorted(ALLOWED_HOSTS)})"
+        )
     dest = Path(dest)
+    # Sandbox: dest resolvido (.. e symlinks) deve ficar ESTRITAMENTE sob
+    # data/raw do repo — antes de qualquer mkdir ou chamada HTTP.
+    raw_root = RAW_ROOT.resolve()
+    if raw_root not in dest.resolve().parents:
+        raise ValueError(f"dest outside data/raw sandbox: {str(dest)!r}")
     dest.parent.mkdir(parents=True, exist_ok=True)
     # Tmp único por processo E thread: só o pid (brief) ainda colide entre
     # threads do mesmo processo (mesmo pid) — FileNotFoundError no rename.

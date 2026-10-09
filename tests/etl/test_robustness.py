@@ -102,13 +102,14 @@ def test_concurrent_same_dest_downloads(tmp_path, monkeypatch):  # 2 threads, me
         return _Resp()
 
     monkeypatch.setattr(fetch.requests, "get", fake_get)
+    monkeypatch.setattr(fetch, "RAW_ROOT", tmp_path)  # sandbox hermético p/ o teste
     dest = tmp_path / "ds.zip"
     results, errors = {}, []
 
     def worker(i):
         try:
             results[i] = fetch.download_dataset(
-                "https://x/ds.zip", str(dest), expected_sha256=expected)
+                "https://cdn.tse.jus.br/ds.zip", str(dest), expected_sha256=expected)
         except Exception as exc:  # noqa: BLE001
             errors.append(exc)
 
