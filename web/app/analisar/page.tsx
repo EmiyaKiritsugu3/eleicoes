@@ -10,6 +10,7 @@ import {
   getSealState,
   getResumo,
   rankingUf,
+  resolverComparador,
   type Filtros,
   type PorCandidatoRow,
   type PorUfRow,
@@ -183,28 +184,10 @@ export default function Analisar() {
   }, [pivo, ufs, ev, cands]);
 
   const sides: { left: CompareSide | null; right: CompareSide | null } =
-    useMemo(() => {
-      if (compMode === "anos") {
-        const byAno = new Map(ev.map((r) => [String(r.ano), r.votos]));
-        const mk = (k: string): CompareSide | null => {
-          if (!k || !byAno.has(k)) return null;
-          return { titulo: k, votos: byAno.get(k) ?? 0, detalhe: "ano" };
-        };
-        return { left: mk(compA), right: mk(compB) };
-      }
-      if (compMode === "municipios") return { left: null, right: null };
-      const byId = new Map(porCand.map((r) => [r.candidato_id, r]));
-      const mk = (k: string): CompareSide | null => {
-        const r = k ? byId.get(k) : undefined;
-        if (!r) return null;
-        return {
-          titulo: String(r.nome_urna ?? k),
-          votos: Number(r.votos) || 0,
-          detalhe: String(r.partido ?? ""),
-        };
-      };
-      return { left: mk(compA), right: mk(compB) };
-    }, [compMode, compA, compB, ev, porCand]);
+    useMemo(
+      () => resolverComparador({ compMode, compA, compB, ev, cands, semCob }),
+      [compMode, compA, compB, ev, cands, semCob],
+    );
 
   const dispersao = useMemo(() => {
     const rows = porCand as (PorCandidatoRow & {

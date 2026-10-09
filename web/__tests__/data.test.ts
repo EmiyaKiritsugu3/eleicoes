@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatVotes } from "../lib/data";
+import { formatVotes, type PorCandidatoRow, type PorUfRow } from "../lib/data";
 describe("formatVotes", () => {
   it("formats 1234567 as 1.234.567", () => {
     expect(formatVotes(1234567)).toBe("1.234.567");
@@ -37,6 +37,94 @@ describe("ledger rulings", () => {  it("isAudited true com sha256 presente", asy
     expect(getResumo(porUf, { uf: "sp" }).totalVotos).toBe(130);
   });
 });
+describe("evolucaoAnual respeita filtro ano (F3)", () => {
+  it("só 2022 quando ano=2022", async () => {
+    const { evolucaoAnual } = await import("../lib/data");
+    const porUf: PorUfRow[] = [
+      { ano: 2022, cargo: "presidente", uf: "SP", votos: 100 },
+      { ano: 2018, cargo: "presidente", uf: "SP", votos: 40 },
+    ];
+    expect(evolucaoAnual(porUf, { ano: "2022" })).toEqual([
+      { ano: 2022, votos: 100 },
+    ]);
+  });
+});
+
+describe("votos não-finito excluído das somas (M12-finito)", () => {
+  it("getResumo: linha corrupta não sustenta seção", async () => {
+    const { getResumo } = await import("../lib/data");
+    expect(
+      getResumo([{ votos: null } as unknown as PorUfRow], {}),
+    ).toEqual({ totalVotos: 0, vazio: true });
+  });
+  it("rankingUf pula votos não-finitos", async () => {
+    const { rankingUf } = await import("../lib/data");
+    const porUf = [
+      { ano: 2022, cargo: "presidente", uf: "SP", votos: 100 },
+      { ano: 2022, cargo: "presidente", uf: "RJ", votos: NaN },
+    ] as unknown as PorUfRow[];
+    expect(rankingUf(porUf, {})).toEqual([{ uf: "SP", votos: 100 }]);
+  });
+  it("evolucaoAnual pula votos não-finitos", async () => {
+    const { evolucaoAnual } = await import("../lib/data");
+    const porUf = [
+      { ano: 2022, cargo: "presidente", uf: "SP", votos: 100 },
+      { ano: 2022, cargo: "presidente", uf: "RJ", votos: Infinity },
+    ] as unknown as PorUfRow[];
+    expect(evolucaoAnual(porUf, {})).toEqual([{ ano: 2022, votos: 100 }]);
+  });
+  it("filtrarCandidatos pula votos não-finitos", async () => {
+    const { filtrarCandidatos } = await import("../lib/data");
+    const rows = [
+      { candidato_id: "a", nome_urna: "ANA", partido: "PT", votos: 100 },
+      { candidato_id: "b", nome_urna: "BETO", partido: "PT", votos: null },
+    ] as unknown as PorCandidatoRow[];
+    expect(filtrarCandidatos(rows, {})).toEqual([rows[0]]);
+  });
+});
+
+describe("resolverComparador deriva de cands + null sob semCob (F4)", () => {
+  const candA = { candidato_id: "a", nome_urna: "ANA", partido: "PT", votos: 100 };
+  it("id fora de cands (filtrado) resolve null", async () => {
+    const { resolverComparador } = await import("../lib/data");
+    const sides = resolverComparador({
+      compMode: "candidatos",
+      compA: "a",
+      compB: "b",
+      ev: [],
+      cands: [candA],
+      semCob: false,
+    });
+    expect(sides.left).toEqual({ titulo: "ANA", votos: 100, detalhe: "PT" });
+    expect(sides.right).toBe(null);
+  });
+  it("semCob zera os dois lados", async () => {
+    const { resolverComparador } = await import("../lib/data");
+    const sides = resolverComparador({
+      compMode: "candidatos",
+      compA: "a",
+      compB: "a",
+      ev: [{ ano: 2022, votos: 100 }],
+      cands: [candA],
+      semCob: true,
+    });
+    expect(sides).toEqual({ left: null, right: null });
+  });
+  it("anos resolve da série filtrada", async () => {
+    const { resolverComparador } = await import("../lib/data");
+    const sides = resolverComparador({
+      compMode: "anos",
+      compA: "2022",
+      compB: "2018",
+      ev: [{ ano: 2022, votos: 100 }],
+      cands: [],
+      semCob: false,
+    });
+    expect(sides.left).toEqual({ titulo: "2022", votos: 100, detalhe: "ano" });
+    expect(sides.right).toBe(null);
+  });
+});
+
 describe("getSealState (selo único de /, /analisar e /auditoria)", () => {
   const FIXTURE_HASH =
     "879f5504a9918fde9b31045fe810285e8c285ce82a72693a2b4d6e2bc20af07a";

@@ -40,8 +40,10 @@ export function emptyStateFor(rows: unknown): string {
   return "";
 }
 
-/** Agregado V1 não tem turno/zona: filtro ativo => zero linhas honestas.
- *  Retorna true quando há filtro turno/zona mas nenhuma linha carrega a coluna.
+/** Agregado V1 não tem turno/zona: filtro ativo sem a coluna => zero linhas honestas.
+ *  Cobertura é por-chave (M9): cada filtro ativo exige a própria coluna —
+ *  `turno` com coluna só-`zona` (ou vice-versa) continua sem cobertura.
+ *  Retorna true quando há filtro turno/zona sem a coluna correspondente.
  */
 export function semCoberturaTurnoZona(
   porUf: unknown[],
@@ -51,11 +53,15 @@ export function semCoberturaTurnoZona(
   const querTurno = (f.turno ?? "").trim() !== "";
   const querZona = (f.zona ?? "").trim() !== "";
   if (!querTurno && !querZona) return false;
-  const temColuna = [...(porUf ?? []), ...(porCand ?? [])].some((r) => {
-    const rec = (r ?? {}) as Record<string, unknown>;
-    return rec.turno !== undefined || rec.zona !== undefined;
-  });
-  return !temColuna;
+  const rows = [...(porUf ?? []), ...(porCand ?? [])];
+  const hasTurnoCol = rows.some(
+    (r) => ((r ?? {}) as Record<string, unknown>).turno !== undefined,
+  );
+  const hasZonaCol = rows.some(
+    (r) => ((r ?? {}) as Record<string, unknown>).zona !== undefined,
+  );
+  const coberto = (!querTurno || hasTurnoCol) && (!querZona || hasZonaCol);
+  return !coberto;
 }
 
 function csvEscape(v: unknown): string {

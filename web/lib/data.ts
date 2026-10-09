@@ -174,6 +174,19 @@ function matchTexto(valor: unknown, filtro: string): boolean {
   return String(valor ?? "").toLowerCase().includes(filtro.trim().toLowerCase());
 }
 
+/** `votos` utilizável em somas (M12-finito): número finito ou string
+ *  numérica não-vazia. `null`/`undefined`/`""`/boolean/`NaN`/`Infinity`
+ *  não sustentam seção — a linha é pulada, nunca somada como zero
+ *  (`Number(null)` seria 0 finito e mascararia a linha corrupta).
+ */
+function votosFinito(v: unknown): boolean {
+  if (typeof v === "number") return Number.isFinite(v);
+  if (typeof v === "string" && v.trim() !== "") {
+    return Number.isFinite(Number(v));
+  }
+  return false;
+}
+
 /** Total de votos em `por_uf` respeitando ano/cargo/UF.
  *  `municipio`/`candidato` não existem no agregado por UF (V1) e são ignorados
  *  aqui — o filtro de candidato aplica-se ao ranking via `filtrarCandidatos`.
@@ -187,6 +200,7 @@ export function getResumo(
 ): { totalVotos: number; vazio: boolean } {
   const rows = (Array.isArray(porUf) ? porUf : []).filter(
     (r) =>
+      votosFinito(r.votos) &&
       (!filtros.ano || matchAno(r.ano, filtros.ano)) &&
       (!filtros.cargo || matchTexto(r.cargo, filtros.cargo)) &&
       (!filtros.uf || matchTexto(r.uf, filtros.uf)),
@@ -208,7 +222,9 @@ export function rankingUf(
     if (filtros.ano && !matchAno(r.ano, filtros.ano)) continue;
     if (filtros.cargo && !matchTexto(r.cargo, filtros.cargo)) continue;
     if (filtros.uf && !matchTexto(r.uf, filtros.uf)) continue;
-    acc.set(r.uf, (acc.get(r.uf) ?? 0) + (Number(r.votos) || 0));
+    if (!votosFinito(r.votos)) continue;
+    const v = Number(r.votos);
+    acc.set(r.uf, (acc.get(r.uf) ?? 0) + v);
   }
   return [...acc.entries()]
     .map(([uf, votos]) => ({ uf, votos }))
@@ -222,9 +238,12 @@ export function evolucaoAnual(
 ): { ano: number; votos: number }[] {
   const acc = new Map<number, number>();
   for (const r of Array.isArray(porUf) ? porUf : []) {
+    if (filtros.ano && !matchAno(r.ano, filtros.ano)) continue;
     if (filtros.cargo && !matchTexto(r.cargo, filtros.cargo)) continue;
     if (filtros.uf && !matchTexto(r.uf, filtros.uf)) continue;
-    acc.set(r.ano, (acc.get(r.ano) ?? 0) + (Number(r.votos) || 0));
+    if (!votosFinito(r.votos)) continue;
+    const v = Number(r.votos);
+    acc.set(r.ano, (acc.get(r.ano) ?? 0) + v);
   }
   return [...acc.entries()]
     .map(([ano, votos]) => ({ ano, votos }))
@@ -244,9 +263,54 @@ export function filtrarCandidatos(
   const q = (filtros.candidato ?? "").trim().toLowerCase();
   const out = (Array.isArray(rows) ? rows : []).filter(
     (r) =>
-      !q ||
-      String(r.nome_urna ?? "").toLowerCase().includes(q) ||
-      String(r.partido ?? "").toLowerCase().includes(q),
+      votosFinito(r.votos) &&
+      (!q ||
+        String(r.nome_urna ?? "").toLowerCase().includes(q) ||
+        String(r.partido ?? "").toLowerCase().includes(q)),
   );
-  return [...out].sort((a, b) => (Number(b.votos) || 0) - (Number(a.votos) || 0));
+  return [...out].sort((a, b) => Number(b.votos) - Number(a.votos));
+}
+
+/** Lados do comparador lado-a-lado de /analisar (F4).
+ *  Resolve ids de candidato a partir de `cands` (já filtrado por
+ *  partido/busca) — nunca do agregado cheio — e retorna null nos dois
+ *  lados sob `semCob` (filtro turno/zona sem cobertura no agregado V1,
+ *  já sinalizado pela nota existente). Modo `municipios` não tem
+ *  cobertura no V1 e sempre resolve null.
+ */
+export interface LadoComparador {
+  titulo: string;
+  votos: number;
+  detalhe?: string;
+}
+
+export function resolverComparador(args: {
+  compMode: "candidatos" | "anos" | "municipios";
+  compA: string;
+  compB: string;
+  ev: { ano: number; votos: number }[];
+  cands: PorCandidatoRow[];
+  semCob: boolean;
+}): { left: LadoComparador | null; right: LadoComparador | null } {
+  if (args.semCob) return { left: null, right: null };
+  if (args.compMode === "anos") {
+    const byAno = new Map(args.ev.map((r) => [String(r.ano), r.votos]));
+    const mk = (k: string): LadoComparador | null => {
+      if (!k || !byAno.has(k)) return null;
+      return { titulo: k, votos: byAno.get(k) ?? 0, detalhe: "ano" };
+    };
+    return { left: mk(args.compA), right: mk(args.compB) };
+  }
+  if (args.compMode === "municipios") return { left: null, right: null };
+  const byId = new Map(args.cands.map((r) => [r.candidato_id, r]));
+  const mk = (k: string): LadoComparador | null => {
+    const r = k ? byId.get(k) : undefined;
+    if (!r) return null;
+    return {
+      titulo: String(r.nome_urna ?? k),
+      votos: Number(r.votos) || 0,
+      detalhe: String(r.partido ?? ""),
+    };
+  };
+  return { left: mk(args.compA), right: mk(args.compB) };
 }

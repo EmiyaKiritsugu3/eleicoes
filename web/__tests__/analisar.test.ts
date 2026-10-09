@@ -49,6 +49,28 @@ describe("buildCsvExport", () => {
     expect(csv).toContain('"A ""X"", Jr"');
   });
 });
+describe("semCoberturaTurnoZona por-chave (M9)", () => {
+  it("turno ativo sem coluna turno (zona com coluna) => true", () => {
+    expect(
+      semCoberturaTurnoZona([{ zona: "5" }], [], { turno: "1" }),
+    ).toBe(true);
+  });
+  it("só zona ativa com coluna zona => false", () => {
+    expect(
+      semCoberturaTurnoZona([{ zona: "5" }], [], { zona: "5" }),
+    ).toBe(false);
+  });
+  it("zona ativa sem coluna zona => true", () => {
+    expect(
+      semCoberturaTurnoZona([{ turno: "1" }], [], { zona: "5" }),
+    ).toBe(true);
+  });
+  it("turno+zona ativos com só coluna turno => true", () => {
+    expect(
+      semCoberturaTurnoZona([{ turno: "1" }], [], { turno: "1", zona: "5" }),
+    ).toBe(true);
+  });
+});
 describe("semCoberturaTurnoZona", () => {
   it("honest zero: turno filter with no column coverage", () => {
     expect(
