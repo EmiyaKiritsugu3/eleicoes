@@ -6,8 +6,15 @@
  *  Testes usam malha FIXTURE inline — nunca o arquivo real.
  */
 
-/** Código IBGE7 do exterior (unidade separada, spec §5). */
-export const EXTERIOR_IBGE = "EXTERIOR";
+/** Sentinela da unidade Exterior (separada, spec §5). Contrato p/ Tasks 7–8. */
+export const EXTERIOR = "EXTERIOR";
+
+/** Alias de compatibilidade (mesmo valor de EXTERIOR). */
+export const EXTERIOR_IBGE = EXTERIOR;
+
+/** Seleção emitida por `onSelectIbge`: IBGE7 (7 dígitos) no canvas,
+ *  sigla de UF na lista do fallback, ou EXTERIOR (botão separado). */
+export type MapaSelecao = string;
 
 /** UFs p/ o fallback em lista (sem canvas/Path2D). */
 export const UFS = [
@@ -141,6 +148,37 @@ export function hitTest(features: MalhaFeature[], x: number, y: number): string 
     if (f.polygons.some((ring) => pointInRing(ring, x, y))) return f.ibge7;
   }
   return null;
+}
+
+export interface RetanguloCss {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+export interface CliqueMapa {
+  clientX: number;
+  clientY: number;
+  /** Retângulo CSS (getBoundingClientRect) — difere do backing store com DPR/escala. */
+  rect: RetanguloCss;
+  /** Dimensões reais do backing store (canvas.width/height). */
+  backingWidth: number;
+  backingHeight: number;
+  /** Projeção [s, ox, oy] usada no desenho (ponto = m*s + o). */
+  transform: number[] | null;
+  features: MalhaFeature[];
+}
+
+/** Converte clique (CSS px) → coordenadas da malha e resolve o IBGE7.
+ *  Multiplica pelo fator backing/CSS em cada eixo; ret nulo = null. */
+export function resolverCliqueMapa(c: CliqueMapa): string | null {
+  if (c.rect.width <= 0 || c.rect.height <= 0) return null;
+  const px = (c.clientX - c.rect.left) * (c.backingWidth / c.rect.width);
+  const py = (c.clientY - c.rect.top) * (c.backingHeight / c.rect.height);
+  const [s, ox, oy] = c.transform ?? [1, 0, 0];
+  if (!s) return null;
+  return hitTest(c.features, (px - ox) / s, (py - oy) / s);
 }
 
 /** Busca a malha TopoJSON em runtime; rejeita se ausente (fail-closed). */

@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  EXTERIOR_IBGE,
+  EXTERIOR,
   UFS,
-  hitTest,
+  resolverCliqueMapa,
   loadMalha,
   type MalhaFeature,
+  type MapaSelecao,
 } from "../lib/malha";
 
 export type MapaNivel = "uf" | "municipio";
@@ -12,7 +13,8 @@ export type MapaNivel = "uf" | "municipio";
 interface MapaBrasilProps {
   malhaUrl: string;
   nivel: MapaNivel;
-  onSelectIbge: (ibge7: string) => void;
+  /** Recebe IBGE7 (canvas) | sigla UF (fallback em lista) | EXTERIOR. */
+  onSelectIbge: (selecao: MapaSelecao) => void;
   /** Cor por município vencedor: Record<ibge7, css-color>. */
   cores?: Record<string, string>;
   /** UF em foco p/ zoom UF→município (bounding box). */
@@ -21,14 +23,30 @@ interface MapaBrasilProps {
 
 const TSE_RESULTADOS_URL = "https://resultados.tse.jus.br/";
 
+/** Largura/altura CSS do canvas; o backing store multiplica por DPR (teto 2). */
+const CSS_W = 800;
+const CSS_H = 600;
+
 function hasCanvas(): boolean {
   return typeof Path2D === "function";
 }
 
-/** Fallback sem canvas/Path2D (degradação do reference): lista de UFs + link TSE. */
-function MapaFallback({ onSelectIbge }: { onSelectIbge: (ibge7: string) => void }) {
+function devicePixelRatioSeguro(): number {
+  if (typeof window === "undefined" || !window.devicePixelRatio) return 1;
+  return Math.min(window.devicePixelRatio, 2);
+}
+
+/** Fallback (sem canvas/Path2D ou malha indisponível): lista de UFs + link TSE. */
+export function MapaFallback({
+  onSelectIbge,
+  motivo,
+}: {
+  onSelectIbge: (selecao: MapaSelecao) => void;
+  motivo?: string;
+}) {
   return (
     <div>
+      {motivo ? <p role="alert">{motivo}</p> : null}
       <p>Mapa indisponível neste navegador — escolha a UF na lista:</p>
       <ul>
         {UFS.map((uf) => (
@@ -39,7 +57,7 @@ function MapaFallback({ onSelectIbge }: { onSelectIbge: (ibge7: string) => void 
           </li>
         ))}
       </ul>
-      <button type="button" onClick={() => onSelectIbge(EXTERIOR_IBGE)}>
+      <button type="button" onClick={() => onSelectIbge(EXTERIOR)}>
         Exterior
       </button>
       <p>
@@ -49,6 +67,11 @@ function MapaFallback({ onSelectIbge }: { onSelectIbge: (ibge7: string) => void 
       </p>
     </div>
   );
+}
+
+/** Decisão pura do ramo de fallback (sem canvas OU falha na malha). */
+export function precisaFallback(canvasDisponivel: boolean, erroMalha: string | null): boolean {
+  return !canvasDisponivel || erroMalha !== null;
 }
 
 /** Home = mapa do Brasil clicável (canvas Path2D); clique retorna IBGE7. */
@@ -61,7 +84,7 @@ export default function MapaBrasil({
 }: MapaBrasilProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [features, setFeatures] = useState<MalhaFeature[]>([]);
-  const [erro, setErro] = useState<string>("");
+  const [erroMalha, setErroMalha] = useState<string | null>(null);
   const featsRef = useRef<MalhaFeature[]>([]);
   featsRef.current = features;
 
@@ -72,7 +95,7 @@ export default function MapaBrasil({
         if (vivo) setFeatures(f);
       },
       (e: Error) => {
-        if (vivo) setErro(e.message);
+        if (vivo) setErroMalha(e.message);
       },
     );
     return () => {
@@ -83,6 +106,9 @@ export default function MapaBrasil({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || features.length === 0) return;
+    const dpr = devicePixelRatioSeguro();
+    canvas.width = Math.round(CSS_W * dpr);
+    canvas.height = Math.round(CSS_H * dpr);
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const W = canvas.width;
@@ -109,7 +135,7 @@ export default function MapaBrasil({
     const s = Math.min(sx, sy);
     const ox = (W - (maxX - minX) * s) / 2 - minX * s;
     const oy = (H - (maxY - minY) * s) / 2 - minY * s;
-    canvas.dataset.transform = JSON.stringify([s, ox, oy, minX, minY]);
+    canvas.dataset.transform = JSON.stringify([s, ox, oy]);
     for (const f of visiveis) {
       const path = new Path2D();
       for (const ring of f.polygons) {
@@ -128,39 +154,43 @@ export default function MapaBrasil({
     }
   }, [features, nivel, ufSelecionada, cores]);
 
-  if (!hasCanvas()) {
-    return <MapaFallback onSelectIbge={onSelectIbge} />;
+  if (precisaFallback(hasCanvas(), erroMalha)) {
+    return <MapaFallback onSelectIbge={onSelectIbge} motivo={erroMalha ?? undefined} />;
   }
 
   const aoClicar = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
+    const canvas = e.currentTarget;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const px = e.clientX - rect.left;
-    const py = e.clientY - rect.top;
-    // Inverte a projeção p/ coordenadas da malha antes do hit-test.
     const t = canvas.dataset.transform
       ? (JSON.parse(canvas.dataset.transform) as number[])
       : null;
-    const [s, ox, oy] = t ?? [1, 0, 0];
-    const ibge = hitTest(featsRef.current, (px - ox) / s, (py - oy) / s);
+    const ibge = resolverCliqueMapa({
+      clientX: e.clientX,
+      clientY: e.clientY,
+      rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+      backingWidth: canvas.width,
+      backingHeight: canvas.height,
+      transform: t,
+      features: featsRef.current,
+    });
     if (ibge) onSelectIbge(ibge);
   };
 
   return (
     <div>
-      {erro ? <p role="alert">{erro}</p> : null}
       <canvas
         ref={canvasRef}
-        width={800}
-        height={600}
+        width={CSS_W}
+        height={CSS_H}
         onClick={aoClicar}
         aria-label="Mapa do Brasil — clique num município"
+        // Responde a taps sem o atraso de double-tap; scroll da página preservado.
+        style={{ width: "100%", maxWidth: CSS_W, aspectRatio: "4 / 3", touchAction: "manipulation" }}
       />
-      <button type="button" onClick={() => onSelectIbge(EXTERIOR_IBGE)}>
+      <button type="button" onClick={() => onSelectIbge(EXTERIOR)}>
         Exterior
       </button>
     </div>
   );
 }
-
