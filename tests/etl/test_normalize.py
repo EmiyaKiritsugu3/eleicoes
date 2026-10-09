@@ -42,3 +42,13 @@ def test_nonnumeric_votes_stay_null_not_zero():
     df = pd.DataFrame([{"ANO_ELEICAO": 2022, "QT_VOTOS": "abc", "SG_UF": "SP"}])
     out = normalize_resultados(df)
     assert str(out["votos"].dtype) == "Int64" and out["votos"].isna().all()
+
+
+def test_fix_mojibake_sao_joao():
+    from etl.normalize import _fix_text
+    # Literais de mojibake construídos por re-decode real, nunca chutados.
+    assert _fix_text("SÃO".encode("utf-8").decode("latin1")) == "SÃO"
+    assert _fix_text("SÃO PAULO".encode("utf-8").decode("latin1")) == "SÃO PAULO"
+    assert _fix_text("SÃO PAULO") == "SÃO PAULO"  # correto intacto
+    assert _fix_text("JOÃO".encode("utf-8").decode("latin1")) == "JOÃO"
+    assert _fix_text("JOSÉ".encode("utf-8").decode("latin1")) == "JOSÉ"

@@ -45,8 +45,13 @@ _TEXT_FIELDS = ("cargo", "uf", "municipio_ibge", "candidato_id", "nome_urna", "p
 def _fix_text(value):
     """Repara texto lido com encoding errado (bytes UTF-8 decodificados como latin1).
 
-    Devolve o valor intacto quando já está correto (inclusive acentos válidos
-    como "SÃO", cujo re-decode falha e cai no fallback) ou não é string.
+    Devolve o valor intacto quando já está correto ou não é string.
+    Aplica o reparo quando ele NÃO AUMENTA o número de marcadores de
+    mojibake (reduz ou mantém) — a forma correta pode conter Ã/Â
+    (ex.: SÃO, JOÃO, AÇÃO), então exigir eliminação total (`<` estrito)
+    nunca repararia esses casos: "SÃ\x83O" e "SÃO" têm 1 marcador cada.
+    Texto correto passa intacto pela via de exceção (o re-decode falha)
+    ou porque o reparo é identidade.
     """
     if not isinstance(value, str):
         return value
@@ -54,9 +59,9 @@ def _fix_text(value):
         fixed = value.encode("latin1").decode("utf-8")
     except (UnicodeEncodeError, UnicodeDecodeError):
         return value
-    # Heurística: só troca se o reparo reduzir marcadores de mojibake.
+    # Heurística: troca se o reparo não aumentar marcadores de mojibake.
     mojibake = ("Ã", "Â", "�", "ƒ")
-    if any(m in value for m in mojibake) and not any(m in fixed for m in mojibake):
+    if sum(fixed.count(m) for m in mojibake) <= sum(value.count(m) for m in mojibake):
         return fixed
     return value
 
