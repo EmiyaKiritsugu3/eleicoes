@@ -171,7 +171,7 @@
     "slug": "evolucao-vencedor",
     "titulo": "Como o voto no vencedor evoluiu entre pleitos?",
     "blocos": { "quem": "@vencedor", "onde": "evolucao", "cruzar": "esc_sup", "ver": ["tabela"] },
-    "texto_metodo": "Evolução temporal exige comparar múltiplos pleitos, mas o fato municipal cobre um pleito por vez. A série temporal fica em sem dado oficial até haver dois fatos auditados. O perfil do pleito atual é mostrado como retrato, não como tendência."
+    "texto_metodo": "Evolução temporal exige comparar múltiplos pleitos, mas o fato municipal cobre um pleito por vez. A série temporal fica em sem dado oficial até haver dois fatos auditados."
   },
   {
     "slug": "evolucao-abstencao",
