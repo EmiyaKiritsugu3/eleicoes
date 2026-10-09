@@ -20,11 +20,13 @@ import hashlib
 import json
 import os
 import warnings
+from datetime import datetime, timezone
 from pathlib import Path
 
 import duckdb
 import pandas as pd
 
+from etl import ETL_VERSION
 from etl.manifest import write_manifest
 from etl.normalize import CANONICAL_COLUMNS, normalize_resultados
 from etl.sources import V1_DATASETS
@@ -187,31 +189,77 @@ def _write_json_aggs(df: pd.DataFrame, web_data_dir: Path = WEB_DATA_DIR) -> Non
     )
 
 
-def _register_sources(df: pd.DataFrame, manifest_path) -> None:
-    """Registra a fonte oficial (campo `url` CDN da Task 2) no manifest."""
-    anos = sorted(int(a) for a in df["ano"].unique().tolist()) if not df.empty else []
-    entries = [e for e in V1_DATASETS if e["ano"] in anos] if anos else [V1_DATASETS[0]]
+def _matched_entries(df: pd.DataFrame) -> list[dict]:
+    """Entries V1 que correspondem aos pares `(ano, cargo)` presentes no df.
+
+    Match por `(ano, cargo.upper())` (df usa cargo em MAIÚSCULAS, V1 em
+    minúsculas). Qualquer par sem correspondência no V1 levanta `ValueError`
+    — fail-closed antes de qualquer escrita (E5).
+    """
+    if df.empty:
+        return []
+    pairs = {
+        (int(a), str(c).upper())
+        for a, c in zip(df["ano"].tolist(), df["cargo"].tolist())
+    }
+    known = {(e["ano"], e["cargo"].upper()) for e in V1_DATASETS}
+    unmatched = sorted(pairs - known)
+    if unmatched:
+        raise ValueError(
+            "build_marts: pares (ano, cargo) fora do escopo V1: "
+            + ", ".join(f"({a}, {c})" for a, c in unmatched)
+        )
+    return [e for e in V1_DATASETS if (e["ano"], e["cargo"].upper()) in pairs]
+
+
+def _register_sources(df: pd.DataFrame, manifest_path, source_shas=None) -> None:
+    """Registra uma ingestão por par `(ano, cargo)` presente no df (E4).
+
+    `source_shas` mapeia `(ano, CARGO_MAIÚSCULO)` → sha256 do ZIP de origem;
+    com match, a entry usa esse sha com `sha_origin="source"`, senão o sha do
+    CSV derivado com `sha_origin="derived"`. Cada entry leva ainda `data`
+    (ISO yyyy-mm-dd UTC, M15) e `etl_version` (M15). `rows` conta só as
+    linhas do próprio par (M16). df vazio escreve `{"ingestions": []}` (E5).
+    Tolerante a `votos` nulo (contrato Task 2: só usa ano/cargo + CSV).
+    """
+    if df.empty:
+        Path(manifest_path).write_text(
+            json.dumps({"ingestions": []}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return
+    source_shas = source_shas or {}
+    entries = _matched_entries(df)
+    cargos_upper = df["cargo"].astype(str).str.upper()
+    today = datetime.now(timezone.utc).date().isoformat()
     for entry in entries:
-        if anos:
-            payload = df[df["ano"] == entry["ano"]][CANONICAL_COLUMNS].to_csv(index=False)
+        cargo_upper = entry["cargo"].upper()
+        mask = (df["ano"] == entry["ano"]) & (cargos_upper == cargo_upper)
+        key = (entry["ano"], cargo_upper)
+        if key in source_shas:
+            sha, origin = source_shas[key], "source"
         else:
-            payload = ""
-        sha = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+            payload = df[mask][CANONICAL_COLUMNS].to_csv(index=False)
+            sha, origin = hashlib.sha256(payload.encode("utf-8")).hexdigest(), "derived"
         write_manifest(
             manifest_path,
             {
                 "source_url": entry["url"],  # ruling: fonte = campo `url` (CDN)
                 "sha256": sha,
+                "sha_origin": origin,
+                "data": today,
+                "etl_version": ETL_VERSION,
                 "dataset": entry["dataset"],
                 "ano": entry["ano"],
                 "cargo": entry["cargo"],
                 "tipo": entry["tipo"],
-                "rows": int((df["ano"] == entry["ano"]).sum()) if anos else 0,
+                "rows": int(mask.sum()),
             },
         )
 
 
-def build_all(curated_dir, db_path, manifest_path, web_data_dir=None) -> None:
+def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
+              source_shas=None) -> None:
     """Pipeline completo: Parquet particionado + DuckDB + JSONs + manifest.
 
     `web_data_dir` redireciona os agregados JSON (padrão: `web/public/data/`
@@ -219,14 +267,18 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None) -> None:
     O manifest canônico é `manifest_path`; uma cópia idêntica é escrita em
     `<web_data_dir>/manifest.json` para a frente pública ler `/data/manifest.json`
     (mesmo conteúdo, escrita única a partir do canônico — R2).
+    `source_shas` mapeia `(ano, CARGO_MAIÚSCULO)` → sha256 do ZIP de origem
+    (threading E4; Tasks 5 e 7 consomem). Pares `(ano, cargo)` fora do V1
+    levantam `ValueError` antes de qualquer escrita.
     """
     curated = Path(curated_dir)
     df = _load_canonical(curated)
+    _matched_entries(df)  # pré-checagem fail-closed: antes de qualquer escrita
     _write_partitioned_parquet(df, curated)
     _write_duckdb(df, Path(db_path))
     web_dir = Path(web_data_dir) if web_data_dir is not None else WEB_DATA_DIR
     _write_json_aggs(df, web_dir)
-    _register_sources(df, manifest_path)
+    _register_sources(df, manifest_path, source_shas=source_shas)
     # Cópia idêntica p/ a frente pública (manifest_path segue canônico).
     web_dir.mkdir(parents=True, exist_ok=True)
     (web_dir / "manifest.json").write_bytes(Path(manifest_path).read_bytes())
