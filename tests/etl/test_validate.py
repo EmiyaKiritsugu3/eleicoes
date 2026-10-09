@@ -189,7 +189,11 @@ def test_garbage_votes_fail_gates_e2e(tmp_path):
     )
     db = tmp_path / "t.duckdb"
     manifest = tmp_path / "m.json"
-    build_all(str(curated), str(db), str(manifest), web_data_dir=tmp_path / "webdata")
+    # C2 (Task 5): gates agora falham o build fail-closed — lixo não publica.
+    with pytest.raises(RuntimeError, match="gates reprovados") as excinfo:
+        build_all(str(curated), str(db), str(manifest), web_data_dir=tmp_path / "webdata")
+    assert "soma" in str(excinfo.value), f"esperava erro de soma, veio: {excinfo.value}"
+    # O DB parcial persiste; gates externos independentes veem o mesmo erro.
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
         errors = run_gates(db, manifest_path=manifest)

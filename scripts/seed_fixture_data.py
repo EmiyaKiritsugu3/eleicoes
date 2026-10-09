@@ -13,6 +13,10 @@ preserva o arquivo; passe `--force` para substituir mesmo assim (o CI usa
 `--force`, pois o checkout vem sem dados). Manifests só-com-fixture,
 ausentes ou inválidos são substituídos sem `--force`.
 
+Antes de substituir, o manifest existente é copiado para
+`<manifest>.bak` e restaurado se o build falhar (M19); em sucesso o
+`.bak` é removido.
+
 Os dados gerados são SINTÉTICOS (2 linhas, 15 votos, ano 2022) e servem
 apenas para exercitar o data path real no CI (`npm test` + `npm run build`)
 e no dev local. NÃO são oficiais: as entradas do manifest levam
@@ -26,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -72,6 +77,8 @@ def seed(manifest_path: Path, web_data_dir: Path, force: bool = False) -> dict:
     from etl.build_marts import build_all
 
     manifest_path = Path(manifest_path)
+    web_data_dir = Path(web_data_dir)
+    backup_path = None
     if manifest_path.exists():
         if _has_official_entries(manifest_path) and not force:
             raise RuntimeError(
@@ -80,24 +87,36 @@ def seed(manifest_path: Path, web_data_dir: Path, force: bool = False) -> dict:
             )
         print(f"seed: substituindo manifest existente em {manifest_path} "
               f"(amostra sintética; rode a ingestão real p/ dados oficiais)")
+        # Backup pré-unlink (M19): nunca perder o manifest oficial se o
+        # build falhar no meio do caminho.
+        backup_path = manifest_path.with_name(manifest_path.name + ".bak")
+        shutil.copy2(manifest_path, backup_path)
         # Reset p/ saída determinística (build_all anexa ao manifest existente).
         manifest_path.unlink()
 
-    with tempfile.TemporaryDirectory(prefix="sad-seed-") as tmp:
-        curated = Path(tmp) / "curated"
-        curated.mkdir()
-        (curated / "fixture.csv").write_text(_FIXTURE_CSV, encoding="utf-8")
-        build_all(curated, Path(tmp) / "seed.duckdb", manifest_path,
-                  web_data_dir=web_data_dir)
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    for entry in manifest.get("ingestions", []):
-        if isinstance(entry, dict):
-            entry["fixture"] = True
-            entry["nota"] = _FIXTURE_NOTA
-    manifest_path.write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-    # Mantém o espelho idêntico ao canônico (contrato do build_all, Task 5 R2).
-    (web_data_dir / "manifest.json").write_bytes(manifest_path.read_bytes())
+    try:
+        with tempfile.TemporaryDirectory(prefix="sad-seed-") as tmp:
+            curated = Path(tmp) / "curated"
+            curated.mkdir()
+            (curated / "fixture.csv").write_text(_FIXTURE_CSV, encoding="utf-8")
+            build_all(curated, Path(tmp) / "seed.duckdb", manifest_path,
+                      web_data_dir=web_data_dir)
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        for entry in manifest.get("ingestions", []):
+            if isinstance(entry, dict):
+                entry["fixture"] = True
+                entry["nota"] = _FIXTURE_NOTA
+        manifest_path.write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        # Mantém o espelho idêntico ao canônico (contrato do build_all, Task 5 R2).
+        (web_data_dir / "manifest.json").write_bytes(manifest_path.read_bytes())
+    except BaseException:
+        if backup_path is not None and backup_path.exists():
+            shutil.copy2(backup_path, manifest_path)  # restaura o oficial
+        raise
+    else:
+        if backup_path is not None and backup_path.exists():
+            backup_path.unlink()  # sucesso: sem entulho
     return manifest
 
 

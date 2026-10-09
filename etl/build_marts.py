@@ -30,6 +30,7 @@ from etl import ETL_VERSION
 from etl.manifest import write_manifest
 from etl.normalize import CANONICAL_COLUMNS, normalize_resultados
 from etl.sources import V1_DATASETS
+from etl.validate import run_gates
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 WEB_DATA_DIR = _REPO_ROOT / "web" / "public" / "data"
@@ -269,13 +270,23 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
     (mesmo conteúdo, escrita única a partir do canônico — R2).
     `source_shas` mapeia `(ano, CARGO_MAIÚSCULO)` → sha256 do ZIP de origem
     (threading E4; Tasks 5 e 7 consomem). Pares `(ano, cargo)` fora do V1
-    levantam `ValueError` antes de qualquer escrita.
+    levantam `ValueError` antes de qualquer escrita. Após o DuckDB e antes
+    dos JSONs/manifest, os quality gates (`run_gates`) são aplicados sobre
+    a integridade interna (soma/órfãos); qualquer erro levanta
+    `RuntimeError` com as saídas públicas anteriores intactas (C2). O gate
+    de manifest é excluído aqui — o manifest desta ingestão ainda não foi
+    escrito (vai em `_register_sources`, após os JSONs) — e a ausência de
+    totais oficiais é só `UserWarning` (contrato `run_gates`), nunca erro.
     """
     curated = Path(curated_dir)
     df = _load_canonical(curated)
     _matched_entries(df)  # pré-checagem fail-closed: antes de qualquer escrita
     _write_partitioned_parquet(df, curated)
     _write_duckdb(df, Path(db_path))
+    gate_errors = run_gates(Path(db_path), manifest_path=None)
+    gate_errors = [e for e in gate_errors if not e.startswith("manifest")]
+    if gate_errors:
+        raise RuntimeError(f"gates reprovados: {'; '.join(gate_errors)}")
     web_dir = Path(web_data_dir) if web_data_dir is not None else WEB_DATA_DIR
     _write_json_aggs(df, web_dir)
     _register_sources(df, manifest_path, source_shas=source_shas)
