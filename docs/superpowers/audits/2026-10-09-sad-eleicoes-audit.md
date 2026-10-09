@@ -4,7 +4,7 @@ Origem: 3 subagentes paralelos (ETL, front, CI/contratos) + verificação própr
 
 ## CRÍTICO
 
-- **E1** `etl/normalize.py:57-61` — `_fix_text` nunca repara mojibake cujo correto contém Ã/Â (SÃO/JOÃO/AÇÃO). CONFIRMADO. Fix: comparar contagens em vez de exigir eliminação.
+- **E1** `etl/normalize.py:57-61` — `_fix_text` nunca repara mojibake cujo correto contém Ã/Â (SÃO/JOÃO/AÇÃO). CONFIRMADO. Fix aplicado: reparar quando o reparo NÃO AUMENTA marcadores (`<=`; `<` estrito é insuficiente — SÃO tem 1 vs 1).
 - **E2** `etl/normalize.py:88-96` — votos não-numérico/coluna ausente vira `0`; turno inválido vira `1`. CONFIRMADO. Fix: ausente→`ValueError`; não-numérico→`Int64` anulável.
 - **E3** `etl/validate.py:79-87` — gate `TRY_CAST…IS NULL` vazio p/ saída do pipeline (tudo já `int64`). CONFIRMADO (consequência de E2). Fix: E2 + teste e2e `QT_VOTOS=abc` reprova gates.
 - **E4** `etl/build_marts.py:190-211` — sha do CSV derivado (não do ZIP); filtro só por `ano` fabrica entry de governador p/ frame só-presidente. CONFIRMADO. Fix: sha da fonte via parâmetro + `sha_origin`; match `(ano,cargo)`.
