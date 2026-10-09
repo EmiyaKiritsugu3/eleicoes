@@ -1,4 +1,5 @@
 import React from "react";
+import { safeUrl } from "../lib/data";
 
 interface SourceBadgeProps {
   hash: string;
@@ -35,6 +36,8 @@ export default function SourceBadge({ hash, url, date }: SourceBadgeProps) {
     );
   }
   const short = hash.length > 12 ? `${hash.slice(0, 12)}…` : hash;
+  // Link só com esquema http(s) (M10): safeUrl barra javascript:/data:/relativo.
+  const href = safeUrl(url);
   return (
     <p
       className="badge"
@@ -42,10 +45,10 @@ export default function SourceBadge({ hash, url, date }: SourceBadgeProps) {
       style={{ ...baseStyle, background: "#e6f4ea", border: "1px solid #1e7e34", color: "#145214" }}
     >
       fonte auditada · <code>{short}</code>
-      {url ? (
+      {href ? (
         <>
           {" · "}
-          <a href={url} target="_blank" rel="noreferrer">
+          <a href={href} target="_blank" rel="noreferrer">
             fonte oficial
           </a>
         </>

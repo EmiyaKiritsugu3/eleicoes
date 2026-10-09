@@ -27,8 +27,8 @@ export function buildShareUrl(
     const s = String(v).trim();
     if (s !== "") params.set(k, s);
   }
-  if (typeof manifestHash === "string" && manifestHash.length > 0) {
-    params.set("hash", manifestHash);
+  if (typeof manifestHash === "string" && manifestHash.trim().length > 0) {
+    params.set("hash", manifestHash.trim());
   }
   const qs = params.toString();
   return qs ? `/analisar?${qs}` : "/analisar";
@@ -66,16 +66,22 @@ export function semCoberturaTurnoZona(
 
 function csvEscape(v: unknown): string {
   const s = v === null || v === undefined ? "" : String(v);
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  const q = /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  // Neutraliza fórmula de planilha (M12): célula que começa com =,+,-,@
+  // ganha apóstrofo à frente, após o quote.
+  return /^[=+\-@]/.test(s) ? `'${q}` : q;
 }
 
 /** CSV das linhas filtradas + colunas de proveniência.
  *  Header contém `fonte,url,hash,data` (exato quando não há colunas de dado).
+ *  Sem hash auditado, levanta em vez de gerar (M11): a UI já desabilita
+ *  o botão, mas a lib não confia na UI.
  */
 export function buildCsvExport(
   rows: Record<string, unknown>[],
   audit: AuditoriaCsv | null,
 ): string {
+  if (!audit?.hash?.trim()) throw new Error("export bloqueado: dado não auditado");
   const data = Array.isArray(rows) ? rows : [];
   const dataKeys: string[] = [];
   for (const r of data) {

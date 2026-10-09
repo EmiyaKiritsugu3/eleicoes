@@ -15,11 +15,20 @@ describe("ledger rulings", () => {  it("isAudited true com sha256 presente", asy
     const { isAudited } = await import("../lib/data");
     expect(isAudited({ sha256: "abc123" })).toBe(true);
   });
-  it("getAuditInfo null sem manifest (dado não auditado)", async () => {
-    const { getAuditInfo } = await import("../lib/data");
-    expect(getAuditInfo(null)).toBe(null);
-    expect(getAuditInfo({ ingestions: [] })).toBe(null);
-    expect(getAuditInfo({ ingestions: [{ source_url: "x" }] })).toBe(null);
+  it("audited trim: hash só-espaços é falso (F5)", async () => {
+    const { isAudited } = await import("../lib/data");
+    expect(isAudited({ sha256: "   " })).toBe(false);
+    expect(isAudited({ hash: "  \t " })).toBe(false);
+  });
+  it("official display ignora chaves extras desconhecidas (M14)", async () => {
+    const { isOfficialDisplay } = await import("../lib/data");
+    expect(isOfficialDisplay({ sha256: "x".repeat(64), outraChave: 1 })).toBe(true);
+  });
+  it("getOfficialAuditInfo null sem manifest (dado não auditado)", async () => {
+    const { getOfficialAuditInfo } = await import("../lib/data");
+    expect(getOfficialAuditInfo(null)).toBe(null);
+    expect(getOfficialAuditInfo({ ingestions: [] })).toBe(null);
+    expect(getOfficialAuditInfo({ ingestions: [{ source_url: "x" }] })).toBe(null);
   });
   it("getResumo vazio sinaliza sem dado oficial", async () => {
     const { getResumo } = await import("../lib/data");

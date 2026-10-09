@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import SealSlot from "../components/SealSlot";
+import SourceBadge from "../components/SourceBadge";
 import { FixtureSeal } from "../components/FixtureBadge";
 
 const FIXTURE_HASH =
@@ -40,6 +41,31 @@ describe("SealSlot (selo compartilhado de / e /analisar)", () => {
     );
     expect(html).toContain("dado não auditado");
     expect(html).not.toContain("fonte auditada");
+  });
+});
+
+describe("safeUrl (M10)", () => {
+  it("safeUrl bloqueia javascript: e esquemas não-http", async () => {
+    const { safeUrl } = await import("../lib/data");
+    expect(safeUrl("javascript:alert(1)")).toBe("");
+    expect(safeUrl("data:text/html,<h1>x</h1>")).toBe("");
+    expect(safeUrl("/relativo/x")).toBe("");
+    expect(safeUrl("")).toBe("");
+    expect(safeUrl(null)).toBe("");
+  });
+  it("safeUrl permite http(s)", async () => {
+    const { safeUrl } = await import("../lib/data");
+    expect(safeUrl("https://cdn.tse.jus.br/x.zip")).toBe(
+      "https://cdn.tse.jus.br/x.zip",
+    );
+    expect(safeUrl("http://example.com")).toBe("http://example.com");
+  });
+  it("SourceBadge não renderiza link não-http", () => {
+    const html = renderToStaticMarkup(
+      <SourceBadge hash="abc123" url="javascript:alert(1)" date="d" />,
+    );
+    expect(html).not.toContain("javascript:");
+    expect(html).not.toContain("<a ");
   });
 });
 

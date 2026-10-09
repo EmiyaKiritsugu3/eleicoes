@@ -8,6 +8,7 @@ import {
   isAudited,
   isFixtureEntry,
   isOfficialDisplay,
+  safeUrl,
   type AuditInfo,
   type Manifest,
   type ManifestIngestion,
@@ -116,7 +117,9 @@ export default function Auditoria() {
             <tbody>
               {ingestions.map((e, i) => {
                 const hash = String(e.sha256 ?? e.hash ?? "");
-                const url = typeof e.source_url === "string" ? e.source_url : "";
+                const rawUrl = typeof e.source_url === "string" ? e.source_url : "";
+                // Link só com esquema http(s) (M10): safeUrl barra javascript:/data:/relativo.
+                const url = safeUrl(rawUrl);
                 const rows =
                   typeof (e as Record<string, unknown>).rows === "number"
                     ? String((e as Record<string, unknown>).rows)
@@ -175,6 +178,12 @@ export default function Auditoria() {
           <p role="alert">
             download bloqueado — sem ingestão auditada; sem hash válido não há
             proveniência a oferecer
+          </p>
+        )}
+        {checked && canDownload && !official && (
+          <p role="note">
+            download permitido por transparência — o manifest disponível é
+            amostra sintética, sem valor oficial
           </p>
         )}
       </section>

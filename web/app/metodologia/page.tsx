@@ -44,8 +44,10 @@ export default function Metodologia() {
         <h2>Regras de auditoria</h2>
         <ul>
           <li>
-            Um número só é apresentado como oficial quando há hash válido no
-            manifest (<code>isAudited</code> exige <code>sha256</code> não-vazio).
+            Um número só é apresentado como oficial quando há hash válido em
+            ingestão não-sintética no manifest (<code>isOfficialDisplay</code>{" "}
+            exige <code>sha256</code> não-vazio e ausência de{" "}
+            <code>fixture:true</code>).
           </li>
           <li>
             Sem manifest ou manifest inválido, a página mostra o banner “dado

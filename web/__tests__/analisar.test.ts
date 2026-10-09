@@ -39,7 +39,9 @@ describe("buildCsvExport", () => {
     expect(csv.split("\n")[0]).toContain("fonte,url,hash,data");
   });
   it("header is exactly fonte,url,hash,data without rows", () => {
-    expect(buildCsvExport([], null).split("\n")[0]).toBe("fonte,url,hash,data");
+    expect(
+      buildCsvExport([], { hash: "h", url: "u", date: "d" }).split("\n")[0],
+    ).toBe("fonte,url,hash,data");
   });
   it("quote-escapes commas and quotes", () => {
     const csv = buildCsvExport(

@@ -77,12 +77,22 @@ export function formatVotes(n: number): string {
   return neg + Math.trunc(Math.abs(n)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
 
-/** false quando o objeto não carrega hash (`sha256` ou `hash`). */
+/** false quando o objeto não carrega hash (`sha256` ou `hash`).
+ *  Hash só-espaços não audita (F5): exige `trim().length > 0`. */
 export function isAudited(obj: unknown): boolean {
   if (!obj || typeof obj !== "object") return false;
   const o = obj as Record<string, unknown>;
-  const hash = o.sha256 ?? o.hash;
-  return typeof hash === "string" && hash.length > 0;
+  const h = o.sha256 ?? o.hash;
+  return typeof h === "string" && h.trim().length > 0;
+}
+
+/** URL segura p/ links de fonte (M10): só `http(s)`; qualquer outro
+ *  esquema (`javascript:`, `data:`, relativo, vazio) vira `""` e o
+ *  link nem é renderizado. */
+export function safeUrl(url: unknown): string {
+  if (typeof url !== "string") return "";
+  const t = url.trim();
+  return /^https?:\/\//i.test(t) ? t : "";
 }
 
 /** true quando a entrada é amostra sintética (seed de CI/dev): tem hash
@@ -95,24 +105,6 @@ export function isFixtureEntry(obj: unknown): boolean {
 /** Exibição como oficial: hash válido E não-fixture. */
 export function isOfficialDisplay(obj: unknown): boolean {
   return isAudited(obj) && !isFixtureEntry(obj);
-}
-
-/** Extrai a primeira ingestão auditada do manifest, ou null (dado não auditado). */
-export function getAuditInfo(manifest: unknown): AuditInfo | null {
-  if (!manifest || typeof manifest !== "object") return null;
-  const ingestions = (manifest as Manifest).ingestions;
-  if (!Array.isArray(ingestions)) return null;
-  for (const entry of ingestions) {
-    if (isAudited(entry)) {
-      const e = entry as ManifestIngestion;
-      return {
-        hash: String(e.sha256 ?? e.hash),
-        url: typeof e.source_url === "string" ? e.source_url : "",
-        date: typeof e.date === "string" ? e.date : typeof e.data === "string" ? e.data : "",
-      };
-    }
-  }
-  return null;
 }
 
 /** Primeira ingestão exibível como OFICIAL (audited + não-fixture), ou null.
