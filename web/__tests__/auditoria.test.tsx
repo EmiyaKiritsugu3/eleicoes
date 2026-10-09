@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import React from "react";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import Auditoria from "../app/auditoria/page";
 describe("auditoria", () => {
@@ -48,7 +50,13 @@ describe("auditoria page (SSR fail-closed)", () => {
   });
 });
 
-describe("auditoria data path (CI seed via real build_all)", () => {
+// Sem seed em clone fresco o teste de disco pula (não falha): gere com
+// `python scripts/seed_fixture_data.py --force` a partir da raiz do repo.
+const DATA_DIR = path.resolve(__dirname, "../public/data");
+const HAS_SEED = ["manifest.json", "resumo.json", "por_uf.json"].every((n) =>
+  existsSync(path.join(DATA_DIR, n)),
+);
+describe.skipIf(!HAS_SEED)("auditoria data path (CI seed via real build_all)", () => {
   it("reads seeded /data/*.json from disk as fixture (non-official) and coherent", async () => {
     const fs = await import("node:fs");
     const path = await import("node:path");

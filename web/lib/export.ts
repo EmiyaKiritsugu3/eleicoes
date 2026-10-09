@@ -10,6 +10,40 @@
 
 export type FiltrosPartilhaveis = Record<string, string | number | undefined | null>;
 
+/** Chaves que `/analisar` hidrata da query (M13): qualquer outra chave
+ *  (ex. `?modoX=1`) é ignorada na hidratação em vez de vazar p/ estado. */
+export const ANALISAR_QUERY_ALLOWLIST = [
+  "ano",
+  "cargo",
+  "uf",
+  "turno",
+  "zona",
+  "partido",
+  "candidato",
+  "pivo",
+  "modo",
+  "a",
+  "b",
+  "hash",
+] as const;
+
+/** Extrai só as chaves do allowlist da query (valores vazios omitidos).
+ *  Usada pelo `useEffect` de `/analisar`; desconhecidas nunca viram estado. */
+export function parseAnalisarSearchParams(search: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  let params: URLSearchParams;
+  try {
+    params = new URLSearchParams(search ?? "");
+  } catch {
+    return out;
+  }
+  for (const k of ANALISAR_QUERY_ALLOWLIST) {
+    const v = params.get(k);
+    if (v !== null && v.trim() !== "") out[k] = v;
+  }
+  return out;
+}
+
 export interface AuditoriaCsv {
   hash: string;
   url: string;

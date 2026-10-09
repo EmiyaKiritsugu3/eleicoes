@@ -21,6 +21,7 @@ import {
   buildCsvExport,
   buildShareUrl,
   emptyStateFor,
+  parseAnalisarSearchParams,
   semCoberturaTurnoZona,
 } from "../../lib/export";
 
@@ -90,17 +91,31 @@ export default function Analisar() {
   const [urlHash, setUrlHash] = useState("");
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    // Hidrata só chaves do allowlist (parseAnalisarSearchParams): ?modoX=1
+    // e afins são ignorados em vez de virarem estado.
+    const q = parseAnalisarSearchParams(window.location.search);
     setF({
-      ano: params.get("ano") ?? undefined,
-      cargo: params.get("cargo") ?? undefined,
-      uf: params.get("uf") ?? undefined,
-      turno: params.get("turno") ?? undefined,
-      zona: params.get("zona") ?? undefined,
-      partido: params.get("partido") ?? undefined,
-      candidato: params.get("candidato") ?? undefined,
+      ano: q.ano,
+      cargo: q.cargo,
+      uf: q.uf,
+      turno: q.turno,
+      zona: q.zona,
+      partido: q.partido,
+      candidato: q.candidato,
     });
-    setUrlHash(params.get("hash") ?? "");
+    if (q.pivo === "uf" || q.pivo === "partido" || q.pivo === "ano") {
+      setPivo(q.pivo);
+    }
+    if (
+      q.modo === "candidatos" ||
+      q.modo === "anos" ||
+      q.modo === "municipios"
+    ) {
+      setCompMode(q.modo);
+    }
+    setCompA(q.a ?? "");
+    setCompB(q.b ?? "");
+    setUrlHash(q.hash ?? "");
     (async () => {
       setResumo(await fetchJson<ResumoJson>("/data/resumo.json"));
       setPorUf((await fetchJson<PorUfRow[]>("/data/por_uf.json")) ?? []);
@@ -215,7 +230,8 @@ export default function Analisar() {
   // export (sem proveniência oficial a citar).
   const hash = seal.official?.hash ?? "";
   // Contrato de reprodutibilidade: serializa TODA chave que a página hidrata
-  // (round-trip: abrir a URL restaura o mesmo estado de filtros).
+  // (filtros + pivo/modo/a/b do comparador — round-trip: abrir a URL
+  // restaura o mesmo estado).
   const shareUrl = buildShareUrl(
     {
       ano: f.ano,
@@ -225,6 +241,10 @@ export default function Analisar() {
       zona: f.zona,
       partido: f.partido,
       candidato: f.candidato,
+      pivo,
+      modo: compMode,
+      a: compA,
+      b: compB,
     },
     hash,
   );
@@ -232,6 +252,8 @@ export default function Analisar() {
 
   const badge = <SealSlot seal={seal} />;
 
+  // Contexto de filtro junto dos dados (M13): cada linha carrega os 7
+  // filtros ativos como colunas f_* para o CSV ser auto-descritivo.
   const csvRows = useMemo(
     () =>
       pivoRows.map((r) => ({
@@ -241,16 +263,30 @@ export default function Analisar() {
         ano: f.ano ?? "",
         cargo: f.cargo ?? "",
         uf: f.uf ?? "",
+        f_ano: f.ano ?? "",
+        f_cargo: f.cargo ?? "",
+        f_uf: f.uf ?? "",
+        f_turno: f.turno ?? "",
+        f_zona: f.zona ?? "",
+        f_partido: f.partido ?? "",
+        f_candidato: f.candidato ?? "",
       })),
-    [pivoRows, pivo, f.ano, f.cargo, f.uf],
+    [pivoRows, pivo, f.ano, f.cargo, f.uf, f.turno, f.zona, f.partido, f.candidato],
   );
+
+  // Alerta honesto sem depender de CSS externo (M4-web): fundo/borda inline.
+  const ALERTA_STYLE: React.CSSProperties = {
+    background: "#fff3cd",
+    border: "1px solid #b45309",
+    fontWeight: "bold",
+  };
 
   return (
     <>
       <h1>SAD Eleições — analisar</h1>
 
       {manifestChecked && !seal.official && !seal.hasFixture && (
-        <p role="alert" className="badge badge-warn">
+        <p role="alert" className="badge badge-warn" style={ALERTA_STYLE}>
           dado não auditado — manifest ausente ou inválido; números abaixo não são oficiais
         </p>
       )}
@@ -258,7 +294,7 @@ export default function Analisar() {
         <SealSlot seal={seal} />
       )}
       {hashDivergente && (
-        <p role="alert" className="badge badge-warn">
+        <p role="alert" className="badge badge-warn" style={ALERTA_STYLE}>
           hash da URL diverge do manifest atual — revalide a fonte antes de citar
         </p>
       )}
@@ -289,6 +325,7 @@ export default function Analisar() {
             <input
               value=""
               disabled
+              readOnly
               placeholder="município"
               aria-label="município"
               title="por município em breve — V1 agrega por UF"
@@ -507,7 +544,7 @@ export default function Analisar() {
           </button>
         </p>
         {manifestChecked && !seal.official && !seal.hasFixture && (
-          <p role="alert">
+          <p role="alert" style={ALERTA_STYLE}>
             exportação bloqueada — dado não auditado; o CSV só é gerado com
             manifest válido para que o arquivo seja auto-descritivo
           </p>

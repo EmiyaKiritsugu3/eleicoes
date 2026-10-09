@@ -3,6 +3,7 @@ import {
   buildCsvExport,
   buildShareUrl,
   emptyStateFor,
+  parseAnalisarSearchParams,
   semCoberturaTurnoZona,
 } from "../lib/export";
 describe("buildShareUrl", () => {
@@ -90,5 +91,36 @@ describe("semCoberturaTurnoZona", () => {
         { turno: "1" },
       ),
     ).toBe(false);
+  });
+});
+describe("share full state pivo/modo/a/b (M13)", () => {
+  it("serializes pivo,modo,a,b keys", () => {
+    const url = buildShareUrl(
+      { ano: 2022, pivo: "uf", modo: "candidatos", a: "X", b: "Y" },
+      "h",
+    );
+    for (const part of ["pivo=uf", "modo=candidatos", "a=X", "b=Y"]) {
+      expect(url).toContain(part);
+    }
+  });
+  it("csv keeps f_* filter context columns", () => {
+    const csv = buildCsvExport(
+      [{ chave: "SP", votos: 10, f_ano: "2022", f_cargo: "presidente", f_uf: "", f_turno: "", f_zona: "", f_partido: "PT", f_candidato: "" }],
+      { hash: "h", url: "u", date: "d" },
+    );
+    for (const col of ["f_ano", "f_cargo", "f_uf", "f_turno", "f_zona", "f_partido", "f_candidato"]) {
+      expect(csv.split("\n")[0]).toContain(col);
+    }
+  });
+});
+describe("parseAnalisarSearchParams hydration allowlist (M13)", () => {
+  it("tolerates ?modoX=1 preserving ano/cargo/uf", () => {
+    const p = parseAnalisarSearchParams("?ano=2022&cargo=presidente&uf=SP&modoX=1");
+    expect(p).toMatchObject({ ano: "2022", cargo: "presidente", uf: "SP" });
+    expect(p).not.toHaveProperty("modoX");
+  });
+  it("hydrates pivo/modo/a/b", () => {
+    const p = parseAnalisarSearchParams("?pivo=ano&modo=anos&a=2022&b=2018");
+    expect(p).toMatchObject({ pivo: "ano", modo: "anos", a: "2022", b: "2018" });
   });
 });

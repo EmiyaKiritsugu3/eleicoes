@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "pretest": "echo 'web tests need seed: python scripts/seed_fixture_data.py --force (from repo root); disk test skips without web/public/data/*.json'",
     "test": "vitest run"
   },
   "dependencies": {
