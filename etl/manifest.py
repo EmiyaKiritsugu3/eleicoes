@@ -18,9 +18,9 @@ def write_manifest(path, entry: dict) -> dict:
     """
     try:
         manifest = load_manifest(path)
-        if not isinstance(manifest, dict) or "ingestions" not in manifest:
+        if not isinstance(manifest, dict) or not isinstance(manifest.get("ingestions"), list):
             manifest = {"ingestions": []}
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
+    except (FileNotFoundError, json.JSONDecodeError, OSError, UnicodeDecodeError):
         manifest = {"ingestions": []}
     manifest["ingestions"].append(entry)
     with open(path, "w", encoding="utf-8") as f:
