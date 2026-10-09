@@ -262,6 +262,11 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked }: Pain
       candidatoId: ag.vencedorId,
       candidatos: fato.candidatos,
     });
+    // Baseline nacional usa o fato inteiro (não só a UF) — rótulo "Brasil" honesto.
+    const baseUF = perfilOndeVenceu(fato.municipios, {
+      candidatoId: ag.vencedorId,
+      candidatos: fato.candidatos,
+    });
     return (
       <>
         <h1>Painel da região — {cod}</h1>
@@ -285,9 +290,9 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked }: Pain
             <p>{SEM_DADO}</p>
           ) : (
             <ul>
-              <li>Escolaridade superior: {num(perfil.medias.esc_sup)}% (Brasil: {num(perfil.vsBrasil.esc_sup)}%)</li>
-              <li>Renda média: R$ {formatVotes(Math.round(perfil.medias.renda_media))} (Brasil: R$ {formatVotes(Math.round(perfil.vsBrasil.renda_media))})</li>
-              <li>Pobres: {num(perfil.medias.pobres_pct)}% (Brasil: {num(perfil.vsBrasil.pobres_pct)}%)</li>
+              <li>Escolaridade superior: {num(perfil.medias.esc_sup)}% (Brasil: {num(baseUF.vsBrasil.esc_sup)}%)</li>
+              <li>Renda média: R$ {formatVotes(Math.round(perfil.medias.renda_media))} (Brasil: R$ {formatVotes(Math.round(baseUF.vsBrasil.renda_media))})</li>
+              <li>Pobres: {num(perfil.medias.pobres_pct)}% (Brasil: {num(baseUF.vsBrasil.pobres_pct)}%)</li>
               <li>Municípios onde venceu: {formatVotes(perfil.nMun)}</li>
             </ul>
           )}
