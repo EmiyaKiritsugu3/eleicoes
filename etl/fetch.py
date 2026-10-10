@@ -24,6 +24,33 @@ RAW_ROOT = REPO_ROOT / "data" / "raw"
 ALLOWED_HOSTS = frozenset({"cdn.tse.jus.br", "dadosabertos.tse.jus.br", "ftp.ibge.gov.br"})
 
 
+def _validator_of(resp_headers) -> str | None:
+    """ETag (preferido) ou Last-Modified dos headers (case-insensitive)."""
+    etag = last_mod = None
+    for key, value in (resp_headers or {}).items():
+        lowered = key.lower()
+        if lowered == "etag" and etag is None:
+            etag = value
+        elif lowered == "last-modified" and last_mod is None:
+            last_mod = value
+    return etag or last_mod or None
+
+
+def _content_range_start(resp_headers) -> int | None:
+    """Offset inicial de `Content-Range: bytes <start>-<end>/<total>`."""
+    raw = None
+    for key, value in (resp_headers or {}).items():
+        if key.lower() == "content-range":
+            raw = value
+            break
+    if not raw:
+        return None
+    try:
+        return int(raw.split(None, 1)[1].split("-", 1)[0])
+    except (IndexError, ValueError):
+        return None
+
+
 def download_dataset(url, dest, expected_sha256=None, retries=3, max_bytes=DEFAULT_MAX_BYTES) -> str:
     """Baixa `url` para `dest` com até `retries` tentativas; retorna o SHA256 real.
 
@@ -35,9 +62,12 @@ def download_dataset(url, dest, expected_sha256=None, retries=3, max_bytes=DEFAU
     (`uniform(0, min(BACKOFF_MAX_S, BACKOFF_BASE_S * 2**tentativa))`) —
     nunca sleep fixo. Toda requisição envia `User-Agent` identificando o
     projeto. Se uma tentativa cair no meio do stream, o retry envia
-    `Range: bytes=<já-baixados>-` e continua de onde parou quando o
-    servidor responde 206; se o servidor ignorar o Range (200), recomeça
-    do zero. O download conta bytes em stream e aborta com `ValueError`
+    `Range: bytes=<já-baixados>-` com `If-Range` (ETag/Last-Modified da
+    primeira resposta 200) e continua de onde parou quando o servidor
+    responde 206 com `Content-Range` iniciando exatamente no offset do
+    parcial; sem validador, com `Content-Range` divergente, ou se o
+    servidor ignorar o Range (200), recomeça do zero — nunca mistura bytes
+    de versões distintas no mesmo arquivo (prova dos bytes). O download conta bytes em stream e aborta com `ValueError`
     fail-closed antes de estourar o disco quando `max_bytes` é excedido
     (inclusive fail-fast via `Content-Length` quando anunciado) — o parcial
     é removido e `dest` nunca é criado parcial.
@@ -75,11 +105,20 @@ def download_dataset(url, dest, expected_sha256=None, retries=3, max_bytes=DEFAU
     last_exc: Exception | None = None
     digest = hashlib.sha256()
     downloaded = 0
+    validator: str | None = None  # ETag/Last-Modified da versão em curso
     for attempt in range(retries):
         try:
             headers = {"User-Agent": USER_AGENT}
             if downloaded > 0:
-                headers["Range"] = f"bytes={downloaded}-"
+                if validator is None:
+                    # Sem validador não há como garantir a mesma versão:
+                    # recomeça do zero em vez de retomar.
+                    downloaded = 0
+                    digest = hashlib.sha256()
+                    tmp.unlink(missing_ok=True)
+                else:
+                    headers["Range"] = f"bytes={downloaded}-"
+                    headers["If-Range"] = validator
             with requests.get(url, stream=True, timeout=TIMEOUT_S, headers=headers) as resp:
                 resp.raise_for_status()
                 status = getattr(resp, "status_code", 200)
@@ -95,6 +134,16 @@ def download_dataset(url, dest, expected_sha256=None, retries=3, max_bytes=DEFAU
                         raise requests.ConnectionError(
                             "parcial local divergiu do offset de resume"
                         )
+                    if _content_range_start(resp_headers) != downloaded:
+                        # 206 fora do offset do parcial (ou sem Content-Range):
+                        # anexar misturaria bytes — descarta e recomeça do
+                        # zero no retry.
+                        downloaded = 0
+                        digest = hashlib.sha256()
+                        tmp.unlink(missing_ok=True)
+                        raise requests.ConnectionError(
+                            "offset de resume divergiu do parcial local"
+                        )
                     mode = "ab"  # resume: mantém digest e contador
                 else:
                     if downloaded > 0:
@@ -102,6 +151,8 @@ def download_dataset(url, dest, expected_sha256=None, retries=3, max_bytes=DEFAU
                         downloaded = 0
                         digest = hashlib.sha256()
                     mode = "wb"
+                    if status == 200:
+                        validator = _validator_of(resp_headers)
                 if max_bytes is not None:
                     announced = resp_headers.get("Content-Length")
                     try:

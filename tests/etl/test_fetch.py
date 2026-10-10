@@ -367,6 +367,11 @@ def test_resume_with_range_when_server_supports(sandbox_tmp, monkeypatch):
     calls = {"n": 0}
 
     class _Flaky(_FakeResponse):
+        def __init__(self):
+            super().__init__(full)
+            self.status_code = 200
+            self.headers = {"ETag": '"r1"'}
+
         def iter_content(self, chunk_size=1):
             yield full[:10]
             raise requests.ConnectionError("caiu no meio")
@@ -376,10 +381,18 @@ def test_resume_with_range_when_server_supports(sandbox_tmp, monkeypatch):
         headers = dict(kwargs.get("headers") or {})
         seen.append(headers)
         if calls["n"] == 1:
-            return _Flaky(full)
+            return _Flaky()
         assert headers.get("Range") == "bytes=10-", f"sem Range no retry: {headers}"
+        assert headers.get("If-Range") == '"r1"', f"sem If-Range no retry: {headers}"
         rest = full[10:]
-        return _RangedResponse(rest, status_code=206, headers={"Content-Length": str(len(rest))})
+        return _RangedResponse(
+            rest,
+            status_code=206,
+            headers={
+                "Content-Length": str(len(rest)),
+                "Content-Range": f"bytes 10-{len(full) - 1}/{len(full)}",
+            },
+        )
 
     monkeypatch.setattr(fetch.requests, "get", fake_get)
     monkeypatch.setattr(fetch.time, "sleep", lambda s: None)
@@ -396,6 +409,136 @@ def test_restart_clean_when_server_ignores_range(sandbox_tmp, monkeypatch):
 
     full = b"fedcba9876543210" * 4  # 64 bytes
     expected = hashlib.sha256(full).hexdigest()
+    seen = []
+    calls = {"n": 0}
+
+    class _Flaky(_FakeResponse):
+        def __init__(self):
+            super().__init__(full)
+            self.status_code = 200
+            self.headers = {"ETag": '"s1"'}
+
+        def iter_content(self, chunk_size=1):
+            yield full[:10]
+            raise requests.ConnectionError("caiu no meio")
+
+    def fake_get(url, stream=True, timeout=None, **kwargs):
+        calls["n"] += 1
+        headers = dict(kwargs.get("headers") or {})
+        seen.append(headers)
+        if calls["n"] == 1:
+            return _Flaky()
+        # Retry retoma com Range+If-Range, mas o servidor ignora e devolve
+        # 200 com o conteúdo completo → recomeço limpo.
+        assert headers.get("Range") == "bytes=10-", f"sem Range no retry: {headers}"
+        return _RangedResponse(full, status_code=200)
+
+    monkeypatch.setattr(fetch.requests, "get", fake_get)
+    monkeypatch.setattr(fetch.time, "sleep", lambda s: None)
+    dest = sandbox_tmp / "restart.zip"
+    sha = fetch.download_dataset("https://cdn.tse.jus.br/restart.zip", str(dest))
+    assert sha == expected
+    assert dest.read_bytes() == full
+
+
+def test_stale_validator_restarts_clean_on_new_version(sandbox_tmp, monkeypatch):
+    """Upstream trocou o arquivo entre tentativas: If-Range diverge, o
+    servidor devolve 200 com a versão nova — nada da v1 pode vazar no
+    arquivo final (prova dos bytes)."""
+    import requests
+
+    from etl import fetch
+
+    v1 = b"versao-1-antiga-" * 8
+    v2 = b"VERSAO-2-NOVA!" * 8
+    expected_v2 = hashlib.sha256(v2).hexdigest()
+    seen = []
+    calls = {"n": 0}
+
+    class _Flaky(_FakeResponse):
+        def __init__(self):
+            super().__init__(v1)
+            self.status_code = 200
+            self.headers = {"ETag": '"v1"'}
+
+        def iter_content(self, chunk_size=1):
+            yield v1[:10]
+            raise requests.ConnectionError("caiu no meio")
+
+    def fake_get(url, stream=True, timeout=None, **kwargs):
+        calls["n"] += 1
+        headers = dict(kwargs.get("headers") or {})
+        seen.append(headers)
+        if calls["n"] == 1:
+            return _Flaky()
+        # Retry retoma com o validador da v1...
+        assert headers.get("Range") == "bytes=10-", f"sem Range no retry: {headers}"
+        assert headers.get("If-Range") == '"v1"', f"sem If-Range no retry: {headers}"
+        # ...mas o upstream mudou: 200 com a v2 completa.
+        return _RangedResponse(v2, status_code=200, headers={"ETag": '"v2"'})
+
+    monkeypatch.setattr(fetch.requests, "get", fake_get)
+    monkeypatch.setattr(fetch.time, "sleep", lambda s: None)
+    dest = sandbox_tmp / "nova-versao.zip"
+    sha = fetch.download_dataset("https://cdn.tse.jus.br/nova-versao.zip", str(dest))
+    assert sha == expected_v2
+    assert dest.read_bytes() == v2
+
+
+def test_wrong_offset_206_restarts_from_zero(sandbox_tmp, monkeypatch):
+    """206 com Content-Range fora do offset do parcial: anexar corromperia
+    o arquivo — descarta o parcial e recomeça do zero."""
+    import requests
+
+    from etl import fetch
+
+    full = b"0123456789abcdef" * 4  # 64 bytes
+    expected = hashlib.sha256(full).hexdigest()
+    calls = {"n": 0}
+
+    class _Flaky(_FakeResponse):
+        def __init__(self):
+            super().__init__(full)
+            self.status_code = 200
+            self.headers = {"ETag": '"x1"'}
+
+        def iter_content(self, chunk_size=1):
+            yield full[:10]
+            raise requests.ConnectionError("caiu no meio")
+
+    def fake_get(url, stream=True, timeout=None, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return _Flaky()
+        if calls["n"] == 2:
+            # 206 mente o offset (diz 0, parcial tem 10) e traz bytes
+            # estranhos: anexar misturaria versões.
+            return _RangedResponse(
+                b"Z" * (len(full) - 10),
+                status_code=206,
+                headers={"Content-Range": f"bytes 0-{len(full) - 1}/{len(full)}"},
+            )
+        return _RangedResponse(full, status_code=200, headers={"ETag": '"x1"'})
+
+    monkeypatch.setattr(fetch.requests, "get", fake_get)
+    monkeypatch.setattr(fetch.time, "sleep", lambda s: None)
+    dest = sandbox_tmp / "offset.zip"
+    sha = fetch.download_dataset("https://cdn.tse.jus.br/offset.zip", str(dest))
+    assert sha == expected
+    assert dest.read_bytes() == full
+    assert calls["n"] == 3
+
+
+def test_resume_without_validator_restarts_from_zero(sandbox_tmp, monkeypatch):
+    """Sem ETag/Last-Modified não há como garantir a mesma versão: o retry
+    NÃO envia Range e recomeça do zero."""
+    import requests
+
+    from etl import fetch
+
+    full = b"sem-validador-" * 8
+    expected = hashlib.sha256(full).hexdigest()
+    seen = []
     calls = {"n": 0}
 
     class _Flaky(_FakeResponse):
@@ -405,14 +548,16 @@ def test_restart_clean_when_server_ignores_range(sandbox_tmp, monkeypatch):
 
     def fake_get(url, stream=True, timeout=None, **kwargs):
         calls["n"] += 1
+        headers = dict(kwargs.get("headers") or {})
+        seen.append(headers)
         if calls["n"] == 1:
             return _Flaky(full)
-        # Servidor sem suporte a Range: responde 200 com o conteúdo completo.
+        assert "Range" not in headers, f"Range sem validador: {headers}"
         return _RangedResponse(full, status_code=200)
 
     monkeypatch.setattr(fetch.requests, "get", fake_get)
     monkeypatch.setattr(fetch.time, "sleep", lambda s: None)
-    dest = sandbox_tmp / "restart.zip"
-    sha = fetch.download_dataset("https://cdn.tse.jus.br/restart.zip", str(dest))
+    dest = sandbox_tmp / "sem-validador.zip"
+    sha = fetch.download_dataset("https://cdn.tse.jus.br/sem-validador.zip", str(dest))
     assert sha == expected
     assert dest.read_bytes() == full
