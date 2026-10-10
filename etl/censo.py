@@ -23,6 +23,9 @@ header IBGE/SIDRA por município (case-insensitive) e devolve o schema canônico
 
 from __future__ import annotations
 
+import hashlib
+import json
+import os
 import re
 import zipfile
 from datetime import date, datetime, timezone
@@ -34,8 +37,14 @@ import pandas as pd
 
 from etl import ETL_VERSION, fetch
 from etl.ibge_dv import validar_serie_ibge
-from etl.manifest import write_manifest
+from etl.manifest import _validate_artifact_entry, write_manifest
 from etl.sources import CENSO_DATASETS, TOTAL_CENSO_2022
+
+# Nome servido do artefato {ibge7: pop} (EVOLVE-7 Task 1): mesmo
+# contrato hash dos agregados de `etl.build_marts` (sha256 dos bytes
+# + `size_bytes` + `data` ISO, validado por `_validate_artifact_entry`
+# — sem fork de contrato).
+CENSO_ARTIFACT_FILENAME = "censo_municipios.json"
 
 CANONICAL_CENSO_COLUMNS = [
     "ibge7",
@@ -253,15 +262,151 @@ def register_censo_ingest(manifest_path, rows=None, sha256=None, dataset=None,
     return entry
 
 
+def build_censo_artifact_map(df: pd.DataFrame) -> dict:
+    """`{ibge7: pop}` ordenável a partir do df normalizado (EVOLVE-7 Task 1).
+
+    Linhas sem `ibge7` ou com `pop` nulo são puladas (determinístico):
+    com o gate da soma verde elas não existem — sem gate (uso isolado),
+    pular evita `null` no artefato servido em vez de número inventado.
+    """
+    mapa = {}
+    try:
+        pares = zip(df["ibge7"].tolist(), df["pop"].tolist())
+    except (KeyError, AttributeError, TypeError):
+        return {}
+    for ibge, pop in pares:
+        chave = "" if ibge is None else str(ibge).strip()
+        if not chave:
+            continue
+        try:
+            if pd.isna(pop):
+                continue
+        except (TypeError, ValueError):
+            continue
+        mapa[chave] = int(pop)
+    return mapa
+
+
+def build_censo_artifact_entry(raw: bytes, arquivo=CENSO_ARTIFACT_FILENAME,
+                               dataset=None, data_iso=None) -> dict:
+    """Entry `artifacts` do Censo sob o MESMO contrato hash dos servidos.
+
+    `sha256`/`size_bytes` medidos dos BYTES servidos, `source_url` do
+    dataset do Censo, `data` ISO + `etl_version` como as ingestões.
+    Validada por `_validate_artifact_entry` (fail-closed, sem fork:
+    o mesmo validador de `etl.manifest`). `dataset` default =
+    `CENSO_DATASETS[0]`; `data_iso` default = hoje UTC.
+    """
+    entry_meta = dataset if isinstance(dataset, dict) else CENSO_DATASETS[0]
+    url = entry_meta.get("url")
+    if not url:
+        raise ValueError(
+            "artefato do Censo sem url (None/vazia); emissão bloqueada — "
+            "sem dado oficial"
+        )
+    if data_iso is None:
+        data_iso = datetime.now(timezone.utc).date().isoformat()
+    entry = {
+        "source_url": url,
+        "sha256": hashlib.sha256(bytes(raw)).hexdigest(),
+        "sha_origin": "artifact",
+        "data": str(data_iso),
+        "etl_version": ETL_VERSION,
+        "dataset": entry_meta.get("dataset"),
+        "ano": entry_meta.get("ano"),
+        "nome": entry_meta.get("nome"),
+        "arquivo": str(arquivo),
+        "size_bytes": len(bytes(raw)),
+    }
+    _validate_artifact_entry(entry)  # fail-closed antes de devolver
+    return entry
+
+
+def write_censo_artifact(df: pd.DataFrame, out_path) -> dict:
+    """Escreve `{ibge7: pop}` canônico em `out_path` (escrita atômica).
+
+    Serialização determinística (`indent=2`, chaves ordenadas — mesmo
+    padrão legível dos agregados de `build_marts`); devolve dict com
+    `path`, `raw`, `sha256`, `size_bytes` e `rows`.
+    """
+    mapa = build_censo_artifact_map(df)
+    raw = json.dumps(mapa, ensure_ascii=False, indent=2,
+                     sort_keys=True).encode("utf-8")
+    dest = Path(out_path)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = Path(f"{dest}.tmp")
+    with open(tmp, "wb") as f:
+        f.write(raw)
+    os.replace(tmp, dest)
+    return {
+        "path": str(dest),
+        "raw": raw,
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "size_bytes": len(raw),
+        "rows": len(mapa),
+    }
+
+
+def register_censo_artifact(manifest_path, artifact_path, dataset=None,
+                            data_iso=None) -> dict:
+    """Upsert da entry do artefato do Censo em `manifest["artifacts"]`.
+
+    Idempotente por `arquivo`: rebuilds atualizam o hash em vez de
+    duplicar (mesmo padrão do dedupe das ingestões). Fail-closed:
+    manifest ausente levanta `FileNotFoundError` (nunca artefato sem
+    ingestão — `verify_manifest` exige ingestões não-vazias) e
+    corrompido é preservado como `<path>.corrupt.<UTC-ts>` antes de
+    levantar `ValueError`; nada é escrito nesses casos.
+    """
+    manifest_file = Path(manifest_path)
+    try:
+        doc = json.loads(manifest_file.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise FileNotFoundError(
+            "artefato do Censo sem manifest: registre a ingestão antes "
+            f"de atestar bytes ({manifest_file})"
+        )
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+        manifest_file.rename(f"{manifest_file}.corrupt.{stamp}")
+        raise ValueError(
+            "artefato do Censo com manifest corrompido "
+            f"(preservado como .corrupt.{stamp}): {exc}"
+        )
+    if not isinstance(doc, dict):
+        raise ValueError(
+            "artefato do Censo com manifest inválido "
+            f"(esperado objeto JSON em {manifest_file})"
+        )
+    raw = Path(artifact_path).read_bytes()
+    entry = build_censo_artifact_entry(
+        raw, Path(artifact_path).name, dataset=dataset, data_iso=data_iso)
+    artifacts = doc.get("artifacts")
+    if not isinstance(artifacts, list):
+        artifacts = []
+    artifacts = [a for a in artifacts
+                 if not (isinstance(a, dict)
+                         and a.get("arquivo") == entry["arquivo"])] + [entry]
+    doc["artifacts"] = artifacts
+    tmp = Path(f"{manifest_file}.tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(doc, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, manifest_file)
+    return entry
+
+
 def ingerir_censo(duckdb_path, manifest_path, url=None, raw_dir=None,
-                  dataset=None) -> dict:
+                  dataset=None, artifact_path=None, data=None) -> dict:
     """Baixa o zip REAL do Censo IBGE e materializa `dim_municipio`.
 
     Pipeline: `fetch.download_dataset(url)` (backoff/UA/resume/teto — sem
     reimplementar) → extrai o CSV de municípios do zip → `normalize_censo`
     → gate `TOTAL_CENSO_2022` fail-closed → `dim_municipio` no DuckDB →
-    `register_censo_ingest` no manifest. Devolve dict com `zip_path`,
-    `zip_bytes`, `sha256`, `rows`, `csv_name`, `duckdb` e `entry`.
+    `censo_municipios.json` (`{ibge7: pop}`, EVOLVE-7 Task 1) →
+    `register_censo_ingest` + entry `artifacts` no manifest. Devolve dict
+    com `zip_path`, `zip_bytes`, `sha256`, `rows`, `csv_name`, `duckdb`,
+    `entry`, `artifact_path`, `artifact_sha256`, `artifact_bytes`,
+    `artifact_rows` e `artifact_entry`.
 
     `url` default = `url` da entrada (`dataset` ou `CENSO_DATASETS[0]`);
     ausente/None/vazia levanta `ValueError` antes de qualquer IO (sem dado
@@ -271,7 +416,11 @@ def ingerir_censo(duckdb_path, manifest_path, url=None, raw_dir=None,
     `;`-separado em latin1 (formato confirmado no FTP em 2026-10-10);
     header sem coluna de município levanta `ValueError` via
     `normalize_censo`. O gate da soma reprova ANTES de qualquer escrita —
-    `duckdb_path`/`manifest_path` intocados (nunca dim sem total auditado).
+    `duckdb_path`/`manifest_path`/artefato intocados (nunca dim nem
+    `{ibge7: pop}` sem total auditado). `artifact_path` default =
+    `<dir do manifest>/censo_municipios.json` (irmão do manifest, único
+    que `verify_manifest` atesta byte a byte); `data` é repassado à
+    ingestão e ao artefato (mesmo dia, sem flake de meia-noite).
     Custo zero: só stdlib + deps já declaradas (requests/pandas/duckdb).
     """
     entry_meta = dataset if isinstance(dataset, dict) else CENSO_DATASETS[0]
@@ -321,7 +470,14 @@ def ingerir_censo(duckdb_path, manifest_path, url=None, raw_dir=None,
     manifest_p = Path(manifest_path)
     manifest_p.parent.mkdir(parents=True, exist_ok=True)
     entry = register_censo_ingest(
-        str(manifest_p), rows=len(df), sha256=sha, dataset=entry_meta)
+        str(manifest_p), rows=len(df), sha256=sha, dataset=entry_meta,
+        data=data)
+    artefato = (Path(artifact_path) if artifact_path is not None
+                else manifest_p.parent / CENSO_ARTIFACT_FILENAME)
+    gravado = write_censo_artifact(df, artefato)
+    artifact_entry = register_censo_artifact(
+        str(manifest_p), gravado["path"], dataset=entry_meta,
+        data_iso=entry["data"])
     return {
         "zip_path": str(dest),
         "zip_bytes": zip_bytes,
@@ -330,4 +486,9 @@ def ingerir_censo(duckdb_path, manifest_path, url=None, raw_dir=None,
         "csv_name": membro.filename.rsplit("/", 1)[-1],
         "duckdb": str(db_path),
         "entry": entry,
+        "artifact_path": gravado["path"],
+        "artifact_sha256": gravado["sha256"],
+        "artifact_bytes": gravado["size_bytes"],
+        "artifact_rows": gravado["rows"],
+        "artifact_entry": artifact_entry,
     }

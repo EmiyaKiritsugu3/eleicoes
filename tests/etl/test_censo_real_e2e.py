@@ -257,6 +257,17 @@ def test_censo_real_zip_para_fato_verificavel(tmp_path, monkeypatch):
     ]
     assert len(censo_entries) == 1
     assert censo_entries[0]["rows"] == 5570
-    with pytest.warns(UserWarning, match="artifacts"):
+    # EVOLVE-7 Task 1: `ingerir_censo` agora atesta `censo_municipios.json`
+    # em `manifest["artifacts"]` (irmão do manifest) — `verify_manifest`
+    # prova os bytes em silêncio, sem o aviso legado de "sem artifacts".
+    doc = json.loads(manifest.read_text(encoding="utf-8"))
+    censo_artifacts = [a for a in doc.get("artifacts", [])
+                       if a.get("arquivo") == "censo_municipios.json"]
+    assert len(censo_artifacts) == 1
+    assert censo_artifacts[0]["source_url"] == CENSO_DATASETS[0]["url"]
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
         assert verify_manifest(str(manifest)) is True
     assert verificar_fato_manifest(str(manifest), out) is True

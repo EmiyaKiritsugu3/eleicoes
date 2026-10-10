@@ -28,9 +28,10 @@ import duckdb
 import pandas as pd
 
 from etl import ETL_VERSION
+from etl.censo import CENSO_ARTIFACT_FILENAME, build_censo_artifact_entry
 from etl.manifest import _dedupe_key, _validate_entry, load_manifest
 from etl.normalize import CANONICAL_COLUMNS, normalize_resultados
-from etl.sources import V1_DATASETS
+from etl.sources import CENSO_DATASETS, V1_DATASETS
 from etl.validate import run_gates
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -383,8 +384,17 @@ _SERVED_AGG_NAMES = ("resumo.json", "por_uf.json", "por_candidato.json")
 
 
 def _served_files(web_data_dir: Path) -> list[Path]:
-    """JSONs servidos presentes no dir público: trio + fato_* existentes."""
+    """JSONs servidos presentes no dir público: trio + fato_* + Censo.
+
+    `censo_municipios.json` (EVOLVE-7 Task 1, `{ibge7: pop}` do
+    `etl.censo.ingerir_censo`) é preservado pelo staging como os demais
+    servidos; a atribuição de proveniência acontece em
+    `_artifact_entries_for` (fonte do Censo, nunca fan-out TSE).
+    """
     files = [web_data_dir / name for name in _SERVED_AGG_NAMES]
+    censo = web_data_dir / CENSO_ARTIFACT_FILENAME
+    if censo.is_file():
+        files.append(censo)
     files += sorted(web_data_dir.glob("fato_*.json"))
     return [p for p in files if p.is_file()]
 
@@ -408,8 +418,12 @@ def _artifact_entries_for(web_data_dir: Path, sources: list[dict],
     `sha256`/`size_bytes` medidos dos BYTES servidos; `source_url` é o da
     fonte do dataset (mesma das ingestões). Fato cujo triple não casa com
     as fontes do build é ignorado (não é artefato oficial deste build).
+    `censo_municipios.json` (EVOLVE-7 Task 1) ganha 1 entry ÚNICA com a
+    fonte do Censo (`CENSO_DATASETS[0]`, via o construtor compartilhado
+    de `etl.censo` — sem fork de contrato), nunca fan-out TSE.
     """
     by_pair = {(s["ano"], str(s["cargo"]).upper()): s for s in sources}
+    censo_meta = CENSO_DATASETS[0]
     entries = []
     for path in _served_files(web_data_dir):
         # Guarda S8707: só lê bytes servidos de dentro do dir declarado
@@ -417,6 +431,10 @@ def _artifact_entries_for(web_data_dir: Path, sources: list[dict],
         _dentro_de(path, web_data_dir)
         raw = path.read_bytes()
         sha = hashlib.sha256(raw).hexdigest()
+        if path.name == CENSO_ARTIFACT_FILENAME:
+            entries.append(build_censo_artifact_entry(
+                raw, path.name, dataset=censo_meta, data_iso=today))
+            continue
         if path.name.startswith("fato_"):
             triple = _fato_triple_from_name(path.name)
             if triple is None:
