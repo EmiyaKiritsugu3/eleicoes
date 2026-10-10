@@ -52,3 +52,20 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 ## PR-GREEN iteração 4 (2026-10-10 ~04:00 UTC)
 - 2 findings frescos do re-review CodeRabbit: (1) mismatch transitório fato/selo no ?fato= — fix setFato(null) + teste jsdom de transição (RED sem fix confirmado); (2) gate fixture da rota vs contrato do componente — julgado: sugestão procede, rota alinhada via vereditoTemProva() + testes.
 - Local: pytest 95 + vitest 262/15 + tsc + build OK.
+
+## PR-GREEN completo (2026-10-10 ~04:10 UTC)
+- Merge PR #2 (merge commit 47d6895): CI verde ×2, GitGuardian + CodeRabbit + cubic pass, zero findings pós-lote.
+- Branch motor-verdade deletada local; main atualizada.
+
+## EVOLVE-1: auditoria de melhorias (iniciada)
+- Conhecidos pendentes: mapa clicável na Home (gap spec §3); ingest real Censo (URL pendente); verificação com-fato-real; T2 dup/phantom-id; minors do ledger final.
+
+## EVOLVE-1 completo (final review: Merge Yes)
+- 6/6 tasks + revisão final limpa; nenhum MUST-FIX; minors → EVOLVE-2 backlog.
+
+## EVOLVE-1 pós-review: Sonar + cubic + CodeRabbit (2026-10-10 ~14:40 UTC)
+- Sonar gate: duplicação 4.2%→1.7% OK (helper DV compartilhado); restou só Security Rating C (6× S8707 path-traversal em build_marts.py).
+- Ruling (autorizado pelo usuário): won't-fix com justificativa nos 6 issues — ETL batch local, paths dos args do próprio operador (só auto-ataque); mitigação runtime `_dentro_de` + 8 testes TDD; motor de taint não reconhece sanitizer custom. Chaves: AaEj-mP2BIquHGRj1Xcc/cd, AaEj62gSVyNZiS698IBr/Bo/Bp/Bq. Revisitar se os paths forem remotamente alcançáveis. Ação via API direta (MCP sonarqube-mcp-server 1.10.21 com bug no endpoint markIssueWontFix — "issue parameter missing"; reportar upstream).
+- cubic 23 issues triadas: 13 corrigidas (commit 054b5da, review Approved), 10 diferidas → EVOLVE-2.
+- CodeRabbit MAJOR (9 IBGEs oficiais fora do mod-10, confirmado na API oficial: 5571 municípios, exatamente 9 falham) corrigido com allowlist + teste (commit 9ebb6fb, review Approved); final pass sem achados novos.
+- Sonar MCP instalado (sonarqube-mcp-server@1.10.21, org emiyakiritsugu3) — token no config OpenCode.

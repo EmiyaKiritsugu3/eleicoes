@@ -23,9 +23,15 @@ def test_normalize_latin1_and_missing_ibge():
     import pandas as pd
     # município sem IBGE correspondente deve ser mantido com flag para exibir "sem dado oficial" no mapa
     df = pd.DataFrame([{"ANO_ELEICAO": 2022, "DS_CARGO": "PRESIDENTE", "SG_UF": "SP", "CD_MUNICIPIO": "9999999", "NM_URNA": "Y", "QT_VOTOS": 5}])
-    out = normalize_resultados(df)
-    assert out.iloc[0]["municipio_ibge"] == "9999999"
-    assert "sem_ibge" not in out.columns and out.iloc[0]["municipio_ibge"] == "9999999"
+    with __import__("pytest").warns(UserWarning, match="IBGE"):
+        out = normalize_resultados(df)
+    # "9999999" é fictício (DV mod-10 6≠9): a LINHA é mantida, mas o código
+    # é branqueado p/ "" — o join downstream erra p/ "sem dado oficial"
+    # (intenção original preservada) e os votos seguem intactos.
+    assert len(out) == 1
+    assert out.iloc[0]["municipio_ibge"] == ""
+    assert int(out.iloc[0]["votos"]) == 5
+    assert "sem_ibge" not in out.columns
 
 
 def test_missing_votos_column_raises(tmp_path=None):

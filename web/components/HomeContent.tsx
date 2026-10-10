@@ -77,6 +77,10 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   const cands = useMemo(() => filtrarCandidatos(porCand, f), [porCand, f]);
   const maxEv = ev.reduce((m, r) => Math.max(m, r.votos), 0);
   const semDados = !resumo || res.vazio || resumo.total_linhas === 0;
+  // Loading honesto (Task 5): fetch pendente mostra "a carregar" com
+  // role="status" nas seções de dados; SEM_DADO só após resolve.
+  // Seções estáticas (biblioteca, abstenção) não dependem de fetch.
+  const carregando = !manifestChecked;
   const badge = <SealSlot seal={seal} />;
   const candidatoAtivo = (f.candidato ?? "").trim() !== "";
   // Alerta honesto sem depender de CSS externo (M4-web): fundo/borda inline.
@@ -130,7 +134,9 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
       <section aria-label="Resumo">
         <h2>Resumo</h2>
         {candidatoAtivo && <p role="note">{NOTA_CANDIDATO_GLOBAL}</p>}
-        {semDados ? (
+        {carregando ? (
+          <p role="status">a carregar…</p>
+        ) : semDados ? (
           <p>{SEM_DADO}</p>
         ) : (
           <ul>
@@ -150,9 +156,12 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         <h2>Mapa por UF (lista v1 — TopoJSON fora do escopo YAGNI)</h2>
         {candidatoAtivo && <p role="note">{NOTA_CANDIDATO_GLOBAL}</p>}
         {badge}
-        {ufs.length === 0 ? (
+        {carregando ? (
+          <p role="status">a carregar…</p>
+        ) : ufs.length === 0 ? (
           <p>{SEM_DADO}</p>
         ) : (
+          <div style={{ overflowX: "auto" }}>
           <table>
             <caption>Votos por UF</caption>
             <thead>
@@ -164,6 +173,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
 
@@ -173,9 +183,12 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
           <p role="note">{NOTA_RANKING_SEM_COBERTURA}</p>
         )}
         {badge}
-        {cands.length === 0 ? (
+        {carregando ? (
+          <p role="status">a carregar…</p>
+        ) : cands.length === 0 ? (
           <p>{SEM_DADO}</p>
         ) : (
+          <div style={{ overflowX: "auto" }}>
           <table>
             <caption>Ranking de candidatos por votos</caption>
             <thead>
@@ -189,13 +202,16 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
 
       <section aria-label="Evolução">
         <h2>Evolução anual</h2>
         {badge}
-        {ev.length === 0 ? (
+        {carregando ? (
+          <p role="status">a carregar…</p>
+        ) : ev.length === 0 ? (
           <p>{SEM_DADO}</p>
         ) : (
           <>
@@ -208,6 +224,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
                 </li>
               ))}
             </ul>
+            <div style={{ overflowX: "auto" }}>
             <table>
               <caption>Evolução anual de votos (tabela equivalente)</caption>
               <thead>
@@ -219,6 +236,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
                 ))}
               </tbody>
             </table>
+            </div>
           </>
         )}
       </section>

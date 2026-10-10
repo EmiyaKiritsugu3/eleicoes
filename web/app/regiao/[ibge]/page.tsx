@@ -37,6 +37,10 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
 
   useEffect(() => {
     let vivo = true;
+    // Loading honesto a cada ?fato=: volta a "a carregar" no início do run
+    // e só libera o painel após o fetch do fato assentar (sem isso, o
+    // setFato(null) intermediário exibia SEM_DADO transitório).
+    setManifestChecked(false);
     (async () => {
       const manifest = await fetchJson("/data/manifest.json");
       if (!vivo) return;
@@ -44,25 +48,29 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
       // Selo ligado ao dataset selecionado: ?fato= sem registro auditado
       // falha fechado (sem oficial), nunca com hash de outra ingestão.
       setSeal(getSealParaDataset(manifest, ds));
-      setManifestChecked(true);
       setDataset(ds);
       // Limpa o fato anterior ANTES de buscar o novo: sem isso, a troca de
       // ?fato= exibiria transitoriamente números do dataset antigo sob o
       // selo do novo. Fail-closed também no transiente.
       setFato(null);
+      let f: FatoRegiao | null = null;
       if (ds) {
-        const f = await fetchJson<FatoRegiao>(`/data/${ds}.json`);
+        f = await fetchJson<FatoRegiao>(`/data/${ds}.json`);
         if (!vivo) return;
-        setFato(f);
-      } else {
-        setFato(null);
       }
+      setFato(f);
+      setManifestChecked(true);
     })();
     return () => {
       vivo = false;
     };
   }, [fatoParam]);
 
+  // Loading honesto (Task 5): manifest pendente mostra "a carregar"
+  // com role="status"; SEM_DADO do painel só após resolve.
+  if (!manifestChecked) {
+    return <p role="status">a carregar…</p>;
+  }
   return <PainelRegiao ibge={ibge} fato={fato} seal={seal} manifestChecked={manifestChecked} fatoDataset={dataset} />;
 }
 

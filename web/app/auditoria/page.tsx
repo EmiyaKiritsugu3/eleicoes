@@ -110,6 +110,7 @@ export default function Auditoria() {
         ) : ingestions.length === 0 ? (
           <p>{SEM_DADO} — nenhuma ingestão registrada no manifest</p>
         ) : (
+          <div style={{ overflowX: "auto" }}>
           <table>
             <caption>Ingestões do manifest com fonte, hash, linhas e data</caption>
             <thead>
@@ -178,6 +179,7 @@ export default function Auditoria() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </section>
 

@@ -9,6 +9,7 @@ from datetime import date, datetime, timezone
 
 import pytest
 
+from etl import ETL_VERSION
 from etl.build_marts import build_all
 from etl.manifest import verify_manifest
 
@@ -120,3 +121,114 @@ def test_manifest_carries_date_and_version(tmp_path):
     assert len(entries) == 1
     assert date.fromisoformat(entries[0]["data"]) <= datetime.now(timezone.utc).date()
     assert entries[0]["etl_version"] == "1.1.0"
+
+
+def _load_seed_module():
+    """Carrega scripts/seed_fixture_data.py sem exigir pacote `scripts`."""
+    import importlib.util
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[2]
+    spec = importlib.util.spec_from_file_location(
+        "seed_fixture_data", repo_root / "scripts" / "seed_fixture_data.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_served_artifacts_have_hash_entries(tmp_path):
+    """build_all registra 1 entry `sha_origin: "artifact"` por JSON servido.
+
+    Cada entry carrega o sha256 dos BYTES do arquivo + `size_bytes`, com
+    `source_url` da mesma fonte do dataset; o espelho público inclui as
+    entries e o rebuild não as duplica.
+    """
+    import hashlib
+
+    curated = tmp_path / "curated"
+    _seed(curated)
+    manifest = tmp_path / "m.json"
+    webdata = tmp_path / "webdata"
+    build_all(curated, tmp_path / "t.duckdb", manifest,
+              web_data_dir=webdata)
+    canonical = json.loads(manifest.read_text(encoding="utf-8"))
+    artifacts = canonical.get("artifacts", [])
+    served = ["resumo.json", "por_uf.json", "por_candidato.json"]
+    assert len(artifacts) == len(served)
+    by_file = {a["arquivo"]: a for a in artifacts}
+    assert sorted(by_file) == sorted(served)
+    source_url = _manifest_entries(manifest)[0]["source_url"]
+    for name in served:
+        raw = (webdata / name).read_bytes()
+        entry = by_file[name]
+        assert entry["sha_origin"] == "artifact"
+        assert entry["sha256"] == hashlib.sha256(raw).hexdigest()
+        assert entry["size_bytes"] == len(raw)
+        assert entry["source_url"] == source_url
+        assert date.fromisoformat(entry["data"]) <= datetime.now(timezone.utc).date()
+        assert entry["etl_version"] == ETL_VERSION
+    # Ingestões de origem intactas (artifact vive em chave própria).
+    assert len(canonical["ingestions"]) == 1
+    # Espelho público idêntico ao canônico (com artifacts).
+    mirrored = json.loads((webdata / "manifest.json").read_text(encoding="utf-8"))
+    assert mirrored == canonical
+    # Rebuild idempotente: artifacts reescritos, nunca duplicados.
+    build_all(curated, tmp_path / "t.duckdb", manifest,
+              web_data_dir=webdata)
+    again = json.loads(manifest.read_text(encoding="utf-8"))
+    assert again["artifacts"] == artifacts
+    assert len(again["ingestions"]) == 1
+
+
+def test_seed_artifact_entries(tmp_path):
+    """seed() registra artifacts do trio + fato_*, todos fixture:true."""
+    import hashlib
+
+    mod = _load_seed_module()
+    manifest_path = tmp_path / "manifest.json"
+    webdata = tmp_path / "webdata"
+    mod.seed(manifest_path, webdata)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    artifacts = manifest.get("artifacts", [])
+    names = sorted(a["arquivo"] for a in artifacts)
+    assert names == ["fato_2022_1_presidente.json", "por_candidato.json",
+                     "por_uf.json", "resumo.json"]
+    for entry in artifacts:
+        assert entry.get("fixture") is True
+        assert entry["sha_origin"] == "artifact"
+        raw = (webdata / entry["arquivo"]).read_bytes()
+        assert entry["sha256"] == hashlib.sha256(raw).hexdigest()
+        assert entry["size_bytes"] == len(raw)
+
+
+def test_registro_manifest_com_dotdot_levanta(tmp_path):
+    """register_served_artifacts com `..` no manifest levanta sem escrever (S8707)."""
+    from etl.build_marts import register_served_artifacts
+
+    with pytest.raises(ValueError, match="bloqueado"):
+        register_served_artifacts(tmp_path / "a" / ".." / "m.json",
+                                  tmp_path / "webdata", [])
+    assert not (tmp_path / "m.json").exists()
+    assert [p for p in tmp_path.rglob("*.tmp")] == []
+
+
+def test_artefato_symlink_fora_do_web_dir_levanta(tmp_path):
+    """fato_*.json com symlink p/ fora do web_data_dir é bloqueado (S8707)."""
+    import hashlib
+
+    from etl.build_marts import _artifact_entries_for
+    from etl.sources import V1_DATASETS
+
+    webdata = tmp_path / "webdata"
+    webdata.mkdir()
+    (webdata / "resumo.json").write_text("{}", encoding="utf-8")
+    fora = tmp_path / "fora.json"
+    fora.write_text("{}", encoding="utf-8")
+    (webdata / "fato_2022_1_presidente.json").symlink_to(fora)
+    fonte = [e for e in V1_DATASETS
+             if e["ano"] == 2022 and str(e["cargo"]).upper() == "PRESIDENTE"]
+    assert fonte
+    with pytest.raises(ValueError, match="fora da raiz"):
+        _artifact_entries_for(webdata, fonte, "2022-01-01")
+    assert hashlib.sha256(fora.read_bytes()) is not None  # alvo externo intacto

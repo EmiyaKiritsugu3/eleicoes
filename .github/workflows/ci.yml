@@ -1,6 +1,7 @@
 # CI do SAD Eleições — custo zero (runners gratuitos ubuntu-latest, sem serviços pagos).
 #
-# Passo de dados (obrigatório): web/public/data/*.json é gitignored, então o
+# Passo de dados (obrigatório): web/public/data/*.json é gitignored via
+# web/.gitignore, então o
 # checkout vem sem dados. scripts/seed_fixture_data.py gera a amostra
 # sintética determinística pelo caminho REAL do ETL (etl.build_marts.build_all),
 # sem download do TSE. Sem esse passo, o front mostra "dado não auditado"
@@ -9,7 +10,17 @@ name: ci
 
 on:
   push:
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
   pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   ci:
@@ -35,6 +46,9 @@ jobs:
       - name: Assert motor fixtures (Censo + fato before web tests)
         run: |
           test -f web/public/data/fato_2022_1_presidente.json
+          test -f web/public/data/resumo.json
+          test -f web/public/data/por_uf.json
+          test -f web/public/data/por_candidato.json
           python -c "import json; m=json.load(open('web/public/data/manifest.json')); ts={e.get('tipo') for e in m['ingestions']}; assert 'censo_ibge_2022' in ts and 'fato_municipal' in ts, ts"
 
       - name: Setup Node

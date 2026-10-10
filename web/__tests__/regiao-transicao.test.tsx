@@ -95,9 +95,10 @@ describe("troca de ?fato= nunca exibe dado antigo sob selo novo", () => {
     await act(async () => {});
 
     const meio = el!.textContent ?? "";
-    // Selo novo já aplicado...
-    expect(meio).toContain("b".repeat(8));
-    // ...mas números do dataset antigo sumiram (nada de A) e B ainda não chegou.
+    // #17: transição cobre tudo com loading honesto — sem selo e sem
+    // números no transiente (nem do dataset antigo, nem do novo).
+    expect(meio).toMatch(/a carregar/i);
+    expect(el!.querySelector('[role="status"]')).not.toBeNull();
     expect(meio).not.toContain("Cand A");
     expect(meio).not.toContain("Cand C");
 

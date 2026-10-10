@@ -24,6 +24,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import MapaBrasil from "./MapaBrasil";
 import SealSlot from "./SealSlot";
 import SourceBadge from "./SourceBadge";
+import CopyShare from "./CopyShare";
 import {
   ECO_SEAL,
   NOTA_PESO_MISTO,
@@ -628,6 +629,7 @@ export function ExplorarConteudo({
                   </svg>
                 </figure>
               )}
+              <div style={{ overflowX: "auto" }}>
               <table>
                 <caption>Share médio por quintil de {sel.cruzar}</caption>
                 <thead>
@@ -647,6 +649,7 @@ export function ExplorarConteudo({
                   ))}
                 </tbody>
               </table>
+              </div>
             </>
           )}
         </section>
@@ -659,6 +662,7 @@ export function ExplorarConteudo({
           {!coberto || ranking.length === 0 ? (
             <p role="alert" style={ALERTA_STYLE}>{SEM_DADO} — sem cobertura neste recorte</p>
           ) : (
+            <div style={{ overflowX: "auto" }}>
             <table>
               <caption>Top municípios por share</caption>
               <thead>
@@ -678,6 +682,7 @@ export function ExplorarConteudo({
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </section>
       )}
@@ -706,6 +711,7 @@ export function ExplorarConteudo({
                 n = {perfil.nMun} municípios · {perfil.nEleitores} eleitores (peso:{" "}
                 {perfil.pesoFonte})
               </p>
+              <div style={{ overflowX: "auto" }}>
               <table>
                 <caption>Médias ponderadas vs Brasil</caption>
                 <thead>
@@ -733,6 +739,7 @@ export function ExplorarConteudo({
                   ))}
                 </tbody>
               </table>
+              </div>
             </>
           )}
         </section>
@@ -759,7 +766,7 @@ export function ExplorarConteudo({
         <h2>Export reproduzível</h2>
         {badge}
         <p>
-          URL compartilhável: <code>{shareUrl}</code>
+          <CopyShare url={shareUrl} />
         </p>
       </section>
     </>

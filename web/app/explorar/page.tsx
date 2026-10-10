@@ -44,6 +44,9 @@ export default function Explorar() {
     const q = parseExplorarQuery(window.location.search);
     setInitial(q);
     setUrlHash(q.hash ?? "");
+    // Loading honesto até o fato assentar: manifestChecked só após o fetch
+    // do fato (antes, fato=null exibia SEM_DADO transitório).
+    setManifestChecked(false);
     (async () => {
       const manifest = await fetchJson("/data/manifest.json");
       let fatoParam = "";
@@ -54,8 +57,8 @@ export default function Explorar() {
       }
       const dataset = fatoDatasetDe(manifest, fatoParam);
       setSeal(getSealParaDataset(manifest, dataset));
-      setManifestChecked(true);
       setFato(dataset ? await fetchJson<FatoRegiao>(`/data/${dataset}.json`) : null);
+      setManifestChecked(true);
     })();
   }, []);
 
@@ -75,12 +78,16 @@ export default function Explorar() {
           hash da URL diverge do manifest atual — revalide a fonte antes de citar
         </p>
       )}
-      <ExplorarConteudo
-        fato={fato}
-        seal={seal}
-        initial={initial ?? SEL_VAZIA}
-        key={initial ? JSON.stringify(initial) : "vazio"}
-      />
+      {!manifestChecked ? (
+        <p role="status">a carregar…</p>
+      ) : (
+        <ExplorarConteudo
+          fato={fato}
+          seal={seal}
+          initial={initial ?? SEL_VAZIA}
+          key={initial ? JSON.stringify(initial) : "vazio"}
+        />
+      )}
     </>
   );
 }

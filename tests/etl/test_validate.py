@@ -174,10 +174,7 @@ def test_gate_empty_totals_dict_fails_closed(tmp_path):
 
 
 def test_garbage_votes_fail_gates_e2e(tmp_path):
-    import warnings
-
     from etl.build_marts import build_all
-    from etl.validate import run_gates
 
     curated = tmp_path / "curated"
     curated.mkdir()
@@ -193,8 +190,9 @@ def test_garbage_votes_fail_gates_e2e(tmp_path):
     with pytest.raises(RuntimeError, match="gates reprovados") as excinfo:
         build_all(str(curated), str(db), str(manifest), web_data_dir=tmp_path / "webdata")
     assert "soma" in str(excinfo.value), f"esperava erro de soma, veio: {excinfo.value}"
-    # O DB parcial persiste; gates externos independentes veem o mesmo erro.
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", UserWarning)
-        errors = run_gates(db, manifest_path=manifest)
-    assert any("soma" in e for e in errors), f"esperava erro de soma, veio: {errors}"
+    # EVOLVE-1 Task 4 (stage-then-promote): falha de gate deleta só o
+    # staging — primeiro build falho não publica nada (sem DB parcial).
+    assert not db.exists()
+    assert not manifest.exists()
+    assert not (tmp_path / "webdata" / "resumo.json").exists()
+    assert not (tmp_path / "webdata" / "manifest.json").exists()

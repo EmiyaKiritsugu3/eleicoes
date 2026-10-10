@@ -244,3 +244,170 @@ def test_seed_censo_entry_date_is_pinned(tmp_path):
         mod.seed(d / "manifest.json", d / "webdata")
         dates.append(_censo_entry_date(d / "manifest.json"))
     assert dates[0] == dates[1] == "2022-01-01"
+
+
+# --- EVOLVE-1 Task 4: stage-then-promote ---
+
+def _snapshot_public(curated, db, manifest, webdata):
+    """Bytes públicos pós-build-bom: partições, DB, manifest + JSONs."""
+    snap = {}
+    snap["partitions"] = {
+        str(p.relative_to(curated)): p.read_bytes()
+        for p in sorted(curated.rglob("*.parquet"))
+    }
+    snap["db"] = Path(db).read_bytes()
+    snap["manifest"] = Path(manifest).read_bytes()
+    snap["web"] = {
+        p.name: p.read_bytes()
+        for p in sorted(Path(webdata).iterdir()) if p.is_file()
+    }
+    return snap
+
+
+def _assert_public_intact(snap, curated, db, manifest, webdata):
+    current = _snapshot_public(curated, db, manifest, webdata)
+    assert current == snap
+
+
+def _staging_paths(curated, db, manifest, webdata):
+    return [Path(f"{p}.tmp") for p in (curated, db, manifest, webdata)]
+
+
+def _assert_no_staging(curated, db, manifest, webdata):
+    leftovers = [p for p in _staging_paths(curated, db, manifest, webdata)
+                 if p.exists() or p.is_symlink()]
+    assert leftovers == []
+
+
+def test_gate_failure_keeps_previous_outputs(tmp_path):
+    """Build bom -> snapshot; build ruim -> RuntimeError + públicos intactos.
+
+    Stage-then-promote: gates rodam contra o DB staged; a falha deleta só
+    o staging — Parquet particionado, DuckDB, JSONs e manifest anteriores
+    seguem byte-idênticos.
+    """
+    curated, db, manifest, webdata = _novo_caso(tmp_path)
+    build_all(curated, db, manifest, web_data_dir=webdata)
+    assert _total_votos(db) == 15
+    snap = _snapshot_public(curated, db, manifest, webdata)
+    (curated / "raw.csv").write_text(_BAD_VOTOS_CSV, encoding="utf-8")
+    with pytest.raises(RuntimeError, match="gates reprovados"):
+        build_all(curated, db, manifest, web_data_dir=webdata)
+    assert _total_votos(db) == 15
+    _assert_public_intact(snap, curated, db, manifest, webdata)
+    _assert_no_staging(curated, db, manifest, webdata)
+
+
+def test_stale_staging_cleaned(tmp_path):
+    """.tmp obsoleto pré-existente (crash anterior) nunca promove parcial.
+
+    Build bom sucede, o staging obsoleto é descartado (sem restos `.tmp`)
+    e as saídas refletem só os dados atuais.
+    """
+    curated, db, manifest, webdata = _novo_caso(tmp_path)
+    for stale in _staging_paths(curated, db, manifest, webdata):
+        if stale.name.endswith(".duckdb.tmp") or stale.name.endswith(".json.tmp"):
+            stale.parent.mkdir(parents=True, exist_ok=True)
+            stale.write_bytes(b"staging-obsoleto")
+        else:
+            stale.mkdir(parents=True, exist_ok=True)
+            (stale / "junk.txt").write_text("staging-obsoleto", encoding="utf-8")
+    build_all(curated, db, manifest, web_data_dir=webdata)
+    assert _total_votos(db) == 15
+    assert json.loads((webdata / "resumo.json").read_text(encoding="utf-8"))[
+        "total_votos"] == 15
+    assert len(_ingestions(manifest)) == 1
+    _assert_no_staging(curated, db, manifest, webdata)
+    assert list(curated.rglob("junk.txt")) == []
+    assert list(webdata.rglob("junk.txt")) == []
+
+
+# --- Guarda S8707 (path traversal): alvos derivados confinados à raiz declarada ---
+
+def _novo_caso(tmp_path, csv=_CSV):
+    """Setup padrão dos testes de stage-then-promote (sem duplicar boilerplate)."""
+    curated = tmp_path / "curated"
+    curated.mkdir()
+    (curated / "raw.csv").write_text(csv, encoding="utf-8")
+    return curated, tmp_path / "t.duckdb", tmp_path / "m.json", tmp_path / "webdata"
+
+
+def test_remove_path_fora_da_raiz_levanta(tmp_path):
+    """_remove_path fora da raiz declarada levanta ValueError sem deletar (S8707)."""
+    from etl.build_marts import _remove_path
+
+    alvo = tmp_path / "canario.txt"
+    alvo.write_text("intacto", encoding="utf-8")
+    with pytest.raises(ValueError, match="fora da raiz"):
+        _remove_path(alvo, tmp_path / "outra-raiz")
+    assert alvo.read_text(encoding="utf-8") == "intacto"
+
+
+def test_remove_path_com_dotdot_levanta(tmp_path):
+    """`..` no alvo é bloqueado antes de qualquer unlink (fail-closed, S8707)."""
+    from etl.build_marts import _remove_path
+
+    with pytest.raises(ValueError, match="bloqueado"):
+        _remove_path(tmp_path / "a" / ".." / "evil.txt", tmp_path)
+
+
+def test_promote_com_dotdot_levanta_e_preserva(tmp_path):
+    """_promote com `..` no staging levanta sem renomear nada (S8707)."""
+    from etl.build_marts import _promote
+
+    alvo = tmp_path / "alvo.txt"
+    alvo.write_text("publico", encoding="utf-8")
+    with pytest.raises(ValueError, match="bloqueado"):
+        _promote(tmp_path / "sub" / ".." / "evil.tmp", alvo)
+    assert alvo.read_text(encoding="utf-8") == "publico"
+    assert not (tmp_path / "alvo.txt.prev").exists()
+
+
+def test_build_all_com_dotdot_no_curated_levanta_sem_efeito(tmp_path):
+    """curated com `..` levanta ValueError antes de criar/deletar (S8707)."""
+    canario = tmp_path / "canario.txt"
+    canario.write_text("intacto", encoding="utf-8")
+    travessia = tmp_path / "a" / ".." / "evil"
+    with pytest.raises(ValueError, match="bloqueado"):
+        build_all(travessia, tmp_path / "t.duckdb", tmp_path / "m.json",
+                  web_data_dir=tmp_path / "webdata")
+    assert not (tmp_path / "evil").exists()
+    assert [p for p in tmp_path.rglob("*.tmp")] == []
+    assert [p for p in tmp_path.rglob("*.prev")] == []
+    assert canario.read_text(encoding="utf-8") == "intacto"
+
+
+# --- #13: fato staged sem proveniência nunca promove hashless (fail-closed) ---
+
+def test_fato_sem_proveniencia_nao_promove(tmp_path):
+    """fato_*.json obsoleto no web_dir não aparece no webdata promovido.
+
+    O staging copia o web_dir inteiro (incl. fato_*); triple sem match
+    nas fontes do build não gera entry de hash — o arquivo precisa ser
+    podado do staging, não promovido sem hash.
+    """
+    curated, db, manifest, webdata = _novo_caso(tmp_path)
+    webdata.mkdir()
+    (webdata / "fato_1999_1_presidente.json").write_text(
+        '{"obsoleto": true}', encoding="utf-8")
+    build_all(curated, db, manifest, web_data_dir=webdata)
+    assert not (webdata / "fato_1999_1_presidente.json").exists()
+    assert (webdata / "resumo.json").exists()
+    entries = json.loads(Path(manifest).read_text(encoding="utf-8")).get(
+        "artifacts", [])
+    arquivos = {e.get("arquivo") for e in entries}
+    assert "fato_1999_1_presidente.json" not in arquivos
+
+
+def test_fato_com_proveniencia_promove_com_hash(tmp_path):
+    """fato_*.json com triple casando as fontes promove e ganha entry."""
+    curated, db, manifest, webdata = _novo_caso(tmp_path)
+    webdata.mkdir()
+    (webdata / "fato_2022_1_presidente.json").write_text(
+        '{"candidatos": [], "municipios": []}', encoding="utf-8")
+    build_all(curated, db, manifest, web_data_dir=webdata)
+    assert (webdata / "fato_2022_1_presidente.json").exists()
+    entries = json.loads(Path(manifest).read_text(encoding="utf-8")).get(
+        "artifacts", [])
+    arquivos = {e.get("arquivo") for e in entries}
+    assert "fato_2022_1_presidente.json" in arquivos

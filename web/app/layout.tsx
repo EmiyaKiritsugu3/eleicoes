@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import React from "react";
 
 export const metadata: Metadata = {
   title: "SAD Eleições — resultados auditados",
@@ -13,6 +14,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <nav aria-label="Principal" style={{ display: "flex", gap: "1rem" }}>
             <a href="/">Início</a>
             <a href="/analisar">Analisar</a>
+            <a href="/explorar">Explorar</a>
+            <a href="/perguntas">Perguntas</a>
+            <a href="/verificar">Verificar</a>
             <a href="/metodologia">Metodologia</a>
             <a href="/auditoria">Auditoria</a>
           </nav>

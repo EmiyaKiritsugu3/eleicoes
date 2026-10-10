@@ -19,12 +19,13 @@ header IBGE/SIDRA por município (case-insensitive) e devolve o schema canônico
 from __future__ import annotations
 
 import re
-import warnings
 from datetime import datetime, timezone
 
 import pandas as pd
 
 from etl import ETL_VERSION
+from etl.ibge_dv import dv_ok as _dv_ok  # re-export p/ compat + teste de deduplicação
+from etl.ibge_dv import validar_serie_ibge
 from etl.manifest import write_manifest
 from etl.sources import CENSO_DATASETS
 
@@ -132,15 +133,8 @@ def normalize_censo(df: pd.DataFrame) -> pd.DataFrame:
         .str.replace(r"\.0$", "", regex=True)
         .str.replace(r"\D", "", regex=True)
     )
-    bad = ~digits.str.fullmatch(r"\d{7}").fillna(False)
-    n_bad = int(bad.sum())
-    if n_bad:
-        warnings.warn(
-            f"normalize_censo: {n_bad} codigo(s) IBGE fora do padrao "
-            "de 7 digitos descartados (vazio)",
-            UserWarning,
-            stacklevel=2,
-        )
+    # DV (ver etl/ibge_dv.py — fonte única; regra mod-10 no 7º dígito).
+    bad = validar_serie_ibge(digits, "normalize_censo")
     out["ibge7"] = digits.where(~bad, "").str.zfill(7).replace("0000000", "")
     out["ibge7"] = out["ibge7"].astype("string")
 
