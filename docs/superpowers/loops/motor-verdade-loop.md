@@ -141,3 +141,6 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
   - `pytest tests/ -q` → 202 passed, 1 skipped em 15.50s (wall ~15s).
   - `(cd web && npm test)` → 26 arquivos, 447/447 passed, vitest Duration 2.55s (wall ~3s).
 - (Futuros ciclos: anexar novas linhas abaixo neste formato — comando, resultado, wall.)
+
+## EVOLVE-8 completo (final review: Merge Yes)
+- 6/6 tasks + revisão final limpa; minors (PainelRegiao fetch cru, Verificar share) → EVOLVE-9 micros.
