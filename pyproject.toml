@@ -8,6 +8,9 @@ dependencies = ["requests>=2.31", "pandas>=2", "pyarrow>=14", "duckdb>=1"]
 [project.optional-dependencies]
 test = ["pytest>=8", "pyyaml>=6"]
 
+[project.scripts]
+sad-etl = "etl.__main__:main"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
