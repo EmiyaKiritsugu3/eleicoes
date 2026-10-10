@@ -198,6 +198,42 @@ def test_censo_manifest_registers_date_and_version(tmp_path):
     assert entries[0]["etl_version"] == "1.1.0"
 
 
+def test_register_censo_ingest_data_injetavel(tmp_path):
+    """EVOLVE-6 Task 4 (RED): `data=` injetável p/ testes determinísticos.
+
+    Default (sem `data`) = hoje UTC (comportamento idêntico ao legado);
+    com `data=` fixa, a entry e o manifest gravam exatamente ela.
+    """
+    from etl.censo import register_censo_ingest
+
+    confirmed = {
+        "url": "https://ftp.ibge.gov.br/Censos/Censo_Demografico_2022/confirmado.zip",
+        "ano": 2022,
+        "nome": "censo_demografico_2022_municipios",
+        "dataset": "https://www.ibge.gov.br/estatisticas/sociais/populacao/22827-censo-demografico-2022.html",
+    }
+    manifest = tmp_path / "m.json"
+    entry = register_censo_ingest(
+        str(manifest), rows=1, sha256="ab" * 32,
+        dataset=confirmed, data="2022-09-01")
+    assert entry["data"] == "2022-09-01"
+    import json
+
+    gravado = json.loads(manifest.read_text(encoding="utf-8"))["ingestions"]
+    assert gravado[0]["data"] == "2022-09-01"
+
+
+def test_register_censo_ingest_data_default_hoje_utc(tmp_path):
+    """EVOLVE-6 Task 4 (RED): sem `data=`, default = hoje UTC (idêntico)."""
+    from datetime import datetime, timezone
+
+    from etl.censo import register_censo_ingest
+
+    entry = register_censo_ingest(
+        str(tmp_path / "m.json"), rows=1, sha256="ab" * 32)
+    assert entry["data"] == datetime.now(timezone.utc).date().isoformat()
+
+
 def test_idade_media_nao_vira_mediana():
     """IDADE_MEDIA (média) não pode alimentar idade_mediana (mediana)."""
     from etl.censo import normalize_censo

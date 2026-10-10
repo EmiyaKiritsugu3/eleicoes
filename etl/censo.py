@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import re
 import zipfile
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -205,7 +205,8 @@ def check_censo_sum(df: pd.DataFrame, total_oficial) -> list[str]:
     return []
 
 
-def register_censo_ingest(manifest_path, rows=None, sha256=None, dataset=None) -> dict:
+def register_censo_ingest(manifest_path, rows=None, sha256=None, dataset=None,
+                          data=None) -> dict:
     """Registra a ingestão do Censo no manifest; devolve a entry.
 
     `dataset` default = primeira entrada de `CENSO_DATASETS` (Censo 2022).
@@ -213,6 +214,9 @@ def register_censo_ingest(manifest_path, rows=None, sha256=None, dataset=None) -
     `etl.fetch.download_dataset`); a validação fail-closed acontece em
     `write_manifest` (Task 6). URL ausente (None/vazia) levanta `ValueError`
     — nunca se registra proveniência sem fonte baixável.
+    `data` é injetável p/ testes determinísticos (Task 4 EVOLVE-6):
+    default None = hoje UTC (ISO yyyy-mm-dd, comportamento idêntico);
+    com valor, grava-o como está (str) ou o ISO da data/datetime.
     """
     entry_meta = dataset if isinstance(dataset, dict) else CENSO_DATASETS[0]
     url = entry_meta.get("url")
@@ -221,10 +225,18 @@ def register_censo_ingest(manifest_path, rows=None, sha256=None, dataset=None) -
             "censo dataset sem url (None/vazia); ingestão bloqueada — "
             "sem dado oficial"
         )
+    if data is None:
+        data_iso = datetime.now(timezone.utc).date().isoformat()
+    elif isinstance(data, datetime):
+        data_iso = data.date().isoformat()
+    elif isinstance(data, date):
+        data_iso = data.isoformat()
+    else:
+        data_iso = str(data)
     entry = {
         "source_url": url,
         "sha256": sha256,
-        "data": datetime.now(timezone.utc).date().isoformat(),
+        "data": data_iso,
         "etl_version": ETL_VERSION,
         "dataset": entry_meta["dataset"],
         "ano": entry_meta["ano"],

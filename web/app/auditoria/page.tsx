@@ -2,11 +2,11 @@
 
 import React, { useEffect, useState } from "react";
 import { ArtifactsTable } from "../../components/ArtifactsTable";
+import { FontesCell } from "../../components/FontesCell";
 import SourceBadge from "../../components/SourceBadge";
 import FixtureBadge from "../../components/FixtureBadge";
 import {
   entryDate,
-  fontesDaEntrada,
   getArtifacts,
   getOfficialAuditInfo,
   isAudited,
@@ -158,21 +158,7 @@ export default function Auditoria() {
                       {isFixtureEntry(e) && <FixtureBadge />}
                     </td>
                     <td>
-                      {(() => {
-                        const fontes = fontesDaEntrada(e);
-                        if (fontes.length === 0) return SEM_DADO;
-                        return (
-                          <ul>
-                            {fontes.map((f, j) => (
-                              <li key={`${f}#${j}`}>
-                                <a href={f} target="_blank" rel="noreferrer">
-                                  {f}
-                                </a>
-                              </li>
-                            ))}
-                          </ul>
-                        );
-                      })()}
+                      <FontesCell entry={e} />
                     </td>
                     <td>{conjunto}</td>
                     <td>

@@ -125,6 +125,30 @@ describe("auditoria fontes (EVOLVE-5 Task 5)", () => {
   });
 });
 
+describe("auditoria Fontes cell-render (EVOLVE-6 Task 4)", () => {
+  const TSE = "https://dadosabertos.tse.jus.br/dataset-x";
+  const IBGE =
+    "https://www.ibge.gov.br/estatisticas/sociais/populacao/22827-censo-demografico-2022.html";
+  it("linha com fontes duplas renderiza 2 links", async () => {
+    const { FontesCell } = await import("../components/FontesCell");
+    const html = renderToStaticMarkup(
+      <table><tbody><tr><FontesCell entry={{ source_url: TSE, fontes: [TSE, IBGE] }} /></tr></tbody></table>,
+    );
+    expect(html).toContain(`href="${TSE}"`);
+    expect(html).toContain(`href="${IBGE}"`);
+    expect((html.match(/<a /g) ?? []).length).toBe(2);
+  });
+  it("linha sem fonte renderiza SEM_DADO, nunca link", async () => {
+    const { FontesCell } = await import("../components/FontesCell");
+    const { SEM_DADO } = await import("../lib/textos");
+    const html = renderToStaticMarkup(
+      <table><tbody><tr><FontesCell entry={{}} /></tr></tbody></table>,
+    );
+    expect(html).toContain(SEM_DADO);
+    expect(html).not.toContain("<a ");
+  });
+});
+
 describe("auditoria artifacts (EVOLVE-2 Task 1)", () => {
   it("getArtifacts devolve só entries com arquivo+hash, na ordem do manifest", async () => {
     const { getArtifacts } = await import("../lib/data");
