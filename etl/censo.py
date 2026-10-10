@@ -23,6 +23,9 @@ header IBGE/SIDRA por município (case-insensitive) e devolve o schema canônico
 
 from __future__ import annotations
 
+import hashlib
+import json
+import os
 import re
 import zipfile
 from datetime import date, datetime, timezone
@@ -34,8 +37,14 @@ import pandas as pd
 
 from etl import ETL_VERSION, fetch
 from etl.ibge_dv import validar_serie_ibge
-from etl.manifest import write_manifest
+from etl.manifest import _validate_artifact_entry, write_manifest
 from etl.sources import CENSO_DATASETS, TOTAL_CENSO_2022
+
+# Nome servido do artefato {ibge7: pop} (EVOLVE-7 Task 1): mesmo
+# contrato hash dos agregados de `etl.build_marts` (sha256 dos bytes
+# + `size_bytes` + `data` ISO, validado por `_validate_artifact_entry`
+# — sem fork de contrato).
+CENSO_ARTIFACT_FILENAME = "censo_municipios.json"
 
 CANONICAL_CENSO_COLUMNS = [
     "ibge7",
@@ -216,7 +225,8 @@ def register_censo_ingest(manifest_path, rows=None, sha256=None, dataset=None,
     — nunca se registra proveniência sem fonte baixável.
     `data` é injetável p/ testes determinísticos (Task 4 EVOLVE-6):
     default None = hoje UTC (ISO yyyy-mm-dd, comportamento idêntico);
-    com valor, grava-o como está (str) ou o ISO da data/datetime.
+    str ISO yyyy-mm-dd, date ou datetime são gravados como ISO;
+    int/lixo levantam `ValueError` fail-closed (nunca persistem).
     """
     entry_meta = dataset if isinstance(dataset, dict) else CENSO_DATASETS[0]
     url = entry_meta.get("url")
@@ -236,8 +246,19 @@ def register_censo_ingest(manifest_path, rows=None, sha256=None, dataset=None,
             data_iso = data.date().isoformat()
     elif isinstance(data, date):
         data_iso = data.isoformat()
+    elif isinstance(data, str):
+        try:
+            data_iso = date.fromisoformat(data.strip()).isoformat()
+        except ValueError:
+            raise ValueError(
+                f"register_censo_ingest: data inválida ({data!r}) — "
+                "esperado ISO yyyy-mm-dd, date ou datetime (sem dado oficial)"
+            )
     else:
-        data_iso = str(data)
+        raise ValueError(
+            f"register_censo_ingest: data inválida ({data!r}) — "
+            "esperado ISO yyyy-mm-dd, date ou datetime (sem dado oficial)"
+        )
     entry = {
         "source_url": url,
         "sha256": sha256,
@@ -253,15 +274,202 @@ def register_censo_ingest(manifest_path, rows=None, sha256=None, dataset=None,
     return entry
 
 
+def build_censo_artifact_map(df: pd.DataFrame) -> dict:
+    """`{ibge7: pop}` ordenável a partir do df normalizado (EVOLVE-7 Task 1).
+
+    Linhas sem `ibge7` ou com `pop` nulo são puladas (determinístico):
+    com o gate da soma verde elas não existem — sem gate (uso isolado),
+    pular evita `null` no artefato servido em vez de número inventado.
+    """
+    mapa = {}
+    try:
+        pares = zip(df["ibge7"].tolist(), df["pop"].tolist())
+    except (KeyError, AttributeError, TypeError):
+        return {}
+    for ibge, pop in pares:
+        chave = "" if ibge is None else str(ibge).strip()
+        if not chave:
+            continue
+        try:
+            if pd.isna(pop):
+                continue
+        except (TypeError, ValueError):
+            continue
+        mapa[chave] = int(pop)
+    return mapa
+
+
+def build_censo_artifact_entry(raw: bytes, arquivo=CENSO_ARTIFACT_FILENAME,
+                               dataset=None, data_iso=None) -> dict:
+    """Entry `artifacts` do Censo sob o MESMO contrato hash dos servidos.
+
+    `sha256`/`size_bytes` medidos dos BYTES servidos, `source_url` do
+    dataset do Censo, `data` ISO + `etl_version` como as ingestões.
+    Validada por `_validate_artifact_entry` (fail-closed, sem fork:
+    o mesmo validador de `etl.manifest`). `dataset` default =
+    `CENSO_DATASETS[0]`; `data_iso` default = hoje UTC.
+    """
+    entry_meta = dataset if isinstance(dataset, dict) else CENSO_DATASETS[0]
+    url = entry_meta.get("url")
+    if not url:
+        raise ValueError(
+            "artefato do Censo sem url (None/vazia); emissão bloqueada — "
+            "sem dado oficial"
+        )
+    if data_iso is None:
+        data_iso = datetime.now(timezone.utc).date().isoformat()
+    entry = {
+        "source_url": url,
+        "sha256": hashlib.sha256(bytes(raw)).hexdigest(),
+        "sha_origin": "artifact",
+        "data": str(data_iso),
+        "etl_version": ETL_VERSION,
+        "dataset": entry_meta.get("dataset"),
+        "ano": entry_meta.get("ano"),
+        "nome": entry_meta.get("nome"),
+        "arquivo": str(arquivo),
+        "size_bytes": len(bytes(raw)),
+    }
+    _validate_artifact_entry(entry)  # fail-closed antes de devolver
+    return entry
+
+
+def _dentro_de(path, root) -> Path:
+    """Resolve `path` e exige continência ESTRITA sob `root` (fail-closed).
+
+    Espelha `etl/build_marts.py::_dentro_de` (guarda S8707) por cópia
+    deliberada, NÃO por import: `etl.build_marts` importa deste módulo
+    (`CENSO_ARTIFACT_FILENAME`, `build_censo_artifact_entry`) e importar
+    de volta fecharia um ciclo `build_marts ↔ censo`. Mesma semântica:
+    `..` lexical, absoluto fora da raiz ou escape via symlink levantam
+    `ValueError` ANTES de qualquer mutação no fs. Devolve o caminho
+    resolvido.
+    """
+    bruto = os.fspath(path)
+    raiz = os.fspath(root)
+    if ".." in Path(bruto).parts or ".." in Path(raiz).parts:
+        raise ValueError(
+            "censo: caminho com '..' bloqueado "
+            f"(path={bruto!r}, raiz={raiz!r})"
+        )
+    p = Path(bruto).resolve()
+    r = Path(raiz).resolve()
+    if r not in p.parents:
+        raise ValueError(
+            "censo: caminho fora da raiz esperada "
+            f"(path={bruto!r}, raiz={raiz!r})"
+        )
+    return p
+
+
+def write_censo_artifact(df: pd.DataFrame, out_path) -> dict:
+    """Escreve `{ibge7: pop}` canônico em `out_path` (escrita atômica).
+
+    Serialização determinística (`indent=2`, chaves ordenadas — o
+    `sort_keys=True` faz parte do hash servido e NÃO pode ser trocado
+    pelo `json.dump(..., indent=2)` sem sort de `_write_json_atomico`:
+    além dos bytes mudarem, importar o helper de `etl.build_marts`
+    fecharia um ciclo `build_marts ↔ censo`). Guarda S8707 espelhada
+    (ver `_dentro_de`): o `.tmp` precisa resolver sob o parent
+    declarado — `..`/escape levanta `ValueError` antes do `mkdir`.
+    Devolve dict com `path`, `raw`, `sha256`, `size_bytes` e `rows`.
+    """
+    mapa = build_censo_artifact_map(df)
+    raw = json.dumps(mapa, ensure_ascii=False, indent=2,
+                     sort_keys=True).encode("utf-8")
+    dest = Path(out_path)
+    tmp = Path(f"{dest}.tmp")
+    _dentro_de(tmp, dest.parent)  # fail-closed antes de qualquer mutação
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with open(tmp, "wb") as f:
+        f.write(raw)
+    os.replace(tmp, dest)
+    return {
+        "path": str(dest),
+        "raw": raw,
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "size_bytes": len(raw),
+        "rows": len(mapa),
+    }
+
+
+def register_censo_artifact(manifest_path, artifact_path, dataset=None,
+                            data_iso=None) -> dict:
+    """Upsert da entry do artefato do Censo em `manifest["artifacts"]`.
+
+    Idempotente por `arquivo`: rebuilds atualizam o hash em vez de
+    duplicar (mesmo padrão do dedupe das ingestões). Fail-closed:
+    manifest ausente levanta `FileNotFoundError` (nunca artefato sem
+    ingestão — `verify_manifest` exige ingestões não-vazias) e
+    corrompido é preservado como `<path>.corrupt.<UTC-ts>` antes de
+    levantar `ValueError`; nada é escrito nesses casos. Guardas S8707
+    de entrada (precedente `_atualizar_manifest_servido` em
+    `etl.build_fato`: guarda primeiro, fs depois): o manifest precisa
+    resolver sob o próprio parent e o artefato ser IRMÃO ESTRITO do
+    manifest (parent resolvido igual — contenção não basta: subdir passa
+    em `_dentro_de` mas a entry grava basename e o verify resolve
+    irmãos) — `..`/escape/não-irmão levantam `ValueError` pt-BR ANTES de
+    qualquer read/rename/escrita.
+    """
+    manifest_file = Path(manifest_path)
+    artefato = Path(artifact_path)
+    _dentro_de(manifest_file, manifest_file.parent)
+    _dentro_de(artefato, manifest_file.parent)
+    if artefato.resolve().parent != manifest_file.resolve().parent:
+        raise ValueError(
+            "censo: artefato fora do dir do manifest bloqueado "
+            f"(artifact_path={os.fspath(artifact_path)!r}) — a entry grava "
+            "basename e o verify resolve irmãos (sem dado oficial)"
+        )
+    try:
+        doc = json.loads(manifest_file.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise FileNotFoundError(
+            "artefato do Censo sem manifest: registre a ingestão antes "
+            f"de atestar bytes ({manifest_file})"
+        )
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+        manifest_file.rename(f"{manifest_file}.corrupt.{stamp}")
+        raise ValueError(
+            "artefato do Censo com manifest corrompido "
+            f"(preservado como .corrupt.{stamp}): {exc}"
+        )
+    if not isinstance(doc, dict):
+        raise ValueError(
+            "artefato do Censo com manifest inválido "
+            f"(esperado objeto JSON em {manifest_file})"
+        )
+    raw = Path(artifact_path).read_bytes()
+    entry = build_censo_artifact_entry(
+        raw, Path(artifact_path).name, dataset=dataset, data_iso=data_iso)
+    artifacts = doc.get("artifacts")
+    if not isinstance(artifacts, list):
+        artifacts = []
+    artifacts = [a for a in artifacts
+                 if not (isinstance(a, dict)
+                         and a.get("arquivo") == entry["arquivo"])] + [entry]
+    doc["artifacts"] = artifacts
+    tmp = Path(f"{manifest_file}.tmp")
+    _dentro_de(tmp, manifest_file.parent)  # S8707, mesma guarda do artefato
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(doc, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, manifest_file)
+    return entry
+
+
 def ingerir_censo(duckdb_path, manifest_path, url=None, raw_dir=None,
-                  dataset=None) -> dict:
+                  dataset=None, artifact_path=None, data=None) -> dict:
     """Baixa o zip REAL do Censo IBGE e materializa `dim_municipio`.
 
     Pipeline: `fetch.download_dataset(url)` (backoff/UA/resume/teto — sem
     reimplementar) → extrai o CSV de municípios do zip → `normalize_censo`
     → gate `TOTAL_CENSO_2022` fail-closed → `dim_municipio` no DuckDB →
-    `register_censo_ingest` no manifest. Devolve dict com `zip_path`,
-    `zip_bytes`, `sha256`, `rows`, `csv_name`, `duckdb` e `entry`.
+    `censo_municipios.json` (`{ibge7: pop}`, EVOLVE-7 Task 1) →
+    `register_censo_ingest` + entry `artifacts` no manifest. Devolve dict
+    com `zip_path`, `zip_bytes`, `sha256`, `rows`, `csv_name`, `duckdb`,
+    `entry`, `artifact_path`, `artifact_sha256`, `artifact_bytes`,
+    `artifact_rows` e `artifact_entry`.
 
     `url` default = `url` da entrada (`dataset` ou `CENSO_DATASETS[0]`);
     ausente/None/vazia levanta `ValueError` antes de qualquer IO (sem dado
@@ -271,7 +479,13 @@ def ingerir_censo(duckdb_path, manifest_path, url=None, raw_dir=None,
     `;`-separado em latin1 (formato confirmado no FTP em 2026-10-10);
     header sem coluna de município levanta `ValueError` via
     `normalize_censo`. O gate da soma reprova ANTES de qualquer escrita —
-    `duckdb_path`/`manifest_path` intocados (nunca dim sem total auditado).
+    `duckdb_path`/`manifest_path`/artefato intocados (nunca dim nem
+    `{ibge7: pop}` sem total auditado). `artifact_path` default =
+    `<dir do manifest>/censo_municipios.json` (irmão do manifest, único
+    que `verify_manifest` atesta byte a byte); explícito fora do dir do
+    manifest levanta `ValueError` fail-closed (a entry grava basename e
+    o verify resolve irmãos). `data` é repassado à
+    ingestão e ao artefato (mesmo dia, sem flake de meia-noite).
     Custo zero: só stdlib + deps já declaradas (requests/pandas/duckdb).
     """
     entry_meta = dataset if isinstance(dataset, dict) else CENSO_DATASETS[0]
@@ -281,6 +495,21 @@ def ingerir_censo(duckdb_path, manifest_path, url=None, raw_dir=None,
             "ingerir_censo: url pendente/ausente, ingestão bloqueada "
             "(sem dado oficial)"
         )
+    manifest_p = Path(manifest_path)
+    if artifact_path is not None:
+        # Fail-closed (gatefix PR#9): a entry grava só o basename e o
+        # verify resolve irmãos do manifest — artefato fora do dir seria
+        # atestado contra o arquivo errado. Comparação canônica
+        # (`resolve`): `..` que permanece dentro continua válido.
+        alvo = Path(artifact_path)
+        if alvo.resolve().parent != manifest_p.resolve().parent:
+            raise ValueError(
+                "ingerir_censo: artifact_path fora do dir do manifest "
+                f"bloqueado (artifact_path={os.fspath(artifact_path)!r}, "
+                f"manifest={os.fspath(manifest_path)!r}) — o artefato precisa "
+                "ser irmão do manifest p/ `verify_manifest` atestá-lo "
+                "(sem dado oficial)"
+            )
     base = Path(raw_dir) if raw_dir is not None else fetch.RAW_ROOT
     nome_zip = (
         unquote(urlparse(src_url).path.rsplit("/", 1)[-1])
@@ -318,10 +547,16 @@ def ingerir_censo(duckdb_path, manifest_path, url=None, raw_dir=None,
         )
     finally:
         con.close()
-    manifest_p = Path(manifest_path)
     manifest_p.parent.mkdir(parents=True, exist_ok=True)
     entry = register_censo_ingest(
-        str(manifest_p), rows=len(df), sha256=sha, dataset=entry_meta)
+        str(manifest_p), rows=len(df), sha256=sha, dataset=entry_meta,
+        data=data)
+    artefato = (Path(artifact_path) if artifact_path is not None
+                else manifest_p.parent / CENSO_ARTIFACT_FILENAME)
+    gravado = write_censo_artifact(df, artefato)
+    artifact_entry = register_censo_artifact(
+        str(manifest_p), gravado["path"], dataset=entry_meta,
+        data_iso=entry["data"])
     return {
         "zip_path": str(dest),
         "zip_bytes": zip_bytes,
@@ -330,4 +565,9 @@ def ingerir_censo(duckdb_path, manifest_path, url=None, raw_dir=None,
         "csv_name": membro.filename.rsplit("/", 1)[-1],
         "duckdb": str(db_path),
         "entry": entry,
+        "artifact_path": gravado["path"],
+        "artifact_sha256": gravado["sha256"],
+        "artifact_bytes": gravado["size_bytes"],
+        "artifact_rows": gravado["rows"],
+        "artifact_entry": artifact_entry,
     }

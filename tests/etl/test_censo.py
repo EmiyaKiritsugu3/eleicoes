@@ -274,6 +274,50 @@ def test_register_censo_ingest_data_datetime_consciente_vira_utc(tmp_path):
     assert entry2["data"] == "2022-09-01"
 
 
+def test_register_censo_ingest_data_iso_fail_closed(tmp_path):
+    """EVOLVE-7 Task 4 (RED): int/lixo → ValueError fail-closed, nada persiste.
+
+    Mantidos: str-ISO/date/datetime gravam o ISO; default = hoje UTC.
+    """
+    from datetime import date, datetime, timezone
+
+    from etl.censo import register_censo_ingest
+
+    confirmed = {
+        "url": "https://ftp.ibge.gov.br/Censos/Censo_Demografico_2022/confirmado.zip",
+        "ano": 2022,
+        "nome": "censo_demografico_2022_municipios",
+        "dataset": "https://www.ibge.gov.br/estatisticas/sociais/populacao/22827-censo-demografico-2022.html",
+    }
+    # Mantidos: str-ISO / date / datetime.
+    manifest = tmp_path / "m.json"
+    assert register_censo_ingest(
+        str(manifest), rows=1, sha256="ab" * 32,
+        dataset=confirmed, data="2022-09-01")["data"] == "2022-09-01"
+    assert register_censo_ingest(
+        str(tmp_path / "m2.json"), rows=1, sha256="ab" * 32,
+        dataset=confirmed, data=date(2022, 9, 1))["data"] == "2022-09-01"
+    assert register_censo_ingest(
+        str(tmp_path / "m3.json"), rows=1, sha256="ab" * 32,
+        dataset=confirmed,
+        data=datetime(2022, 9, 1, 12, 0))["data"] == "2022-09-01"
+    # Default idêntico: hoje UTC.
+    antes = datetime.now(timezone.utc).date()
+    entry = register_censo_ingest(
+        str(tmp_path / "m4.json"), rows=1, sha256="ab" * 32,
+        dataset=confirmed)
+    depois = datetime.now(timezone.utc).date()
+    assert antes <= date.fromisoformat(entry["data"]) <= depois
+    # Fail-closed: int/lixo nunca persistem.
+    for lixo in (20220901, 3.14, True, "", "  ", "01/09/2022",
+                 "2022-13-01", "nao-data", ["2022-09-01"], {"data": "2022-09-01"},
+                 object()):
+        with pytest.raises(ValueError):
+            register_censo_ingest(
+                str(tmp_path / f"lixo_{abs(hash(repr(lixo))) % 10**8}.json"),
+                rows=1, sha256="ab" * 32, dataset=confirmed, data=lixo)
+
+
 def test_idade_media_nao_vira_mediana():
     """IDADE_MEDIA (média) não pode alimentar idade_mediana (mediana)."""
     from etl.censo import normalize_censo

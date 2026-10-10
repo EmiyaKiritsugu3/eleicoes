@@ -240,6 +240,92 @@ describe("nota de pesos mistos inclui o baseline", () => {
   });
 });
 
+describe("População real do Censo no ramo UF (EVOLVE-7 Task 3)", () => {
+  // Mapa com RJ extra p/ distinguir soma da UF (SP: 12345+6789=19134) do
+  // baseline Brasil (19134+1000=20134).
+  const CENSO_UF = { "3550308": 12345, "3550309": 6789, "3304557": 1000 };
+  const FATO_UF: FatoRegiao = {
+    candidatos: CANDIDATOS,
+    municipios: [
+      mun("3550308", "SP", [600, 400], demoCompleta(), 1000),
+      mun("3550309", "SP", [100, 900], demoCompleta({ esc_sup: 20 }), 1000),
+      mun("3304557", "RJ", [100, 900], demoCompleta(), 1000),
+    ],
+  };
+  it("UF agrega pop dos municípios (soma) + baseline Brasil + votos intactos", () => {
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="SP" fato={FATO_UF} seal={SEAL_OFICIAL} manifestChecked censo={CENSO_UF} />,
+    );
+    const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+    expect(perfil).toContain("População (Censo 2022)");
+    expect(perfil).toContain("19.134"); // soma SP, nunca demo fixture
+    expect(perfil).toContain("Brasil:");
+    expect(perfil).toContain("20.134"); // baseline = soma do mapa inteiro
+    expect(perfil).toContain(ECO_SEAL); // eco-seal mantido
+    expect(html).toContain("Cand B"); // votos da UF intactos (700 x 1300)
+    expect(html).toContain("Votos do vencedor: 1.300"); // B: 400+900, pt-BR
+  });
+  it("UF sem censo: pop em SEM_DADO (fail-closed, sem número inventado)", () => {
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="SP" fato={FATO_UF} seal={SEAL_OFICIAL} manifestChecked censo={null} />,
+    );
+    const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+    expect(perfil).toContain("População (Censo 2022)");
+    const linha = (perfil.split("População (Censo 2022)")[1] ?? "").split("</li>")[0];
+    expect(linha).toContain("sem dado oficial");
+  });
+  it("totalUFCenso: soma só os IBGEs da UF; vazio/ausente -> null", async () => {
+    const { totalUFCenso } = await import("../components/PainelRegiao");
+    expect(totalUFCenso(CENSO_UF, ["3550308", "3550309"])).toBe(19134);
+    expect(totalUFCenso(CENSO_UF, ["3304557"])).toBe(1000);
+    expect(totalUFCenso(CENSO_UF, ["9999999"])).toBe(null);
+    expect(totalUFCenso(CENSO_UF, [])).toBe(null);
+    expect(totalUFCenso(null, ["3550308"])).toBe(null);
+  });
+  it("fato null + Censo: UF agrega do mapa (fato-independente, nunca SEM_DADO)", () => {
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="SP" fato={null} seal={SEAL_NULO} manifestChecked censo={CENSO_UF} />,
+    );
+    const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+    expect(perfil).toContain("População (Censo 2022)");
+    expect(perfil).toContain("19.134"); // soma SP das chaves do mapa, sem fato
+    expect(perfil).toContain(ECO_SEAL);
+  });
+  it("fato parcial: UF soma o mapa inteiro (sem subestimar pelo fato)", () => {
+    const fatoParcial: FatoRegiao = {
+      candidatos: CANDIDATOS,
+      municipios: [mun("3550308", "SP", [600, 400], demoCompleta(), 1000)],
+    };
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="SP" fato={fatoParcial} seal={SEAL_OFICIAL} manifestChecked censo={CENSO_UF} />,
+    );
+    const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+    const linha = (perfil.split("População (Censo 2022)")[1] ?? "").split("</li>")[0];
+    expect(linha).toContain("19.134"); // 12345+6789 do mapa, não só o 3550308 do fato
+  });
+  it("chave UF ausente no mapa soma só o presente (sem fallback, UF)", () => {
+    const censoFalha = { "3550308": 12345, "3304557": 1000 }; // 3550309 sem par
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="SP" fato={FATO_UF} seal={SEAL_OFICIAL} manifestChecked censo={censoFalha} />,
+    );
+    const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+    const linha = (perfil.split("População (Censo 2022)")[1] ?? "").split("</li>")[0];
+    expect(linha).toContain("12.345");
+    expect(linha).not.toContain("19.134"); // soma parcial honesta, sem completar
+  });
+  it("popUFNoCenso/ibgesDaUFNoCenso: agrega pelas chaves do mapa (prefixo IBGE→UF)", async () => {
+    const { popUFNoCenso, ibgesDaUFNoCenso } = await import("../components/PainelRegiao");
+    expect(ibgesDaUFNoCenso(CENSO_UF, "SP").sort()).toEqual(["3550308", "3550309"]);
+    expect(ibgesDaUFNoCenso(CENSO_UF, "RJ")).toEqual(["3304557"]);
+    expect(ibgesDaUFNoCenso(CENSO_UF, "MG")).toEqual([]);
+    expect(ibgesDaUFNoCenso(null, "SP")).toEqual([]);
+    expect(popUFNoCenso(CENSO_UF, "SP")).toBe(19134);
+    expect(popUFNoCenso(CENSO_UF, "RJ")).toBe(1000);
+    expect(popUFNoCenso(CENSO_UF, "MG")).toBe(null);
+    expect(popUFNoCenso(null, "SP")).toBe(null);
+  });
+});
+
 describe("fatoDatasetDe (?fato= com allowlist)", () => {
   const MANIFEST = {
     ingestions: [{ tipo: "fato_municipal", dataset: "fato_2022_1_presidente" }],
@@ -528,5 +614,90 @@ describe("vereditoTemProva (portão de veredito da rota /verificar)", () => {
       vereditoTemProva({ official: { hash: "AB".repeat(32), url: "u", date: "d" }, hasFixture: false, fixtureHash: "" }),
     ).toBe(true);
     expect(vereditoTemProva({ official: null, hasFixture: true, fixtureHash: "ef".repeat(32) })).toBe(true);
+  });
+});
+
+describe("População real do Censo (EVOLVE-7 Task 2)", () => {
+  // Mapa mínimo no shape do artefato `censo_municipios.json` ({ibge7: pop}):
+  // 12345 + 6789 = 19134 de baseline Brasil.
+  const CENSO = { "3550308": 12345, "3550309": 6789 };
+  const FATO_POP_REAL: FatoRegiao = {
+    candidatos: CANDIDATOS,
+    municipios: [
+      mun(
+        "3550308",
+        "SP",
+        [600, 400],
+        {
+          ...demoCompleta(),
+          esc_sup: null,
+          esc_med: null,
+          esc_fund: null,
+          renda_media: null,
+          pobres_pct: null,
+          idade_mediana: null,
+          urbanizacao: null,
+        },
+        1000,
+      ),
+    ],
+  };
+  function linhaPop(perfil: string): string {
+    return (perfil.split("População (Censo 2022)")[1] ?? "").split("</li>")[0];
+  }
+  it("demo pop-real (esc_* null): número pop + SEM_DADO no resto + votos intactos", () => {
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="3550308" fato={FATO_POP_REAL} seal={SEAL_OFICIAL} manifestChecked censo={CENSO} />,
+    );
+    const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+    expect(perfil).toContain("População (Censo 2022)");
+    expect(perfil).toContain("12.345"); // pop do artefato, nunca demo fixture
+    expect(perfil).toContain("Brasil:");
+    expect(perfil).toContain("19.134"); // baseline = soma do mapa
+    expect(linhaPop(perfil)).not.toContain("sem dado oficial"); // sem SEM_DADO espúrio na pop
+    expect(perfil).toContain("sem dado oficial"); // SEM_DADO no resto (esc/renda/pobres)
+    expect(html).toContain("Cand A"); // votos intactos
+    expect(html).toContain("600");
+    expect(perfil).toContain(ECO_SEAL); // eco-seal mantido
+  });
+  it("fato-independent: sem fato, pop real renderiza com eco-seal", () => {
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="3550308" fato={null} seal={SEAL_NULO} manifestChecked censo={CENSO} />,
+    );
+    expect(html).toContain("População (Censo 2022)");
+    expect(html).toContain("12.345");
+    expect(html).toContain(ECO_SEAL);
+  });
+  it("censo ausente: pop em SEM_DADO (fail-closed, sem número inventado)", () => {
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="3550308" fato={FATO} seal={SEAL_OFICIAL} manifestChecked censo={null} />,
+    );
+    const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+    expect(perfil).toContain("População (Censo 2022)");
+    expect(linhaPop(perfil)).toContain("sem dado oficial");
+  });
+  it("pop sem par no mapa nunca cai p/ demo.pop fixture nem baseline (município)", () => {
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="3550308" fato={FATO} seal={SEAL_OFICIAL} manifestChecked censo={{}} />,
+    );
+    const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+    const linha = linhaPop(perfil);
+    expect(linha).toContain("sem dado oficial");
+    expect(linha).not.toContain("12.000"); // demo.pop fixture do FATO nunca vaza
+  });
+  it("helpers do artefato: parse fail-closed + baseline soma do mapa", async () => {
+    const { parseCensoMapa, popNoCenso, totalBrasilCenso } = await import(
+      "../components/PainelRegiao"
+    );
+    expect(parseCensoMapa({ "3550308": 12345 })).toEqual({ "3550308": 12345 });
+    expect(parseCensoMapa(null)).toBe(null);
+    expect(parseCensoMapa([])).toBe(null);
+    expect(parseCensoMapa("3550308")).toBe(null);
+    expect(popNoCenso({ "3550308": 12345 }, "3550308")).toBe(12345);
+    expect(popNoCenso(null, "3550308")).toBe(null);
+    expect(popNoCenso({ "3550308": 12345 }, "9999999")).toBe(null);
+    expect(totalBrasilCenso({ a: 10, b: 20 })).toBe(30);
+    expect(totalBrasilCenso(null)).toBe(null);
+    expect(totalBrasilCenso({})).toBe(null);
   });
 });

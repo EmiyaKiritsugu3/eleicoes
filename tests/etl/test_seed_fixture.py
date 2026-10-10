@@ -122,3 +122,28 @@ def test_remover_fatos_nao_fixture_unidade(tmp_path):
     module._remover_fatos_nao_fixture(webdata, "fato_2022_1_presidente.json")
     assert not (webdata / "fato_2018_2_governador.json").exists()
     assert (webdata / "fato_2022_1_presidente.json").exists()
+
+
+def test_seed_emite_censo_servido_atestado(tmp_path):
+    """EVOLVE-7 T1 fix (seam seed/fresh-deploy): o seed emite o artefato
+    fixture `{ibge7: pop}` direto no web_data_dir antes do recalc — sem
+    passo manual, o deploy fresco serve pop (não SEM_DADO)."""
+    import hashlib
+
+    module = _load_seed()
+
+    manifest_path = tmp_path / "manifest.json"
+    webdata = tmp_path / "webdata"
+    module.seed(manifest_path, webdata)
+    raw = (webdata / "censo_municipios.json").read_bytes()
+    assert json.loads(raw.decode("utf-8")) == {
+        "3550308": 10000, "3304557": 12000}
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    entries = [a for a in manifest.get("artifacts", [])
+               if a.get("arquivo") == "censo_municipios.json"]
+    assert len(entries) == 1
+    assert entries[0]["sha256"] == hashlib.sha256(raw).hexdigest()
+    assert entries[0]["size_bytes"] == len(raw)
+    assert entries[0].get("fixture") is True
+    mirrored = json.loads((webdata / "manifest.json").read_text(encoding="utf-8"))
+    assert mirrored == manifest

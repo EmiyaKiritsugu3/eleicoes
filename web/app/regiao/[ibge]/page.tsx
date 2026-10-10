@@ -11,9 +11,14 @@
  * (ver `PaginaRegiao` abaixo).
  */
 
-import React, { Suspense, useEffect, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import PainelRegiao, { type FatoRegiao } from "../../../components/PainelRegiao";
+import PainelRegiao, {
+  CENSO_URL,
+  parseCensoMapa,
+  type CensoMapa,
+  type FatoRegiao,
+} from "../../../components/PainelRegiao";
 import type { SealState } from "../../../lib/data";
 import { fatoDatasetDe, getSealParaDataset } from "../../../lib/regiao";
 
@@ -34,44 +39,140 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
   const [seal, setSeal] = useState<SealState>({ official: null, hasFixture: false, fixtureHash: "" });
   const [manifestChecked, setManifestChecked] = useState(false);
   const [dataset, setDataset] = useState<string | null>(null);
+  // Censo no nível da página (EVOLVE-7 Task 6 follow-up): o PainelRegiao
+  // busca o artefato uma vez no mount quando a prop é omitida — sob
+  // rotação de manifest, a pop ia stale. A página detém o mapa e o repassa
+  // via a prop `censo` existente (seam determinístico p/ SSR/testes, sem
+  // fetch no Painel); null inicial = fail-closed idêntico ao self-fetch
+  // pendente (SEM_DADO transitório, nunca número inventado).
+  const [censo, setCenso] = useState<CensoMapa | null>(null);
+  // Trigger vivo de rotação (mesmo padrão do `aoRetomar` da Home, Task 6):
+  // `seloRef` é a verdade comparável fora do closure (o effect de foco
+  // monta uma vez); `ocupadoRef` evita fetch duplicado com um load em voo;
+  // `fatoParamRef` leva o ?fato= atual ao handler sem re-subscrição.
+  // Matriz de guards (webfix Finding 4, P2 — VERIFICADO: overlap real):
+  // - mesmo run em voo → `ocupadoRef` barra o segundo (sem fetch duplicado);
+  // - run stale (rotação vs mount de outro ?fato=) → `geracaoRef`: publica
+  //   e LIMPA o flag SOMENTE se ainda for o run atual; o finally de um run
+  //   morto nunca solta o flag do dono novo (era o buraco: finally
+  //   incondicional + publish só com `vivo`/param);
+  // - ?fato= trocou no meio do voo → `vivo` (mount) / `fatoParamRef`
+  //   (rotação) barram o publish cruzado.
+  const seloRef = useRef<string | null>(null);
+  const ocupadoRef = useRef(false);
+  const geracaoRef = useRef(0);
+  const fatoParamRef = useRef(fatoParam);
+  fatoParamRef.current = fatoParam;
+
+  // Núcleo puro de leitura (sem setState): manifest → dataset+selo → fato.
+  // O Censo viaja separado (`buscarCenso`, webfix Finding 2): artefato
+  // lento não segura o painel atrás do loader — o fato assentado renderiza
+  // e a pop preenche quando chega. O gate é o mesmo de antes (helpers de
+  // lib/regiao só chamados, nunca alterados); a pop segue
+  // fato-independente com proveniência na entry `artifacts` do Censo (sem
+  // atestação runtime — assunção de confiança documentada em PainelRegiao).
+  const buscarFato = useCallback(async (param: string) => {
+    const manifest = await fetchJson("/data/manifest.json");
+    const ds = fatoDatasetDe(manifest, param);
+    const novoSeal = getSealParaDataset(manifest, ds);
+    const f = ds ? await fetchJson<FatoRegiao>(`/data/${ds}.json`) : null;
+    return { ds, novoSeal, f };
+  }, []);
+  const buscarCenso = useCallback(async () => parseCensoMapa(await fetchJson<unknown>(CENSO_URL)), []);
 
   useEffect(() => {
     let vivo = true;
+    const minha = ++geracaoRef.current;
     // Loading honesto a cada ?fato=: volta a "a carregar" no início do run
     // e só libera o painel após o fetch do fato assentar (sem isso, o
-    // setFato(null) intermediário exibia SEM_DADO transitório).
+    // setFato(null) intermediário exibia SEM_DADO transitório). O Censo
+    // NÃO gateia o painel: corre em paralelo e assenta quando chega.
     setManifestChecked(false);
+    ocupadoRef.current = true;
     (async () => {
-      const manifest = await fetchJson("/data/manifest.json");
-      if (!vivo) return;
-      const ds = fatoDatasetDe(manifest, fatoParam);
-      // Selo ligado ao dataset selecionado: ?fato= sem registro auditado
-      // falha fechado (sem oficial), nunca com hash de outra ingestão.
-      setSeal(getSealParaDataset(manifest, ds));
-      setDataset(ds);
-      // Limpa o fato anterior ANTES de buscar o novo: sem isso, a troca de
-      // ?fato= exibiria transitoriamente números do dataset antigo sob o
-      // selo do novo. Fail-closed também no transiente.
-      setFato(null);
-      let f: FatoRegiao | null = null;
-      if (ds) {
-        f = await fetchJson<FatoRegiao>(`/data/${ds}.json`);
-        if (!vivo) return;
+      try {
+        const r = await buscarFato(fatoParam);
+        if (!vivo || geracaoRef.current !== minha) return;
+        // Selo ligado ao dataset selecionado: ?fato= sem registro auditado
+        // falha fechado (sem oficial), nunca com hash de outra ingestão.
+        setSeal(r.novoSeal);
+        setDataset(r.ds);
+        seloRef.current = JSON.stringify({ ds: r.ds, seal: r.novoSeal });
+        // Limpa o fato anterior ANTES de publicar o novo: sem isso, a troca
+        // de ?fato= exibiria transitoriamente números do dataset antigo sob
+        // o selo do novo. Fail-closed também no transiente. (O censo é
+        // fato-independente: publica direto, sem flash de SEM_DADO.)
+        setFato(null);
+        setFato(r.f);
+        setManifestChecked(true);
+      } finally {
+        if (geracaoRef.current === minha) ocupadoRef.current = false;
       }
-      setFato(f);
-      setManifestChecked(true);
+    })();
+    void (async () => {
+      const c = await buscarCenso();
+      if (vivo && geracaoRef.current === minha) setCenso(c);
     })();
     return () => {
       vivo = false;
+      ocupadoRef.current = false;
     };
-  }, [fatoParam]);
+  }, [fatoParam, buscarFato, buscarCenso]);
+
+  // Rotação de manifest (completa o sync do EVOLVE-6 T6 na /regiao, que não
+  // tinha trigger algum — nem o fato recarregava no foco): re-lê SÓ o
+  // manifest (barato) e só refaz o fetch pesado (fato + Censo) quando o par
+  // dataset+selo mudou — sem fetch duplicado quando inalterado, sem pop
+  // stale após rotação. Troca silenciosa (paridade com a Home): sem
+  // "a carregar", sem limpar o fato atual — os sets assentam juntos.
+  useEffect(() => {
+    const aoRetomar = async () => {
+      if (ocupadoRef.current) return;
+      ocupadoRef.current = true;
+      const minha = ++geracaoRef.current;
+      try {
+        const param = fatoParamRef.current;
+        const manifest = await fetchJson("/data/manifest.json");
+        const ds = fatoDatasetDe(manifest, param);
+        const novoSeal = getSealParaDataset(manifest, ds);
+        if (JSON.stringify({ ds, seal: novoSeal }) === seloRef.current) return;
+        const [f, rawCenso] = await Promise.all([
+          ds ? fetchJson<FatoRegiao>(`/data/${ds}.json`) : Promise.resolve(null),
+          fetchJson<unknown>(CENSO_URL),
+        ]);
+        // ?fato= trocou no meio do load: o effect do novo param recarrega;
+        // este run stale não escreve (nunca número antigo sob selo novo).
+        // Geração idem: run superado por outro load não publica nem limpa.
+        if (fatoParamRef.current !== param || geracaoRef.current !== minha) return;
+        setSeal(novoSeal);
+        setDataset(ds);
+        seloRef.current = JSON.stringify({ ds, seal: novoSeal });
+        setFato(f);
+        setCenso(parseCensoMapa(rawCenso));
+      } finally {
+        if (geracaoRef.current === minha) ocupadoRef.current = false;
+      }
+    };
+    const aoFocar = () => {
+      void aoRetomar();
+    };
+    const aoVisibilidade = () => {
+      if (document.visibilityState === "visible") void aoRetomar();
+    };
+    window.addEventListener("focus", aoFocar);
+    document.addEventListener("visibilitychange", aoVisibilidade);
+    return () => {
+      window.removeEventListener("focus", aoFocar);
+      document.removeEventListener("visibilitychange", aoVisibilidade);
+    };
+  }, []);
 
   // Loading honesto (Task 5): manifest pendente mostra "a carregar"
   // com role="status"; SEM_DADO do painel só após resolve.
   if (!manifestChecked) {
     return <p role="status">a carregar…</p>;
   }
-  return <PainelRegiao ibge={ibge} fato={fato} seal={seal} manifestChecked={manifestChecked} fatoDataset={dataset} />;
+  return <PainelRegiao ibge={ibge} fato={fato} seal={seal} manifestChecked={manifestChecked} fatoDataset={dataset} censo={censo} />;
 }
 
 export default function PaginaRegiao({ params }: { params: { ibge: string } }) {

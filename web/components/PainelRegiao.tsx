@@ -28,6 +28,121 @@ import {
 /** Selo ecológico (spec §7): perfis são SEMPRE de município, nunca de pessoa. */
 export const ECO_SEAL = "dado de município, não de pessoa";
 
+/** Caminho canônico do artefato do Censo servido (EVOLVE-7 Task 2): mesmo
+ *  prefixo `/data/` de resumo/por_uf/fato (arquivo
+ *  `web/public/data/censo_municipios.json`, gitignore como os demais
+ *  servidos). Emissão: `etl.censo.ingerir_censo` escreve direto no served
+ *  dir (sad-etl + seed); `build_all` o preserva no staging e
+ *  `register_served_artifacts` atesta
+ *  os bytes com entry de fonte do Censo (nunca fan-out TSE) — a
+ *  proveniência da pop vive nessa entry `artifacts`, não no gate do fato.
+ *  ASSUNÇÃO DE CONFIANÇA (build-time): o runtime NÃO revalida a entry —
+ *  vale enquanto `/data/` for imutável pós-`register_served_artifacts`
+ *  (qualquer JSON neste path renderiza como fato). Endurecimento futuro:
+ *  checar a entry do Censo no manifest (selo) antes de renderizar.
+ *  Ausente → fetch fail-closed (null) e a linha exibe SEM_DADO. */
+export const CENSO_URL = "/data/censo_municipios.json";
+
+/** Rótulo pt-BR da linha de população real (Censo 2022). */
+export const CENSO_ROTULO = "População (Censo 2022)";
+
+/** Mapa `{ibge7: pop}` do artefato `censo_municipios.json` (Task 1). */
+export type CensoMapa = Record<string, number>;
+
+/** Valida o JSON do artefato: objeto plano com valores numéricos finitos.
+ *  Qualquer outro shape (null, array, string, fetch que devolveu fato) →
+ *  null fail-closed. Valores não-numéricos são descartados por chave
+ *  (nunca viram zero). */
+export function parseCensoMapa(json: unknown): CensoMapa | null {
+  if (!json || typeof json !== "object" || Array.isArray(json)) return null;
+  const mapa: CensoMapa = {};
+  for (const [k, v] of Object.entries(json as Record<string, unknown>)) {
+    if (typeof v === "number" && Number.isFinite(v)) mapa[k] = v;
+  }
+  return mapa;
+}
+
+/** Pop do IBGE no mapa; null sem par ou valor inválido (fail-closed:
+ *  nunca 0 inventado, nunca `demo.pop` fixture do fato). */
+export function popNoCenso(mapa: CensoMapa | null | undefined, ibge: string): number | null {
+  if (!mapa || typeof mapa !== "object") return null;
+  const v = (mapa as Record<string, unknown>)[String(ibge ?? "")];
+  return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null;
+}
+
+/** Baseline Brasil: soma das pops válidas do mapa (padrão das demais
+ *  seções: "(Brasil: …)" inline na mesma linha). Null sem nenhuma pop
+ *  válida — baseline nunca inventado. */
+export function totalBrasilCenso(mapa: CensoMapa | null | undefined): number | null {
+  if (!mapa || typeof mapa !== "object") return null;
+  let soma = 0;
+  let n = 0;
+  for (const v of Object.values(mapa)) {
+    if (typeof v === "number" && Number.isFinite(v) && v > 0) {
+      soma += v;
+      n++;
+    }
+  }
+  return n > 0 ? soma : null;
+}
+
+/** Soma da pop dos IBGEs da UF (ramo agregado UF, Task 3): reusa
+ *  `popNoCenso` por chave (fail-closed por chave, nunca zero inventado).
+ *  Null sem nenhuma pop válida — agregado nunca inventado. */
+export function totalUFCenso(
+  mapa: CensoMapa | null | undefined,
+  ibges: Array<string | number> | null | undefined,
+): number | null {
+  if (!mapa || typeof mapa !== "object" || !Array.isArray(ibges)) return null;
+  let soma = 0;
+  let n = 0;
+  for (const ibge of ibges) {
+    const v = popNoCenso(mapa, String(ibge ?? ""));
+    if (v !== null) {
+      soma += v;
+      n++;
+    }
+  }
+  return n > 0 ? soma : null;
+}
+
+/** Prefixo IBGE de 2 dígitos → sigla UF (códigos estáveis do IBGE).
+ *  FONTE ÚNICA da tabela (webfix Finding 1/6): `HomeContent.ufDeSelecaoMapa`
+ *  importa daqui em vez de forkar — um prefixo, um significado. */
+export const UF_POR_PREFIXO_IBGE: Record<string, string> = {
+  "11": "RO", "12": "AC", "13": "AM", "14": "RR", "15": "PA", "16": "AP", "17": "TO",
+  "21": "MA", "22": "PI", "23": "CE", "24": "RN", "25": "PB", "26": "PE", "27": "AL",
+  "28": "SE", "29": "BA", "31": "MG", "32": "ES", "33": "RJ", "35": "SP",
+  "41": "PR", "42": "SC", "43": "RS", "50": "MS", "51": "MT", "52": "GO", "53": "DF",
+};
+
+/** Chaves IBGE7 do mapa do Censo pertencentes à UF (webfix Finding 1):
+ *  o agregado UF deriva do ARTEFATO (fato-independente), nunca da lista
+ *  de municípios do fato (fato null/parcial subestimava ou zerava).
+ *  Chave fora do shape IBGE7 ou prefixo fora da tabela → ignorada. */
+export function ibgesDaUFNoCenso(
+  mapa: CensoMapa | null | undefined,
+  uf: string,
+): string[] {
+  const alvo = String(uf ?? "").trim().toUpperCase();
+  if (!mapa || typeof mapa !== "object" || alvo === "") return [];
+  const out: string[] = [];
+  for (const k of Object.keys(mapa)) {
+    const m = /^(\d{2})\d{5}$/.exec(k.trim());
+    if (m && UF_POR_PREFIXO_IBGE[m[1]] === alvo) out.push(k);
+  }
+  return out;
+}
+
+/** Pop da UF direto do mapa do Censo (chaves por prefixo IBGE→UF):
+ *  fato-independente — fato null ou parcial não altera a soma. */
+export function popUFNoCenso(
+  mapa: CensoMapa | null | undefined,
+  uf: string,
+): number | null {
+  return totalUFCenso(mapa, ibgesDaUFNoCenso(mapa, uf));
+}
+
 /** Nota honesta quando o motor usou pesos de fallback (ledger: pesoFonte). */
 export const NOTA_PESO_MISTO =
   "nota: pesos mistos — parte dos municípios usa total/pop como aproximação " +
@@ -183,13 +298,54 @@ interface PainelRegiaoProps {
   /** Dataset selecionado (`?fato=` resolvido pela página): preservado no
    *  link "Por quê?" para analisar o pleito exibido, não o default. */
   fatoDataset?: string | null;
+  /** Mapa `{ibge7: pop}` do Censo (artefato servido). `undefined`
+   *  (omitido) → busca client-side de `CENSO_URL` com fail-closed;
+   *  `null`/mapa → valor resolvido (determinístico p/ SSR/testes, sem
+   *  fetch). A pop NUNCA vem de `demo.pop` do fato (fixture). */
+  censo?: CensoMapa | null;
 }
 
-export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDataset }: PainelRegiaoProps) {
+export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDataset, censo }: PainelRegiaoProps) {
   const badge = <SealSlot seal={seal} />;
   const cod = String(ibge ?? "").trim().toUpperCase();
   const ehExterior = cod === "EXTERIOR";
   const ehUF = /^[A-Z]{2}$/.test(cod);
+  // Censo fato-independente: resolve da prop (SSR/testes) ou do fetch
+  // client-side do artefato servido (fail-closed: erro/rede → null).
+  const [censoFetch, setCensoFetch] = React.useState<CensoMapa | null>(null);
+  React.useEffect(() => {
+    if (censo !== undefined) return;
+    let vivo = true;
+    void (async () => {
+      try {
+        const res = await fetch(CENSO_URL, { cache: "no-store" });
+        if (!res.ok) return;
+        const json = await res.json();
+        if (vivo) setCensoFetch(parseCensoMapa(json));
+      } catch {
+        // fail-closed: sem mapa, a linha exibe SEM_DADO (nunca throw)
+      }
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [censo]);
+  const mapa = censo !== undefined ? censo : censoFetch;
+  // Linha da pop real (ramo município + fallbacks fato-independentes; o
+  // agregado UF usa `popUFNoCenso` + mesma linha pt-BR — Task 3).
+  // Baseline Brasil inline, padrão das demais linhas.
+  const pop = popNoCenso(mapa, String(ibge ?? ""));
+  const brasilPop = totalBrasilCenso(mapa);
+  const liPop = (
+    <li>{CENSO_ROTULO}: {pop !== null ? formatVotes(pop) : SEM_DADO} (Brasil: {brasilPop !== null ? formatVotes(brasilPop) : SEM_DADO})</li>
+  );
+  // Agregado UF direto do mapa (webfix Finding 1): deriva das chaves do
+  // artefato por prefixo IBGE→UF — fato null/parcial não zera nem
+  // subestima. Calculado aqui p/ servir o ramo UF E o fallback sem-fato.
+  const popUF = ehUF && !ehExterior ? popUFNoCenso(mapa, cod) : null;
+  const liPopUF = (
+    <li>{CENSO_ROTULO}: {popUF !== null ? formatVotes(popUF) : SEM_DADO} (Brasil: {brasilPop !== null ? formatVotes(brasilPop) : SEM_DADO})</li>
+  );
   // Sufixo ?fato= validado pelo mesmo allowlist da rota (nunca traversal).
   const fatoQ =
     typeof fatoDataset === "string" && isFatoDataset(fatoDataset.trim())
@@ -227,6 +383,11 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
           <h2>Perfil do lugar</h2>
           {badge}
           <p role="note">{ECO_SEAL}</p>
+          {/* Pop fato-independente (proveniência na entry `artifacts` do Censo):
+              sem fato, só a pop real pode aparecer — resto segue SEM_DADO.
+              UF sem fato agrega do mapa (liPopUF); município usa o lookup
+              por IBGE (liPop). Exterior fora do Censo municipal: nada. */}
+          {!ehExterior && <ul>{ehUF ? liPopUF : liPop}</ul>}
           <p>{SEM_DADO}</p>
         </section>
         <section aria-label="Ações">
@@ -240,6 +401,9 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
 
   if (ehUF) {
     const ag = agregarUF(fato.municipios, cod, fato.candidatos);
+    const linhasUF = fato.municipios.filter(
+      (r) => String(r?.uf ?? "").trim().toUpperCase() === cod,
+    );
     if (!ag) {
       return (
         <>
@@ -254,6 +418,7 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
             <h2>Perfil do lugar</h2>
             {badge}
             <p role="note">{ECO_SEAL}</p>
+            <ul>{liPopUF}</ul>
             <p>{SEM_DADO}</p>
           </section>
           <section aria-label="Ações">
@@ -264,9 +429,6 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
         </>
       );
     }
-    const linhasUF = fato.municipios.filter(
-      (r) => String(r?.uf ?? "").trim().toUpperCase() === cod,
-    );
     const perfil = perfilOndeVenceu(linhasUF, {
       candidatoId: ag.vencedorId,
       candidatos: fato.candidatos,
@@ -296,12 +458,16 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
           <p role="note">{ECO_SEAL} — médias de municípios onde {ag.vencedorNome} venceu, nunca de pessoas.</p>
           {(perfil.pesoFonte === "misto" || baseUF.pesoFonte === "misto") && <p role="note">{NOTA_PESO_MISTO}</p>}
           {perfil.nMun === 0 ? (
-            <p>{SEM_DADO}</p>
+            <>
+              <ul>{liPopUF}</ul>
+              <p>{SEM_DADO}</p>
+            </>
           ) : (
             <ul>
               <li>Escolaridade superior: {num(perfil.medias.esc_sup)}% (Brasil: {num(baseUF.vsBrasil.esc_sup)}%)</li>
               <li>Renda média: {renda(perfil.medias.renda_media)} (Brasil: {renda(baseUF.vsBrasil.renda_media)})</li>
               <li>Pobres: {num(perfil.medias.pobres_pct)}% (Brasil: {num(baseUF.vsBrasil.pobres_pct)}%)</li>
+              {liPopUF}
               <li>Municípios onde venceu: {formatVotes(perfil.nMun)}</li>
             </ul>
           )}
@@ -338,6 +504,7 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
           <h2>Perfil do lugar</h2>
           {badge}
           <p role="note">{ECO_SEAL}</p>
+          <ul>{liPop}</ul>
           <p>{SEM_DADO}</p>
         </section>
         <section aria-label="Ações">
@@ -390,12 +557,16 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
         <p role="note">{ECO_SEAL} — médias do município, nunca de pessoas.</p>
         {(perfil.pesoFonte === "misto" || base.pesoFonte === "misto") && <p role="note">{NOTA_PESO_MISTO}</p>}
         {perfil.nMun === 0 ? (
-          <p>{SEM_DADO} — Censo sem par para este município; votos acima intactos</p>
+          <>
+            <ul>{liPop}</ul>
+            <p>{SEM_DADO} — perfil sem par para este município; votos acima intactos</p>
+          </>
         ) : (
           <ul>
             <li>Escolaridade superior: {num(perfil.medias.esc_sup)}% (Brasil: {num(base.vsBrasil.esc_sup)}%)</li>
             <li>Renda média: {renda(perfil.medias.renda_media)} (Brasil: {renda(base.vsBrasil.renda_media)})</li>
             <li>Pobres: {num(perfil.medias.pobres_pct)}% (Brasil: {num(base.vsBrasil.pobres_pct)}%)</li>
+            {liPop}
           </ul>
         )}
       </section>

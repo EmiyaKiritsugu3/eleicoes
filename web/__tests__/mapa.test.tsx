@@ -148,6 +148,32 @@ describe("fiação do clique no <canvas> (jsdom)", () => {
       restorePath();
     }
   });
+  it("transform corrupta: clique não lança e não seleciona (fail-closed)", async () => {
+    const restorePath = mockPath2D();
+    const restoreCtx = mockCanvas2d();
+    mockFetchTopo();
+    try {
+      const onSelectIbge = vi.fn();
+      const div = await renderJsdom(
+        <MapaBrasil malhaUrl="/data/malha.topojson" nivel="uf" onSelectIbge={onSelectIbge} />,
+      );
+      const canvas = div.querySelector("canvas");
+      expect(canvas).not.toBeNull();
+      canvas!.getBoundingClientRect = () =>
+        ({ left: 0, top: 0, width: 400, height: 300, right: 400, bottom: 300, x: 0, y: 0, toJSON: () => {} }) as DOMRect;
+      // Corrompe o dataset após o desenho (JSON inválido + JSON válido não-array).
+      for (const lixo of ["{corrompido", "123"]) {
+        canvas!.dataset.transform = lixo;
+        await act(async () => {
+          canvas!.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 200, clientY: 150 }));
+        });
+        expect(onSelectIbge).not.toHaveBeenCalled();
+      }
+    } finally {
+      restoreCtx();
+      restorePath();
+    }
+  });
 });
 
 describe("malha indisponível usa o mesmo fallback", () => {

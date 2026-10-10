@@ -191,9 +191,20 @@ export default function MapaBrasil({
     const canvas = e.currentTarget;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const t = canvas.dataset.transform
-      ? (JSON.parse(canvas.dataset.transform) as number[])
-      : null;
+    // Transform corrupta (JSON inválido ou não-array) falha fechado: sem
+    // seleção, sem throw — o null-contract do resolver sozinho não basta
+    // (identidade [1,0,0] poderia acertar um município por acaso).
+    let t: number[] | null = null;
+    const raw = canvas.dataset.transform;
+    if (raw) {
+      try {
+        const v: unknown = JSON.parse(raw);
+        if (!Array.isArray(v)) return;
+        t = v as number[];
+      } catch {
+        return;
+      }
+    }
     // Hit-test só no que foi desenhado (zoom UF filtra os vizinhos).
     const lista =
       nivel === "municipio" && ufSelecionada

@@ -210,6 +210,17 @@ def test_censo_real_zip_para_fato_verificavel(tmp_path, monkeypatch):
     pops = [int(r[1]) for r in linhas]
     assert all(len(b) == 7 for b in ibges)
 
+    # --- artefato EVOLVE-7 Task 1: `{ibge7: pop}` com os 5570 municípios ---
+    # Trava contra truncamento silencioso em `build_censo_artifact_map`
+    # (skip de ibge vazio/pop nulo): o verify abaixo prova os bytes, mas
+    # bytes truncados também verificam — só a contagem fecha o buraco.
+    from pathlib import Path
+
+    assert info["artifact_rows"] == 5570
+    artefato = json.loads(Path(info["artifact_path"]).read_bytes().decode("utf-8"))
+    assert len(artefato) == 5570
+    assert sum(artefato.values()) == TOTAL_CENSO_2022
+
     # --- votos sintéticos mínimos sobre municípios REAIS → fato + gates ---
     import pandas as pd
 
@@ -257,6 +268,17 @@ def test_censo_real_zip_para_fato_verificavel(tmp_path, monkeypatch):
     ]
     assert len(censo_entries) == 1
     assert censo_entries[0]["rows"] == 5570
-    with pytest.warns(UserWarning, match="artifacts"):
+    # EVOLVE-7 Task 1: `ingerir_censo` agora atesta `censo_municipios.json`
+    # em `manifest["artifacts"]` (irmão do manifest) — `verify_manifest`
+    # prova os bytes em silêncio, sem o aviso legado de "sem artifacts".
+    doc = json.loads(manifest.read_text(encoding="utf-8"))
+    censo_artifacts = [a for a in doc.get("artifacts", [])
+                       if a.get("arquivo") == "censo_municipios.json"]
+    assert len(censo_artifacts) == 1
+    assert censo_artifacts[0]["source_url"] == CENSO_DATASETS[0]["url"]
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
         assert verify_manifest(str(manifest)) is True
     assert verificar_fato_manifest(str(manifest), out) is True

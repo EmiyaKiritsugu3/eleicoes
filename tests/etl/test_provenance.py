@@ -189,7 +189,7 @@ def test_served_artifacts_have_hash_entries(tmp_path):
 
 
 def test_seed_artifact_entries(tmp_path):
-    """seed() registra artifacts do trio + fato_*, todos fixture:true."""
+    """seed() registra artifacts do trio + fato_* + Censo, todos fixture:true."""
     import hashlib
 
     mod = _load_seed_module()
@@ -199,8 +199,8 @@ def test_seed_artifact_entries(tmp_path):
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     artifacts = manifest.get("artifacts", [])
     names = sorted(a["arquivo"] for a in artifacts)
-    assert names == ["fato_2022_1_presidente.json", "por_candidato.json",
-                     "por_uf.json", "resumo.json"]
+    assert names == ["censo_municipios.json", "fato_2022_1_presidente.json",
+                     "por_candidato.json", "por_uf.json", "resumo.json"]
     for entry in artifacts:
         assert entry.get("fixture") is True
         assert entry["sha_origin"] == "artifact"
