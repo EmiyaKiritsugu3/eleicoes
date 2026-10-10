@@ -119,3 +119,6 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 ## EVOLVE-6 mergeado (2026-10-10 ~19:55 UTC)
 - Merge PR #8 (merge commit 145de27): tudo verde — CI ×2, GitGuardian, CodeRabbit, cubic, Sonar. Branch evolve-6 deletada.
 - Total: 6 tasks (4 implemented + 2 blockages documentados) + R1/R2/R3 com re-reviews limpos. Suítes finais: pytest 188 + vitest 391 + tsc clean + build.
+
+## EVOLVE-7 completo (final review: Merge Yes with fixes → fixed + re-reviewed)
+- 6/6 tasks + seam-fix (promoção direta p/ served) + rotation-Censo, re-reviews limpos; resto → EVOLVE-8 backlog.
