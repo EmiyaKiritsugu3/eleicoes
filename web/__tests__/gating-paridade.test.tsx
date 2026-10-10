@@ -24,9 +24,16 @@ const POR_UF = [
   { ano: 2022, cargo: "presidente", uf: "SP", votos: 2000 },
   { ano: 2022, cargo: "presidente", uf: "RJ", votos: 1000 },
 ];
-const POR_CAND = [{ candidato_id: "a", nome_urna: "Cand A", partido: "PA", votos: 2500 }];
+const POR_CAND = [{ candidato_id: "a", nome_urna: "Cand A", partido: "PA", votos: 2500, financiamento: 5000 }];
 // Manifest inválido: sem ingestão auditável → selo vazio (sem oficial, sem fixture).
 const MANIFEST_INVALIDO = { ingestions: [] };
+// Manifest só-fixture com hash válido: vereditoTemProva true → números
+// seguem visíveis (sem selo oficial), paridade Explorar/Curada.
+const MANIFEST_FIXTURE = {
+  ingestions: [
+    { source_url: "https://cdn.tse.jus.br/x.zip", sha256: "f".repeat(64), date: "2026-01-01", fixture: true },
+  ],
+};
 const MANIFEST_OK = {
   ingestions: [
     { source_url: "https://cdn.tse.jus.br/x.zip", sha256: "a".repeat(64), date: "2026-01-01" },
@@ -77,6 +84,18 @@ function secao(html: string, label: string): string {
   return m ? m[1] : "";
 }
 
+// Renderiza /analisar com a query dada (o effect hidrata modo/a/b da URL
+// via parseAnalisarSearchParams); restaura "/" ao final para não vazar
+// estado entre testes.
+async function renderAnalisarComQuery(qs: string): Promise<HTMLDivElement> {
+  window.history.replaceState({}, "", qs);
+  try {
+    return await renderJsdom(<Analisar />);
+  } finally {
+    window.history.replaceState({}, "", "/");
+  }
+}
+
 // Fato p/ Explorar/Curada (40 municípios, n ≥ piso 30).
 function demo(i: number) {
   return {
@@ -121,12 +140,28 @@ describe("gating-paridade Task 4: manifest inválido suprime nas 4 superfícies"
     const div = await renderJsdom(<Analisar />);
     const html = div.innerHTML;
     expect(html).toContain("dado não auditado");
-    for (const s of ["Resumo filtrado", "Pivô", "Série histórica"]) {
+    for (const s of ["Resumo filtrado", "Pivô", "Série histórica", "Comparador", "Dispersão votos x financiamento"]) {
       const corpo = secao(html, s);
       expect(corpo).not.toBe("");
       expect(corpo).toContain(SEM_DADO);
     }
     expect(secao(html, "Resumo filtrado")).not.toContain("Total de votos no filtro:");
+  });
+  it("/analisar Comparador com lados selecionados (?a=a&b=a): inválido → SEM_DADO, sem Votos", async () => {
+    mockFetch(MANIFEST_INVALIDO);
+    const div = await renderAnalisarComQuery("/analisar?modo=candidatos&a=a&b=a");
+    const comp = secao(div.innerHTML, "Comparador");
+    expect(comp).not.toBe("");
+    expect(comp).toContain(SEM_DADO);
+    expect(comp).not.toContain("Votos:");
+  });
+  it("/analisar Dispersão com dado financiado: inválido → SEM_DADO, sem número", async () => {
+    mockFetch(MANIFEST_INVALIDO);
+    const div = await renderJsdom(<Analisar />);
+    const disp = secao(div.innerHTML, "Dispersão votos x financiamento");
+    expect(disp).not.toBe("");
+    expect(disp).toContain(SEM_DADO);
+    expect(disp).not.toContain("5.000");
   });
   it("Explorar: selo vazio → Resultado SEM_DADO, sem r", () => {
     const seal = getSealState(MANIFEST_INVALIDO);
@@ -160,5 +195,33 @@ describe("gating-paridade Task 4: controle — manifest válido segue com númer
     mockFetch(MANIFEST_OK);
     const div = await renderJsdom(<Analisar />);
     expect(secao(div.innerHTML, "Resumo filtrado")).toContain("Total de votos no filtro:");
+  });
+  it("Home com manifest só-fixture (hash válido) exibe totais, sem supressão", async () => {
+    mockFetch(MANIFEST_FIXTURE);
+    const div = await renderJsdom(<HomeContent />);
+    const html = div.innerHTML;
+    expect(html).not.toContain("fonte auditada");
+    expect(secao(html, "Resumo")).toContain("Total de votos:");
+    expect(secao(html, "Resumo")).not.toContain(SEM_DADO);
+  });
+  it("/analisar com manifest só-fixture (hash válido) exibe totais, sem supressão", async () => {
+    mockFetch(MANIFEST_FIXTURE);
+    const div = await renderJsdom(<Analisar />);
+    const html = div.innerHTML;
+    expect(html).not.toContain("fonte auditada");
+    expect(secao(html, "Resumo filtrado")).toContain("Total de votos no filtro:");
+    expect(secao(html, "Pivô")).not.toContain(SEM_DADO);
+  });
+  it("/analisar Comparador com lados selecionados: selo oficial exibe Votos (sem regressão)", async () => {
+    mockFetch(MANIFEST_OK);
+    const div = await renderAnalisarComQuery("/analisar?modo=candidatos&a=a&b=a");
+    expect(secao(div.innerHTML, "Comparador")).toContain("Votos: 2.500");
+  });
+  it("/analisar Dispersão com dado financiado: selo oficial exibe tabela (sem regressão)", async () => {
+    mockFetch(MANIFEST_OK);
+    const div = await renderJsdom(<Analisar />);
+    const disp = secao(div.innerHTML, "Dispersão votos x financiamento");
+    expect(disp).toContain("5.000");
+    expect(disp).not.toContain(SEM_DADO);
   });
 });
