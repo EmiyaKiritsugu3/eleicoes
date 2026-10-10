@@ -47,6 +47,7 @@ URLs verificadas em 2026-10-10 (HEAD, bytes no report
 import os
 import socket
 import zipfile
+from functools import lru_cache
 
 import pytest
 
@@ -77,15 +78,46 @@ _SKIP_REASON = (
 )
 
 
-def _rede_disponivel() -> bool:
-    """True iff o FTP do IBGE é alcançável (sonda TCP curta, sem HTTP)."""
-    if os.environ.get("SAD_SEM_REDE") == "1":
-        return False
+@lru_cache(maxsize=1)
+def _sonda_ftp() -> bool:
+    """Sonda TCP única e cacheada (2 skipifs na coleta = 1 sonda, não 2)."""
     try:
         socket.create_connection((_CENSO_HOST, 443), timeout=3).close()
     except OSError:
         return False
     return True
+
+
+def _rede_disponivel() -> bool:
+    """True iff o FTP do IBGE é alcançável (sonda TCP curta, sem HTTP)."""
+    if os.environ.get("SAD_SEM_REDE") == "1":
+        return False
+    return _sonda_ftp()
+
+
+def test_sonda_rede_cacheada_uma_vez(monkeypatch):
+    """As duas avaliações de skipif na coleta disparam 1 sonda, não 2."""
+    import tests.etl.test_escolaridade_bloqueada as modulo
+
+    modulo._sonda_ftp.cache_clear()
+    chamadas = []
+    real = socket.create_connection
+
+    def _conta(*args, **kwargs):
+        chamadas.append(args)
+        try:
+            return real(*args, **kwargs)
+        except OSError:
+            raise
+
+    monkeypatch.setattr(socket, "create_connection", _conta)
+    monkeypatch.delenv("SAD_SEM_REDE", raising=False)
+    try:
+        assert _rede_disponivel() is True or _rede_disponivel() is False
+        assert _rede_disponivel() is _rede_disponivel()
+        assert len(chamadas) == 1
+    finally:
+        modulo._sonda_ftp.cache_clear()
 
 
 def _vcodes_alfabetizacao() -> set[str]:
@@ -217,3 +249,7 @@ def test_dicionario_oficial_acessivel():
     assert r.status_code == 200
     tamanho = int(r.headers["Content-Length"])
     assert _DIC_MIN <= tamanho <= _DIC_MAX
+    content_type = r.headers.get("Content-Type", "").lower()
+    assert any(
+        s in content_type for s in ("excel", "spreadsheet", "openxml")
+    ), f"dicionário sem Content-Type de planilha: {content_type!r}"

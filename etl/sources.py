@@ -68,8 +68,12 @@ real é calculado por `etl.fetch.download_dataset` e registrado via
 # Alfabetização ≠ escolaridade: taxa de alfabetizados nada diz sobre %
 # com superior/médio/fundamental completo — derivar esc_* disso seria
 # chute. Nenhum outro agregado por município da família tem tema de
-# escolaridade (ver dicionário). Evidência executável em
-# tests/etl/test_escolaridade_bloqueada.py (padrão T3).
+# escolaridade (ver dicionário). Cobertura executável em
+# tests/etl/test_escolaridade_bloqueada.py (padrão T3) trava SÓ shape do
+# zip + fail-closed + HEAD do dicionário (existe/tamanho/Content-Type):
+# o CONTEÚDO das 3407 linhas do .xlsx foi verificado manualmente em
+# 2026-10-10, nunca lido por teste (network-bound; sem dep openpyxl) —
+# não afirmar leitura executável do dicionário.
 """
 
 _CENSO_CATALOG = (

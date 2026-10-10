@@ -56,7 +56,7 @@ def test_sad_etl_declarado_e_resolve_sem_instalar():
 
 def test_sad_etl_entry_instalado_confere_quando_presente():
     """Best-effort: com o pacote instalado, o entry instalado bate o toml."""
-    from importlib.metadata import PackageNotFoundError, distribution, entry_points
+    from importlib.metadata import PackageNotFoundError, distribution
 
     try:
         dist = distribution("sad-eleicoes")
@@ -66,11 +66,13 @@ def test_sad_etl_entry_instalado_confere_quando_presente():
         pytest.skip("sad-eleicoes não instalado — smoke sem install (decisão T4)")
         return
     declarado = _console_scripts().get("sad-etl")
-    try:
-        eps = entry_points(group="console_scripts")  # 3.10+: Selectable
-        achados = [e for e in eps if e.name == "sad-etl"]
-    except Exception:
-        achados = [e for e in getattr(dist, "entry_points", []) if e.name == "sad-etl"]
+    # Lê SÓ da dist resolvida (nunca varre todas as dists instaladas —
+    # colisão de nome com outro pacote geraria falso-positivo/negativo).
+    achados = [
+        e for e in getattr(dist, "entry_points", [])
+        if e.name == "sad-etl"
+        and getattr(e, "group", "console_scripts") == "console_scripts"
+    ]
     assert achados, "sad-etl instalado sem entry console_scripts (instalação quebrada)"
     assert achados[0].value.replace(" ", "") == declarado.replace(" ", ""), (
         f"entry instalado ({achados[0].value}) diverge do pyproject ({declarado})"

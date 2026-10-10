@@ -40,6 +40,7 @@ URLs verificadas em 2026-10-10 (CKAN + HEAD, bytes no report
 
 import os
 import socket
+import ssl
 
 import pytest
 
@@ -62,19 +63,36 @@ _SKIP_REASON = (
 
 
 def _alcancavel(host: str) -> bool:
+    """Sonda o transporte HTTPS (TCP + handshake TLS), não só o TCP."""
     try:
-        socket.create_connection((host, 443), timeout=3).close()
+        cru = socket.create_connection((host, 443), timeout=3)
     except OSError:
+        return False
+    try:
+        ctx = ssl.create_default_context()
+        with ctx.wrap_socket(cru, server_hostname=host):
+            pass
+    except (OSError, ssl.SSLError):
+        try:
+            cru.close()
+        except OSError:
+            pass
         return False
     return True
 
 
-def _rede_disponivel() -> bool:
-    """True iff os três hosts do slice real são alcançáveis."""
+def _rede_disponivel(*hosts: str) -> bool:
+    """True iff os hosts dados são alcançáveis (default: os três do slice).
+
+    Predicados separados por teste: o catálogo exige CDN+CKAN, o fato
+    real exige CDN+Censo — CKAN fora do ar não pula o fato real.
+    `SAD_SEM_REDE=1` força False em todos os casos (semântica mantida).
+    """
     if os.environ.get("SAD_SEM_REDE") == "1":
         return False
+    alvos = hosts or (_TSE_CDN_HOST, _TSE_CKAN_HOST, _CENSO_HOST)
     return all(
-        _alcancavel(h) for h in (_TSE_CDN_HOST, _TSE_CKAN_HOST, _CENSO_HOST)
+        _alcancavel(h) for h in alvos
     )
 
 
@@ -82,6 +100,37 @@ def test_flag_sem_rede_forca_skip(monkeypatch):
     """O skip offline é explícito e testável (nunca passa silencioso)."""
     monkeypatch.setenv("SAD_SEM_REDE", "1")
     assert _rede_disponivel() is False
+
+
+def test_predicados_rede_separados_por_teste(monkeypatch):
+    """CKAN fora do ar pula o catálogo mas NÃO o fato real (offline)."""
+    import tests.etl.test_fato_real_e2e as modulo
+
+    caidos = {"dadosabertos.tse.jus.br"}
+    monkeypatch.setattr(
+        modulo, "_alcancavel", lambda host: host not in caidos)
+    assert _rede_disponivel(_TSE_CDN_HOST, _TSE_CKAN_HOST) is False
+    assert _rede_disponivel(_TSE_CDN_HOST, _CENSO_HOST) is True
+    assert _rede_disponivel() is False
+
+
+def test_tls_quebrado_conta_como_sem_rede(monkeypatch):
+    """Falha de TLS (não só TCP) vira skip, nunca erro no teste real."""
+    import tests.etl.test_fato_real_e2e as modulo
+
+    class _Cru:
+        def close(self):
+            pass
+
+    class _CtxFalho:
+        def wrap_socket(self, sock, **kwargs):
+            raise ssl.SSLError("handshake falhou")
+
+    monkeypatch.setattr(socket, "create_connection",
+                        lambda *a, **k: _Cru())
+    monkeypatch.setattr(ssl, "create_default_context",
+                        lambda *a, **k: _CtxFalho())
+    assert modulo._alcancavel("cdn.tse.jus.br") is False
 
 
 def test_v1_2024_prefeito_url_constante():
@@ -114,7 +163,8 @@ def test_codigo_tse_sintetico_nao_vira_ibge():
     assert out["municipio_ibge"].tolist() == [""]
 
 
-@pytest.mark.skipif(not _rede_disponivel(), reason=_SKIP_REASON)
+@pytest.mark.skipif(
+    not _rede_disponivel(_TSE_CDN_HOST, _TSE_CKAN_HOST), reason=_SKIP_REASON)
 def test_tse_2024_prefeito_url_e_catalogo_verificados():
     """HEAD do CDN + CKAN: a URL V1 é a oficial (sem chute de URL)."""
     import requests
@@ -147,7 +197,8 @@ def test_tse_2024_prefeito_url_e_catalogo_verificados():
     assert alvos == [url]  # CKAN confirma a MESMA url da V1
 
 
-@pytest.mark.skipif(not _rede_disponivel(), reason=_SKIP_REASON)
+@pytest.mark.skipif(
+    not _rede_disponivel(_TSE_CDN_HOST, _CENSO_HOST), reason=_SKIP_REASON)
 def test_fato_real_bloqueado_codigo_tse_sem_depara(tmp_path, monkeypatch):
     """Evidência executável do bloqueio: TSE real → fail-closed, Censo verde.
 

@@ -228,7 +228,12 @@ def register_censo_ingest(manifest_path, rows=None, sha256=None, dataset=None,
     if data is None:
         data_iso = datetime.now(timezone.utc).date().isoformat()
     elif isinstance(data, datetime):
-        data_iso = data.date().isoformat()
+        # aware não-UTC: converte p/ UTC antes de extrair o dia (sem
+        # isso, `.date()` gravaria o dia local em vez do dia UTC).
+        if data.tzinfo is not None:
+            data_iso = data.astimezone(timezone.utc).date().isoformat()
+        else:
+            data_iso = data.date().isoformat()
     elif isinstance(data, date):
         data_iso = data.isoformat()
     else:
