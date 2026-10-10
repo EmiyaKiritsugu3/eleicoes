@@ -381,6 +381,49 @@ describe("curada (gate de hash: fato sem hash não sustenta número)", () => {
     expect(metodo).toMatch(/n = 40 municípios/);
     expect(metodo).toContain("veredito:");
   });
+  it("perfil sem hash nomeia o hash ausente (paridade Resultado/Método)", () => {
+    const p = perguntas.find((q) => q.slug === "perfil-onde-venceu-vencedor")!;
+    const html = htmlDe(p, fato40(), SEAL_NULO);
+    const perfil = html.split('aria-label="Perfil de onde venceu"')[1].split("<section")[0];
+    expect(perfil).toContain("sem dado oficial");
+    expect(perfil).toContain("sem hash auditado no manifest");
+  });
+  it("escopo fora do fato + hash válido mantém a nota de escopo (sem regressão)", () => {
+    const p = perguntas.find((q) => q.slug === "voto-exterior")!;
+    const html = htmlDe(p, fato40(), SEAL_OK);
+    const perfil = html.split('aria-label="Perfil de onde venceu"')[1].split("<section")[0];
+    expect(perfil).toContain("fora do fato municipal");
+  });
+});
+
+// Uma linha sem eleitorado auditado -> fallback total (pesoFonte misto no motor).
+function linhasMistas(): MunRow[] {
+  return linhas40().map((r, i) =>
+    i === 0 ? { ...r, demo: { ...r.demo!, eleitores: null } } : r,
+  );
+}
+
+function secaoPerfilCurada(html: string): string {
+  return html.split('aria-label="Perfil de onde venceu"')[1].split("<section")[0];
+}
+
+describe("curada (rótulo pt-BR do peso: sem valor cru do motor)", () => {
+  it("peso eleitorado: 'eleitores (peso: eleitorado)', sem valor cru", () => {
+    const p = perguntas.find((q) => q.slug === "perfil-onde-venceu-vencedor")!;
+    const perfil = secaoPerfilCurada(htmlDe(p, fato40(), SEAL_OK));
+    expect(perfil).toContain("eleitores (peso: eleitorado)");
+    expect(perfil).not.toContain("(peso: eleitores)");
+    expect(perfil).not.toContain("(peso: misto)");
+  });
+  it("peso misto: peso efetivo, sem rótulo 'eleitores' (nEleitores inclui fallback)", () => {
+    const p = perguntas.find((q) => q.slug === "perfil-onde-venceu-vencedor")!;
+    const perfil = secaoPerfilCurada(
+      htmlDe(p, { candidatos: CANDIDATOS, municipios: linhasMistas() }, SEAL_OK),
+    );
+    expect(perfil).toContain("de peso efetivo (eleitorado, total ou população)");
+    expect(perfil).not.toContain("eleitores (peso:");
+    expect(perfil).not.toContain("(peso: misto)");
+  });
 });
 
 describe("curada (decimais pt-BR: vírgula, nunca ponto)", () => {

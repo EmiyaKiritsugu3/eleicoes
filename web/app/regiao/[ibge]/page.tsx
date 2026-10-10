@@ -76,7 +76,7 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
 
 export default function PaginaRegiao({ params }: { params: { ibge: string } }) {
   return (
-    <Suspense fallback={<p role="note">A carregar painel da região…</p>}>
+    <Suspense fallback={<p role="status">a carregar…</p>}>
       <ConteudoRegiao ibge={params.ibge} />
     </Suspense>
   );

@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import pandas as pd
 
-from etl.ibge_dv import dv_ok as _dv_ok  # re-export p/ compat + teste de deduplicação
 from etl.ibge_dv import validar_serie_ibge
 
 CANONICAL_COLUMNS = [

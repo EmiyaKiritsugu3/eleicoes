@@ -11,6 +11,7 @@ import Analisar from "../app/analisar/page";
 import ExplorarPage from "../app/explorar/page";
 import PaginaRegiao from "../app/regiao/[ibge]/page";
 import Auditoria from "../app/auditoria/page";
+import Metodologia from "../app/metodologia/page";
 import { ExplorarConteudo, type ExplorarSelecao } from "../components/Explorar";
 import { CuradaConteudo, type PerguntaCurada } from "../app/perguntas/Curada";
 import type { SealState } from "../lib/data";
@@ -205,7 +206,7 @@ afterEach(async () => {
     root?.unmount();
   });
   root = null;
-  el?.remove();
+  (el as HTMLDivElement | null)?.remove();
   el = null;
   globalThis.fetch = fetchOriginal;
   vi.restoreAllMocks();
@@ -478,7 +479,7 @@ describe("ux CopyShare copia + fallback", () => {
       root?.unmount();
     });
     root = null;
-    el?.remove();
+    (el as HTMLDivElement | null)?.remove();
     el = null;
     // #3: ExplorarConteudo com selo oficial expõe o botão de copiar.
     const divE = await renderJsdom(
@@ -493,7 +494,7 @@ describe("ux CopyShare copia + fallback", () => {
       root?.unmount();
     });
     root = null;
-    el?.remove();
+    (el as HTMLDivElement | null)?.remove();
     el = null;
     const fatoCheio = { candidatos: CANDIDATOS, municipios: linhasValidas() };
     const htmlR = renderToStaticMarkup(
@@ -587,6 +588,141 @@ describe("ux a11y T4 regiões de estado anunciadas", () => {
       expect(live!.textContent).toMatch(/copiad/i);
     } finally {
       Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    }
+  });
+});
+
+// ---------- EVOLVE-3 Task 5: copy pt-BR (strings only, zero data) ----------
+
+const SEAL_SEM_HASH: SealState = { official: null, hasFixture: false, fixtureHash: "" };
+
+// Uma linha sem eleitorado auditado -> fallback total (pesoFonte misto no motor).
+function linhasPesoMisto(): MunRow[] {
+  return linhasValidas().map((r, i) =>
+    i === 0 ? { ...r, demo: { ...r.demo!, eleitores: null } } : r,
+  );
+}
+
+function perfilDe(html: string): string {
+  return html.split('aria-label="Perfil de onde venceu"')[1].split("<section")[0];
+}
+
+describe("copy pt-BR (EVOLVE-3 Task 5: rótulos, hash nomeado, baixar)", () => {
+  it("explorar perfil: peso rotulado em pt-BR, sem valor cru do motor", () => {
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo
+        fato={{ candidatos: CANDIDATOS, municipios: linhasValidas() }}
+        seal={SEAL_OK}
+        initial={SEL_VALIDA}
+      />,
+    );
+    const perfil = perfilDe(html);
+    expect(perfil).toContain("eleitores (peso: eleitorado)");
+    expect(perfil).not.toContain("(peso: eleitores)");
+    expect(perfil).not.toContain("(peso: misto)");
+  });
+  it("explorar perfil misto: peso efetivo, sem rótulo 'eleitores' (nEleitores inclui fallback)", () => {
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo
+        fato={{ candidatos: CANDIDATOS, municipios: linhasPesoMisto() }}
+        seal={SEAL_OK}
+        initial={SEL_VALIDA}
+      />,
+    );
+    const perfil = perfilDe(html);
+    expect(perfil).toContain("de peso efetivo (eleitorado, total ou população)");
+    expect(perfil).not.toContain("eleitores (peso:");
+    expect(perfil).not.toContain("(peso: misto)");
+  });
+  it("curada perfil: peso efetivo no modo misto, eleitores no puro", () => {
+    const html = renderToStaticMarkup(
+      <CuradaConteudo
+        pergunta={PERGUNTA}
+        fato={{ candidatos: CANDIDATOS, municipios: linhasValidas() }}
+        seal={SEAL_OK}
+        manifestChecked
+      />,
+    );
+    expect(perfilDe(html)).toContain("eleitores (peso: eleitorado)");
+    const htmlMisto = renderToStaticMarkup(
+      <CuradaConteudo
+        pergunta={PERGUNTA}
+        fato={{ candidatos: CANDIDATOS, municipios: linhasPesoMisto() }}
+        seal={SEAL_OK}
+        manifestChecked
+      />,
+    );
+    expect(perfilDe(htmlMisto)).toContain("de peso efetivo (eleitorado, total ou população)");
+    expect(perfilDe(htmlMisto)).not.toContain("eleitores (peso:");
+    expect(perfilDe(htmlMisto)).not.toContain("(peso: misto)");
+  });
+  it("explorar perfil sem hash nomeia o hash (paridade Resultado/Mapa)", () => {
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo
+        fato={{ candidatos: CANDIDATOS, municipios: linhasValidas() }}
+        seal={SEAL_SEM_HASH}
+        initial={SEL_VALIDA}
+      />,
+    );
+    expect(perfilDe(html)).toContain("sem dado oficial");
+    expect(perfilDe(html)).toContain("sem hash auditado no manifest");
+  });
+  it("curada perfil sem hash nomeia o hash (paridade Resultado/Método)", () => {
+    const html = renderToStaticMarkup(
+      <CuradaConteudo
+        pergunta={PERGUNTA}
+        fato={{ candidatos: CANDIDATOS, municipios: linhasValidas() }}
+        seal={SEAL_SEM_HASH}
+        manifestChecked
+      />,
+    );
+    expect(perfilDe(html)).toContain("sem dado oficial");
+    expect(perfilDe(html)).toContain("sem hash auditado no manifest");
+  });
+  it("auditoria SSR: botão 'Baixar', hint em frase completa", () => {
+    const html = renderToStaticMarkup(<Auditoria />);
+    expect(html).toContain("Baixar manifest");
+    expect(html).toContain("O download está bloqueado");
+  });
+  it("auditoria sem ingestão auditada: frase completa de bloqueio", async () => {
+    (globalThis as Record<string, unknown>).fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ ingestions: [] }),
+    }));
+    const div = await renderJsdom(<Auditoria />);
+    expect(div.innerHTML).toContain("O download está bloqueado");
+  });
+  it("auditoria amostra sintética: frase completa de permissão", async () => {
+    (globalThis as Record<string, unknown>).fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        ingestions: [
+          {
+            source_url: "https://cdn.tse.jus.br/x.zip",
+            sha256: "f".repeat(64),
+            date: "2026-01-01",
+            fixture: true,
+          },
+        ],
+      }),
+    }));
+    const div = await renderJsdom(<Auditoria />);
+    expect(div.innerHTML).toContain("O download está permitido");
+  });
+  it("metodologia: hash 64-hex + arquivos servidos, sem 'não-vazio' nem 'download'", () => {
+    // metodologia/page.tsx não importa React (JSX automático do Next);
+    // no vitest o runtime clássico resolve React via global.
+    vi.stubGlobal("React", React);
+    try {
+      const html = renderToStaticMarkup(<Metodologia />);
+      expect(html).toContain("64 dígitos hexadecimais");
+      expect(html).not.toContain("não-vazio");
+      expect(html).not.toMatch(/download/i);
+      expect(html).toContain("baixar");
+      expect(html).toContain("arquivos servidos em");
+      expect(html).not.toContain("arquivos para baixar");
+    } finally {
+      vi.unstubAllGlobals();
     }
   });
 });

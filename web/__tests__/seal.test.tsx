@@ -26,7 +26,7 @@ describe("SealSlot (selo compartilhado de / e /analisar)", () => {
     const html = renderToStaticMarkup(
       <SealSlot
         seal={{
-          official: { hash: "abc123", url: "https://tse.jus.br/x", date: "2026-01-01" },
+          official: { hash: "b".repeat(64), url: "https://tse.jus.br/x", date: "2026-01-01" },
           hasFixture: false,
           fixtureHash: "",
         }}

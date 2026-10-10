@@ -32,14 +32,31 @@ Regras fail-closed (nunca zero silencioso / número sem hash):
 - `(ano, cargo)` fora do escopo V1 → `ValueError` (sem `source_url`
   oficial não há proveniência a registrar).
 
-Proveniência: append no `<db dir>/manifest.json` via `write_manifest`
-(validação fail-closed herdada) com `source_url` do TSE (par ano/cargo
-do V1), `sha256` do payload JSON produzido, e `fontes: [url TSE,
-página do catálogo IBGE]` como fonte dupla. `abst`/`eleitores` vêm de
+Proveniência: upsert no `<db dir>/manifest.json` com o MESMO predicado
+de idempotência do mirror (`_ingestion_dedupe_key`, reutilizado por
+chamada — sem fork): reruns atualizam o `sha256` sem duplicar a
+ingestão. A entry leva `source_url` do TSE (par ano/cargo do V1),
+`sha256` do payload JSON produzido, e `fontes: [url TSE, página do
+catálogo IBGE]` como fonte dupla. `abst`/`eleitores` vêm de
 `fato_eleitorado` quando a tabela/grupo existir, senão `null` (v1 só
 tem votação nominal). `nome` do município é `""`: nenhum schema
 canônico (TSE ou Censo) carrega nomes — a camada do mapa resolve nomes
 por IBGE7 a partir da malha.
+
+Ordem crash-safe (EVOLVE-3 Task 2, write-fato-then-verify-before-serve):
+fato (escrita atômica, sem rasgo) → upsert do manifest do `<db dir>` →
+porta `verificar_fato_manifest` → mirror servido. Manifest-first foi
+rejeitado: atestaria bytes ainda não servidos (verde com arquivo ausente).
+A porta roda ANTES do mirror (CodeRabbit PR#5 F2): db malformado ou
+inconsistente levanta com o mirror intocado — nunca publica artefato
+"válido" com proveniência quebrada. Qualquer crash entre passos deixa
+ou o par antigo intacto ou fato novo + manifest velho — e esse estado
+REPROVA o predicado `verificar_fato_manifest` (sha da entry vs bytes do
+fato), nunca dá verde falso; o rerun seguinte repara ao reescrever fato
++ upsert (após a remoção de eventual lixo legado, que o upsert preserva
+sem apagar e a porta reprova). `verify_manifest` sozinho continua só-forma no `<db dir>`
+(contrato legado) e NÃO basta para atestar bytes — portas/gates devem
+usar `verificar_fato_manifest` antes de servir.
 
 O manifest do `<db dir>` segue só-ingestions (contrato legado). Em
 adição, o manifest irmão das saídas (`<out_dir>/manifest.json`) recebe
@@ -63,7 +80,7 @@ from etl.build_marts import register_served_artifacts
 from etl.build_marts import _dentro_de, _prune_fato_sem_proveniencia
 from etl.build_marts import _write_json_atomico
 from etl.censo import check_censo_sum
-from etl.manifest import write_manifest
+from etl.manifest import _validate_entry
 from etl.sources import CENSO_DATASETS, V1_DATASETS
 
 DEMO_FIELDS = [
@@ -109,14 +126,101 @@ def _ingestion_dedupe_key(entry: dict) -> tuple:
     )
 
 
+def _atualizar_manifest_db(db_manifest_path, ingestion: dict) -> None:
+    """Upsert da ingestão no manifest do `<db dir>` (EVOLVE-3 Task 2).
+
+    DECISÃO: mesmo predicado de idempotência do mirror servido
+    (`_ingestion_dedupe_key`, reutilizado por chamada — sem fork): a
+    entry nova substitui a de mesma chave `(dataset, ano, turno, cargo,
+    source_url)`; chaves distintas (outro triple/fonte) preservam o
+    histórico. Reruns atualizam o `sha256` sem duplicar. Validação
+    fail-closed via `_validate_entry` (precedente de import cruzado
+    `etl`: `_dentro_de`/`_write_json_atomico`/`_prune_fato_sem_proveniencia`
+    já vêm de `etl.build_marts`), leitura tolerante a ausente/corrompido
+    (preserva `.corrupt.<ts>`, mesmo contrato de `write_manifest`), e
+    escrita atômica via o helper compartilhado (guarda S8707 inclusa).
+    Outras chaves do manifest e itens legados não-dict são preservados.
+    """
+    db_manifest_path = Path(db_manifest_path)
+    _dentro_de(db_manifest_path, db_manifest_path.parent)  # fail-closed antes de tudo
+    _validate_entry(ingestion)  # fail-closed antes de qualquer mutação
+    try:
+        manifest = json.loads(db_manifest_path.read_text(encoding="utf-8"))
+        if not isinstance(manifest, dict):
+            manifest = {"ingestions": []}
+    except FileNotFoundError:
+        manifest = {"ingestions": []}
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+        db_manifest_path.rename(f"{db_manifest_path}.corrupt.{stamp}")
+        manifest = {"ingestions": []}
+    ingestions = manifest.get("ingestions")
+    if not isinstance(ingestions, list):
+        ingestions = []
+    key = _ingestion_dedupe_key(ingestion)
+    ingestions = [
+        e for e in ingestions
+        if not (isinstance(e, dict) and _ingestion_dedupe_key(e) == key)
+    ] + [ingestion]
+    manifest["ingestions"] = ingestions
+    _write_json_atomico(db_manifest_path, manifest)  # guarda S8707 inclusa
+
+
+def verificar_fato_manifest(db_manifest_path, fato_path) -> bool:
+    """True iff a ingestão do `<db dir>` confere com os bytes do fato.
+
+    Predicado anti-crash-entre-passos (EVOLVE-3 Task 2): compara o
+    `sha256` da entry (última com `dataset` == stem do fato — tolera
+    histórico append-only legado com duplicatas) com o sha dos bytes
+    atuais do arquivo. Fato novo + manifest velho (crash após o fato,
+    antes do manifest) REPROVA; ausência, corrupção ou divergência
+    qualquer também reprova (fail-closed, nunca verde falso).
+    Estrito (CodeRabbit PR#5 F1): a lista inteira precisa ser válida —
+    item não-dict ou entry malformada reprova mesmo com match válido
+    adiante. O writer preserva o legado sem apagar; o VERIFICADOR nunca
+    dá verde no malformado (coerente com `verify_manifest`, que também
+    reprova ali).
+    """
+    try:
+        raw = Path(fato_path).read_bytes()
+    except OSError:
+        return False
+    try:
+        manifest = json.loads(Path(db_manifest_path).read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError,
+            UnicodeDecodeError):
+        return False
+    if not isinstance(manifest, dict):
+        return False
+    ingestions = manifest.get("ingestions")
+    if not isinstance(ingestions, list):
+        return False
+    for e in ingestions:
+        try:
+            _validate_entry(e)  # não-dict e malformada reprovam aqui
+        except ValueError:
+            return False
+    stem = Path(fato_path).stem
+    match = None
+    for e in ingestions:
+        if isinstance(e, dict) and e.get("dataset") == stem:
+            match = e  # última vence (legado append-only duplicava)
+    if match is None:
+        return False
+    sha = match.get("sha256")
+    if not isinstance(sha, str) or not sha:
+        return False
+    return hashlib.sha256(raw).hexdigest() == sha.lower()
+
+
 def _atualizar_manifest_servido(out_dir, ingestion: dict, v1_entry: dict) -> None:
     """Recalcula `artifacts` do manifest irmão das saídas (EVOLVE-2 Task 2).
 
     DECISÃO: o `out_dir` do standalone É o mirror servido — o fato acaba
     de ser escrito ali, então o recalc sempre é possível (sem ramo de
-    erro fail-closed). O manifest do `<db dir>` segue só-ingestions
-    (contrato legado: ingestão antes de existirem bytes servidos). Aqui
-    o manifest `out_dir/manifest.json` ganha a ingestão (upsert
+    erro fail-closed). O manifest do `<db dir>` leva a mesma ingestão
+    via upsert (`_atualizar_manifest_db`, mesmo predicado — sem fork).
+    Aqui o manifest `out_dir/manifest.json` ganha a ingestão (upsert
     idempotente) + `artifacts` via `register_served_artifacts` — reruns
     atualizam o sha do fato sem duplicar. As fontes do recalc são a do
     fato atual + as já atestadas nas ingestões do mirror (só V1 com
@@ -380,9 +484,13 @@ def build_fato(duckdb_path, out_dir, ano, turno, cargo,
     out_dir_p = Path(out_dir)
     out_dir_p.mkdir(parents=True, exist_ok=True)
     out_path = out_dir_p / f"fato_{ano}_{turno}_{cargo_slug}.json"
-    out_path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    # Ordem crash-safe (EVOLVE-3 Task 2, write-fato-then-verify-before-serve):
+    # fato primeiro (escrita atômica via helper compartilhado — mesma
+    # serialização `json.dump(..., ensure_ascii=False, indent=2)`, bytes
+    # idênticos aos do `write_text` anterior; sem janela de rasgo), depois
+    # upsert do manifest do <db dir>, porta de consistência e SÓ ENTÃO o
+    # mirror servido (porta reprovada levanta com o mirror intocado).
+    _write_json_atomico(out_path, payload)
     sha = hashlib.sha256(out_path.read_bytes()).hexdigest()
     ingestion = {
         "source_url": tse_url,
@@ -398,9 +506,19 @@ def build_fato(duckdb_path, out_dir, ano, turno, cargo,
         "rows": len(municipios),
         "fontes": [tse_url, CENSO_DATASETS[0]["dataset"]],
     }
-    write_manifest(db_path.parent / "manifest.json", ingestion)
+    db_manifest_path = db_path.parent / "manifest.json"
+    _atualizar_manifest_db(db_manifest_path, ingestion)
+    # Porta fail-closed ANTES de publicar o mirror (CodeRabbit PR#5 F2):
+    # db malformado/inconsistente levanta aqui com o mirror intocado —
+    # nunca publica artefato "válido" com proveniência quebrada. O rerun
+    # após a remoção do lixo repara (reescreve fato + upsert).
+    if not verificar_fato_manifest(db_manifest_path, out_path):
+        raise ValueError(
+            "build_fato: porta fato×manifest reprovada antes de publicar "
+            f"o mirror (fato={out_path}, manifest={db_manifest_path})"
+        )
     # Mirror servido (Task 2): o manifest irmão das saídas recalcula
-    # `artifacts` sobre os bytes do fato; o do <db dir> acima segue
-    # só-ingestions (contrato legado preservado).
+    # `artifacts` sobre os bytes do fato; só executa com a porta acima
+    # verde, então o retorno nunca é verde com fato≠manifest.
     _atualizar_manifest_servido(out_dir_p, ingestion, v1_entry)
     return str(out_path)
