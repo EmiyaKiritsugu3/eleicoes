@@ -9,8 +9,11 @@ import { HomeContent } from "../components/HomeContent";
 import Analisar from "../app/analisar/page";
 import { ExplorarConteudo, type ExplorarSelecao } from "../components/Explorar";
 import { CuradaConteudo } from "../app/perguntas/Curada";
+import { VerificarConteudo, type Check } from "../app/verificar/Verificar";
 import { getSealState } from "../lib/data";
+import { MOTIVO_SEM_HASH } from "../lib/textos";
 import perguntas from "../data/perguntas.json";
+import checksJson from "../data/checks.json";
 import {
   SEM_DADO,
   MANIFEST_OK,
@@ -244,6 +247,56 @@ describe("task 6: paridade de motivos de supressão (reason correta, não só SE
     const mapa = secaoEstatica(html, "Mapa");
     expect(mapa).toContain(SEM_DADO);
     expect(mapa).toContain(HASH_REASON);
+  });
+});
+
+describe("task 2 (evolve-6): paridade de motivos — Home + Verificar usam MOTIVO_SEM_HASH", () => {
+  const COM_MOTIVO = `${SEM_DADO} — ${MOTIVO_SEM_HASH}`;
+  function secaoEstaticaT2(html: string, label: string): string {
+    return html.split(`aria-label="${label}"`)[1].split("<section")[0];
+  }
+  it("Home semProva: Resumo/UF/Ranking/Evolução trazem SEM_DADO + motivo (nunca bare)", async () => {
+    mockFetch(MANIFEST_INVALIDO);
+    const div = await renderJsdom(<HomeContent />);
+    const html = div.innerHTML;
+    for (const s of ["Resumo", "Mapa por UF", "Ranking de candidatos", "Evolução"]) {
+      const corpo = secao(html, s);
+      expect(corpo).not.toBe("");
+      expect(corpo).toContain(COM_MOTIVO);
+    }
+  });
+  it("Home com selo oficial: Resumo com números, sem motivo (sem regressão)", async () => {
+    mockFetch(MANIFEST_OK);
+    const div = await renderJsdom(<HomeContent />);
+    const resumo = secao(div.innerHTML, "Resumo");
+    expect(resumo).toContain("Total de votos:");
+    expect(resumo).not.toContain(MOTIVO_SEM_HASH);
+  });
+  it("Explorar Resultado semProva rende a string exata da constante (paridade)", () => {
+    const seal = getSealState(MANIFEST_INVALIDO);
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo fato={null} seal={seal} initial={SEL_VALIDA} />,
+    );
+    expect(secaoEstaticaT2(html, "Resultado")).toContain(COM_MOTIVO);
+  });
+  it("Curada Resultado semProva rende a string exata da constante (paridade :283)", () => {
+    const seal = getSealState(MANIFEST_INVALIDO);
+    const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
+    const html = renderToStaticMarkup(
+      <CuradaConteudo pergunta={p} fato={fato40()} seal={seal} manifestChecked />,
+    );
+    expect(secaoEstaticaT2(html, "Resultado")).toContain(COM_MOTIVO);
+  });
+  it("Verificar semProva: Veredito traz o motivo da constante (drift :549 normalizado)", () => {
+    const seal = getSealState(MANIFEST_INVALIDO);
+    const checks = checksJson as unknown as Check[];
+    const html = renderToStaticMarkup(
+      <VerificarConteudo check={checks[0]} slug={checks[0].slug} checks={checks} fato={null} seal={seal} manifestChecked />,
+    );
+    const veredito = secaoEstaticaT2(html, "Veredito");
+    expect(veredito).toContain(SEM_DADO);
+    expect(veredito).toContain(COM_MOTIVO);
+    expect(veredito).not.toContain("número sem hash não é oficial");
   });
 });
 

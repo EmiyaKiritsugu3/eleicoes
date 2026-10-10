@@ -52,6 +52,7 @@ import {
   type VarDemo,
 } from "../../lib/motor";
 import { resolverCandidato } from "../perguntas/Curada";
+import { MOTIVO_SEM_HASH } from "../../lib/textos";
 import { vereditoTemProva } from "../../lib/regiao";
 
 export type Veredito = "sustentado" | "enganoso" | "falso";
@@ -538,7 +539,8 @@ export function VerificarConteudo({
   }
 
   // Fail-closed por hash: fato carregado de ingestão sem hash não gera
-  // veredito — número sem hash não é oficial. Só há veredito com hash
+  // veredito (`MOTIVO_SEM_HASH` em lib/textos, paridade Explorar/Curada).
+  // Só há veredito com hash
   // oficial ou hash de fixture (transparência, sem selo oficial).
   // Predicado único em `vereditoTemProva` (lib/regiao) — mesma fonte de
   // Explorar/Curada, sem drift entre telas.
@@ -546,7 +548,7 @@ export function VerificarConteudo({
   const v = hashAuditado
     ? verificarAfirmacao(check, fato)
     : semProva(
-        "sem hash auditado no manifest — número sem hash não é oficial",
+        MOTIVO_SEM_HASH,
         "Veredito só com prova auditada: sem hash válido no manifest, nenhuma afirmação recebe veredito.",
       );
   const frase = resolverFrase(check, fato);

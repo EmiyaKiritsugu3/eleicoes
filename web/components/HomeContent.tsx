@@ -22,7 +22,7 @@ import {
   type SealState,
 } from "../lib/data";
 import { vereditoTemProva } from "../lib/regiao";
-import { SEM_DADO } from "../lib/textos";
+import { MOTIVO_SEM_HASH, SEM_DADO } from "../lib/textos";
 
 /** Prefixo IBGE de 2 dígitos → sigla UF (códigos estáveis do IBGE).
  *  Permite ao clique no canvas (que retorna IBGE7 do município) focar o
@@ -199,7 +199,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         {carregando ? (
           <p role="status">a carregar…</p>
         ) : semDados || semProva ? (
-          <p>{SEM_DADO}</p>
+          <p>{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
         ) : (
           <ul>
             <li>Total de votos: {formatVotes(res.totalVotos)}</li>
@@ -221,7 +221,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         {carregando ? (
           <p role="status">a carregar…</p>
         ) : semProva || ufs.length === 0 ? (
-          <p>{SEM_DADO}</p>
+          <p>{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
         ) : malhaFeatures ? (
           <>
             {comZoom && (
@@ -270,7 +270,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         {carregando ? (
           <p role="status">a carregar…</p>
         ) : semProva || cands.length === 0 ? (
-          <p>{SEM_DADO}</p>
+          <p>{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
         ) : (
           <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Ranking de candidatos por votos">
           <table>
@@ -296,7 +296,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         {carregando ? (
           <p role="status">a carregar…</p>
         ) : semProva || ev.length === 0 ? (
-          <p>{SEM_DADO}</p>
+          <p>{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
         ) : (
           <>
             <ul aria-hidden="true" style={{ listStyle: "none", padding: 0 }}>

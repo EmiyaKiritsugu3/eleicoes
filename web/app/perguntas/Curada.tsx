@@ -38,6 +38,7 @@ import {
 } from "../../components/PainelRegiao";
 import { formatVotes, type SealState } from "../../lib/data";
 import { vereditoTemProva } from "../../lib/regiao";
+import { MOTIVO_SEM_HASH } from "../../lib/textos";
 import {
   VAR_DEMO,
   PISO_CORRELACAO_N,
@@ -280,7 +281,7 @@ export function CuradaConteudo({
         <h2>Resultado</h2>
         {badge}
         {!hashAuditado || !fato || !cand ? (
-          <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}{hashAuditado ? "" : " — sem hash auditado no manifest; números exigem fato hash-verificado"}</p>
+          <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}{hashAuditado ? "" : ` — ${MOTIVO_SEM_HASH}`}</p>
         ) : filtradas.length === 0 ? (
           <p role="alert" style={ALERTA_STYLE}>
             {SEM_DADO}
@@ -329,7 +330,7 @@ export function CuradaConteudo({
           <p role="alert" style={ALERTA_STYLE}>
             {SEM_DADO}
             {!hashAuditado
-              ? " — sem hash auditado no manifest; números exigem fato hash-verificado"
+              ? ` — ${MOTIVO_SEM_HASH}`
               : escopo ? ` — ${escopo}` : ""}
           </p>
         ) : (
@@ -381,7 +382,7 @@ export function CuradaConteudo({
         {badge}
         <p role="note">{ECO_SEAL} — cada ponto é um município, nunca uma pessoa.</p>
         {!hashAuditado || !fato || !cand ? (
-          <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}{!hashAuditado ? " — sem hash auditado no manifest; números exigem fato hash-verificado" : ""}</p>
+          <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}{!hashAuditado ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
         ) : !cruzarOk ? (
           <p role="alert" style={ALERTA_STYLE}>
             {SEM_DADO} — sem cobertura nos blocos
@@ -435,7 +436,7 @@ export function CuradaConteudo({
         {!hashAuditado || !fato || !cand || filtradas.length === 0 ? (
           <p role="alert" style={ALERTA_STYLE}>
             {SEM_DADO}
-            {!hashAuditado ? " — sem hash auditado no manifest; números exigem fato hash-verificado" : escopo ? ` — ${escopo}` : ""}
+            {!hashAuditado ? ` — ${MOTIVO_SEM_HASH}` : escopo ? ` — ${escopo}` : ""}
           </p>
         ) : (
           <>
@@ -507,7 +508,7 @@ export function CuradaConteudo({
         {!hashAuditado || ranking.length === 0 ? (
           <p role="alert" style={ALERTA_STYLE}>
             {SEM_DADO}
-            {!hashAuditado ? " — sem hash auditado no manifest; números exigem fato hash-verificado" : escopo ? ` — ${escopo}` : " — sem cobertura neste recorte"}
+            {!hashAuditado ? ` — ${MOTIVO_SEM_HASH}` : escopo ? ` — ${escopo}` : " — sem cobertura neste recorte"}
           </p>
         ) : (
           <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Top municípios por share">
@@ -542,7 +543,7 @@ export function CuradaConteudo({
         <p>
           Números desta resposta:{" "}
           {!hashAuditado || !fato || !cand ? (
-            <>{SEM_DADO}{hashAuditado ? "" : " — sem hash auditado no manifest; números exigem fato hash-verificado"}</>
+            <>{SEM_DADO}{hashAuditado ? "" : ` — ${MOTIVO_SEM_HASH}`}</>
           ) : (
             <>n = {filtradas.length} municípios
             {corrP ? ` · r (Pearson) = ${fmtR(corrP.r)}` : ""}
