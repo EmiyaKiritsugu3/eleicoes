@@ -10,8 +10,8 @@ from etl import normalize
 
 
 def test_dv_compartilhado_mesmo_objeto():
-    assert normalize._dv_ok is ibge_dv.dv_ok
-    assert censo._dv_ok is ibge_dv.dv_ok
+    assert normalize.validar_serie_ibge is ibge_dv.validar_serie_ibge
+    assert censo.validar_serie_ibge is ibge_dv.validar_serie_ibge
 
 
 def test_dv_ok_vetores_conhecidos():

@@ -206,7 +206,7 @@ afterEach(async () => {
     root?.unmount();
   });
   root = null;
-  el?.remove();
+  (el as HTMLDivElement | null)?.remove();
   el = null;
   globalThis.fetch = fetchOriginal;
   vi.restoreAllMocks();
@@ -479,7 +479,7 @@ describe("ux CopyShare copia + fallback", () => {
       root?.unmount();
     });
     root = null;
-    el?.remove();
+    (el as HTMLDivElement | null)?.remove();
     el = null;
     // #3: ExplorarConteudo com selo oficial expõe o botão de copiar.
     const divE = await renderJsdom(
@@ -494,7 +494,7 @@ describe("ux CopyShare copia + fallback", () => {
       root?.unmount();
     });
     root = null;
-    el?.remove();
+    (el as HTMLDivElement | null)?.remove();
     el = null;
     const fatoCheio = { candidatos: CANDIDATOS, municipios: linhasValidas() };
     const htmlR = renderToStaticMarkup(
