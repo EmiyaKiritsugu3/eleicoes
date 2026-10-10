@@ -6,3 +6,5 @@ data/manifest.json
 *.bak
 web/tsconfig.tsbuildinfo
 node_modules/
+build/
+*.egg-info/

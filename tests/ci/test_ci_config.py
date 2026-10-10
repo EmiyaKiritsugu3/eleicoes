@@ -44,3 +44,14 @@ def test_setuptools_packages_find_covers_etl_only():
     with open("pyproject.toml", "rb") as f:
         find = tomllib.load(f)["tool"]["setuptools"]["packages"]["find"]
     assert find["include"] == ["etl*"]  # pip install . não tenta empacotar web/ ou data/
+
+
+def test_gitignore_covers_build_artifacts():
+    g = pathlib.Path(".gitignore").read_text()
+    assert "build/" in g and "*.egg-info" in g
+
+
+def test_no_build_artifacts_tracked():
+    import subprocess
+    out = subprocess.run(["git", "ls-files"], capture_output=True, text=True, check=True).stdout
+    assert not [l for l in out.splitlines() if l.startswith("build/") or ".egg-info" in l]
