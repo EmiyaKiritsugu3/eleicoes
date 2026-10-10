@@ -119,7 +119,8 @@ def seed(manifest_path: Path, web_data_dir: Path, force: bool = False) -> dict:
     from etl import ETL_VERSION
     from etl.build_fato import build_fato
     from etl.build_marts import build_all, register_served_artifacts
-    from etl.censo import normalize_censo
+    from etl.censo import (CENSO_ARTIFACT_FILENAME, normalize_censo,
+                           write_censo_artifact)
     from etl.manifest import write_manifest
     from etl.sources import CENSO_DATASETS, V1_DATASETS
 
@@ -192,6 +193,14 @@ def seed(manifest_path: Path, web_data_dir: Path, force: bool = False) -> dict:
             })
             ano, turno, cargo = _FATO_TRIPLE
             build_fato(db_tmp, web_data_dir, ano, turno, cargo)
+            # EVOLVE-7 Task 1 fix (seam fresh-deploy): o artefato fixture
+            # `{ibge7: pop}` vai direto ao web_data_dir ANTES do recalc
+            # abaixo — sem passo manual, o deploy fresco serve pop (não
+            # SEM_DADO). O `register_served_artifacts` o atesta com fonte
+            # do Censo e o loop adiante o marca fixture:true como os
+            # demais servidos.
+            write_censo_artifact(normalize_censo(censo_raw),
+                                 web_data_dir / CENSO_ARTIFACT_FILENAME)
             # build_fato anexa ao <db dir>/manifest.json (aqui o tmp):
             # promove o entry do fato p/ o manifest real.
             tmp_manifest = json.loads(

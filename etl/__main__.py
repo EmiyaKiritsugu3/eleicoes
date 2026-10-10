@@ -103,17 +103,25 @@ def _passo_fetch() -> dict:
 
 
 def _passo_censo(censo_csv: Path, db: Path, manifest: Path,
-                 total_esperado=None) -> list[str]:
+                 total_esperado=None, web_data_dir=None) -> list[str]:
     """Normaliza o CSV do Censo, grava dim_municipio e registra a ingestão.
 
     Com `total_esperado`, aplica `check_censo_sum` fail-closed ANTES de
     qualquer escrita e devolve os erros (contrato `-> list[str]`, como
     `run_gates`); sem ele, só a integridade de schema do `normalize_censo`.
+    Com `web_data_dir`, emite `censo_municipios.json` (`{ibge7: pop}`,
+    EVOLVE-7 Task 1 fix) direto no dir servido — sem passo manual, o
+    deploy serve pop em vez de SEM_DADO; o recalc de served artifacts do
+    `build_fato` seguinte o atesta no mirror (fonte do Censo, nunca
+    fan-out TSE). Ordem: dim → ingestão → artefato (crash no meio deixa
+    no máximo ingestão sem bytes — UI honesta —, nunca bytes sem
+    proveniência de ingestão).
     """
     import duckdb
     import pandas as pd
 
-    from etl.censo import normalize_censo, register_censo_ingest
+    from etl.censo import (CENSO_ARTIFACT_FILENAME, normalize_censo,
+                           register_censo_ingest, write_censo_artifact)
 
     bruto = Path(censo_csv).read_bytes()
     sha = hashlib.sha256(bruto).hexdigest()
@@ -143,6 +151,11 @@ def _passo_censo(censo_csv: Path, db: Path, manifest: Path,
     entry = register_censo_ingest(str(manifest), rows=len(normalizado), sha256=sha)
     print(f"censo: dim_municipio ok ({len(normalizado)} linhas, "
           f"sha256={str(entry.get('sha256', ''))[:12]}…)")
+    if web_data_dir is not None:
+        gravado = write_censo_artifact(
+            normalizado, Path(web_data_dir) / CENSO_ARTIFACT_FILENAME)
+        print(f"censo: {CENSO_ARTIFACT_FILENAME} ok "
+              f"({gravado['rows']} municípios servidos)")
     return []
 
 
@@ -172,7 +185,8 @@ def main(argv=None) -> int:
         print("build: marts ok")
         if args.censo_csv is not None:
             erros_censo = _passo_censo(args.censo_csv, Path(args.db), manifest,
-                                       args.censo_total_esperado)
+                                       args.censo_total_esperado,
+                                       web_data_dir=args.web_data_dir)
             if erros_censo:
                 print(f"{_SAIDA_GATES}: {'; '.join(erros_censo)}", file=sys.stderr)
                 return 1
