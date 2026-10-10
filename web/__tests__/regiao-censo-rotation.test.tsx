@@ -28,6 +28,14 @@ vi.mock("next/navigation", () => ({
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 const DS = "fato_2022_1_presidente";
+// Entry `artifacts` do Censo (EVOLVE-8 Task 1): sem ela a pop cai p/
+// SEM_DADO mesmo com fato auditado — os manifests de controle a carregam
+// (fluxo legítimo pinado); o caso sem entry é o teste do selo abaixo.
+const CENSO_ENTRY = {
+  arquivo: "censo_municipios.json",
+  sha256: "c".repeat(64),
+  source_url: "https://cdn.ibge.gov.br/censo.zip",
+};
 const manifestComHash = (hash: string) => ({
   ingestions: [
     {
@@ -38,6 +46,7 @@ const manifestComHash = (hash: string) => ({
       date: "2026-01-01",
     },
   ],
+  artifacts: [CENSO_ENTRY],
 });
 const MANIFEST_A = manifestComHash("a".repeat(64));
 const MANIFEST_B = manifestComHash("b".repeat(64));
@@ -131,17 +140,22 @@ describe("/regiao: rotação de manifest refetcha o Censo (sem pop stale)", () =
     expect(conta(`/data/${DS}.json`)).toBe(1);
   });
 
-  it("rotação p/ manifest inválido suprime votos mas mantém a pop do artefato (fato-independente)", async () => {
+  it("rotação p/ manifest sem entry do Censo suprime pop E votos (fail-closed total)", async () => {
     instalarFetchMutavel();
     const div = await montar();
     expect(div.innerHTML).toContain("Cand A");
+    expect(perfil(div.innerHTML)).toContain("12.345");
     manifestAtual = MANIFEST_INVALIDO;
     await focar();
     // Fato caiu (fail-closed do gate, paridade com o mount)…
     expect(div.innerHTML).not.toContain("Cand A");
     expect(div.innerHTML).toContain(SEM_DADO);
-    // …mas a pop segue do artefato do Censo (proveniência própria, Task 2).
-    expect(perfil(div.innerHTML)).toContain("12.345");
+    // …e a pop cai junto (EVOLVE-8 Task 1): sem entry `artifacts` do
+    // Censo, o artefato não sustenta número — JSON forjado/órfão no path
+    // servido nunca renderiza, mesmo fato-independente.
+    const linha = (perfil(div.innerHTML).split("População (Censo 2022)")[1] ?? "").split("</li>")[0];
+    expect(linha).toContain(SEM_DADO);
+    expect(perfil(div.innerHTML)).not.toContain("12.345");
   });
 
   it("Censo lento não esconde o fato atrás do loader (carga independente)", async () => {
@@ -176,9 +190,10 @@ describe("/regiao: rotação de manifest refetcha o Censo (sem pop stale)", () =
       tipo: "fato_municipal", dataset, sha256: hash,
       source_url: "https://cdn.tse.jus.br/x.zip", date: "2026-01-01",
     });
-    const M1 = { ingestions: [ing(DSA, "a".repeat(64))] };
-    const M2 = { ingestions: [ing(DSA, "b".repeat(64)), ing(DSB, "c".repeat(64))] };
-    const M3 = { ingestions: [ing(DSA, "d".repeat(64)), ing(DSB, "e".repeat(64))] };
+    const comCenso = (ings: unknown[]) => ({ ingestions: ings, artifacts: [CENSO_ENTRY] });
+    const M1 = comCenso([ing(DSA, "a".repeat(64))]);
+    const M2 = comCenso([ing(DSA, "b".repeat(64)), ing(DSB, "c".repeat(64))]);
+    const M3 = comCenso([ing(DSA, "d".repeat(64)), ing(DSB, "e".repeat(64))]);
     const FATO_B = {
       candidatos: [
         { id: "C", nome: "Cand C", partido: "PC" },

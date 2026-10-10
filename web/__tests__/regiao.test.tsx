@@ -617,6 +617,77 @@ describe("vereditoTemProva (portão de veredito da rota /verificar)", () => {
   });
 });
 
+describe("censoTemProva (selo runtime do Censo — EVOLVE-8 Task 1)", () => {
+  // Paridade com o gate do fato (`vereditoTemProva` + `isAudited`): a pop
+  // só renderiza com entry `artifacts` do Censo com sha256 64-hex.
+  // Fixture com hash válido CONTA como prova (seed legítimo é
+  // fixture:true — pin de `test_seed_artifact_entries` no pytest).
+  const CENSO_OK = {
+    artifacts: [
+      {
+        arquivo: "censo_municipios.json",
+        sha256: "c".repeat(64),
+        source_url: "https://cdn.ibge.gov.br/censo.zip",
+      },
+    ],
+  };
+  it("manifest sem entry do Censo nega prova (fail-closed)", async () => {
+    const { censoTemProva } = await import("../lib/regiao");
+    expect(censoTemProva(null)).toBe(false);
+    expect(censoTemProva({})).toBe(false);
+    expect(censoTemProva({ ingestions: [] })).toBe(false);
+    expect(censoTemProva({ artifacts: [] })).toBe(false);
+    expect(
+      censoTemProva({
+        artifacts: [{ arquivo: "resumo.json", sha256: "c".repeat(64) }],
+      }),
+    ).toBe(false);
+  });
+  it("entry com hash fora do 64-hex nega prova (forjado)", async () => {
+    const { censoTemProva } = await import("../lib/regiao");
+    const semProva = (sha256: unknown) =>
+      censoTemProva({
+        artifacts: [{ arquivo: "censo_municipios.json", sha256 }],
+      });
+    expect(semProva("abc")).toBe(false);
+    expect(semProva("   ")).toBe(false);
+    expect(semProva("c".repeat(63))).toBe(false);
+    expect(semProva(undefined)).toBe(false);
+    // Alias `hash` nunca produzido pelo ETL — rejeitado como no fato.
+    expect(
+      censoTemProva({
+        artifacts: [{ arquivo: "censo_municipios.json", hash: "c".repeat(64) }],
+      }),
+    ).toBe(false);
+  });
+  it("entry 64-hex (incl. maiúsculas) dá prova — sem falso-negativo", async () => {
+    const { censoTemProva, entradaCensoAuditada } = await import("../lib/regiao");
+    expect(censoTemProva(CENSO_OK)).toBe(true);
+    expect(
+      censoTemProva({
+        artifacts: [{ arquivo: "censo_municipios.json", sha256: "AB".repeat(32) }],
+      }),
+    ).toBe(true);
+    // Seed legítimo: fixture:true com hash válido conta como prova.
+    expect(
+      censoTemProva({
+        artifacts: [
+          { arquivo: "censo_municipios.json", sha256: "f".repeat(64), fixture: true },
+        ],
+      }),
+    ).toBe(true);
+    // Basename com prefixo de path casa (entry grava basename; tolera path).
+    expect(
+      censoTemProva({
+        artifacts: [{ arquivo: "data/censo_municipios.json", sha256: "c".repeat(64) }],
+      }),
+    ).toBe(true);
+    expect(entradaCensoAuditada(CENSO_OK)?.arquivo).toBe("censo_municipios.json");
+    expect(entradaCensoAuditada({ artifacts: [] })).toBe(null);
+    expect(entradaCensoAuditada(null)).toBe(null);
+  });
+});
+
 describe("População real do Censo (EVOLVE-7 Task 2)", () => {
   // Mapa mínimo no shape do artefato `censo_municipios.json` ({ibge7: pop}):
   // 12345 + 6789 = 19134 de baseline Brasil.
