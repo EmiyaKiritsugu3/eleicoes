@@ -3,6 +3,7 @@ import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import checksJson from "../data/checks.json";
 import {
+  buildVerificarShareUrl,
   VerificarConteudo,
   verificarAfirmacao,
   checksParaRegiao,
@@ -483,5 +484,23 @@ describe("verificar (fail-closed sem hash: sem dado oficial, nunca veredito)", (
     );
     expect(html).toContain("sem dado oficial");
     expect(html).not.toMatch(/Veredito: (<!-- -->)?(sustentado|enganoso|falso)/);
+  });
+});
+
+describe("verificar (share: URL com hash na Fonte e reprodução)", () => {
+  it("slug + hash → /verificar/<slug>?hash= (paridade buildExplorarShareUrl)", () => {
+    const url = buildVerificarShareUrl("sint-vencedor", "d".repeat(64));
+    expect(url).toBe(`/verificar/sint-vencedor?hash=${"d".repeat(64)}`);
+  });
+  it("hash vazio/branco → sem hash= (nunca número sem hash)", () => {
+    expect(buildVerificarShareUrl("sint-vencedor", "")).toBe("/verificar/sint-vencedor");
+    expect(buildVerificarShareUrl("sint-vencedor", "   ")).not.toContain("hash=");
+  });
+  it("Fonte e reprodução renderiza URL com hash= + Copiar link", () => {
+    const fonte = htmlDe(CHECK_SUSTENTADO, CHECK_SUSTENTADO.slug, fato40())
+      .split('aria-label="Fonte e reprodu')[1]
+      .split("<section")[0];
+    expect(fonte).toContain("hash=" + "d".repeat(64));
+    expect(fonte).toContain("Copiar link");
   });
 });

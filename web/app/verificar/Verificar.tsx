@@ -38,6 +38,7 @@
  */
 
 import React from "react";
+import CopyShare from "../../components/CopyShare";
 import SealSlot from "../../components/SealSlot";
 import SourceBadge from "../../components/SourceBadge";
 import { ECO_SEAL, SEM_DADO, type FatoRegiao } from "../../components/PainelRegiao";
@@ -472,6 +473,20 @@ export function checksParaRegiao(checks: Check[], regiao: string): Check[] {
   );
 }
 
+/** Slug → `/verificar/<slug>?hash=<manifest>` (mesmo padrão de
+ *  `buildExplorarShareUrl`: `hash` só com valor não-branco; slug vazio →
+ *  `/verificar`). Recebe a URL pronta o `<CopyShare>` — nunca reconstrói. */
+export function buildVerificarShareUrl(slug: string, manifestHash: string): string {
+  const limpo = (slug ?? "").trim();
+  const base = limpo !== "" ? `/verificar/${encodeURIComponent(limpo)}` : "/verificar";
+  const params = new URLSearchParams();
+  if (typeof manifestHash === "string" && manifestHash.trim().length > 0) {
+    params.set("hash", manifestHash.trim());
+  }
+  const qs = params.toString();
+  return qs ? `${base}?${qs}` : base;
+}
+
 function fmtNumero(n: NumeroDecisivo): string {
   if (n.valor === null || !finito(n.valor)) return SEM_DADO;
   const v = n.valor as number;
@@ -551,6 +566,10 @@ export function VerificarConteudo({
         "Veredito só com prova auditada: sem hash válido no manifest, nenhuma afirmação recebe veredito.",
       );
   const frase = resolverFrase(check, fato);
+  // Paridade Explorar/Curada: URL reproduzível com o hash do manifest
+  // (oficial; sem hash → sem `hash=`, nunca número sem prova). O mesmo
+  // `<CopyShare>` — absolutização, stale-guard e fallback vêm de graça.
+  const shareUrl = buildVerificarShareUrl(check.slug, seal.official?.hash ?? "");
 
   return (
     <>
@@ -639,6 +658,9 @@ export function VerificarConteudo({
             </li>
           ))}
         </ul>
+        <p>
+          <CopyShare url={shareUrl} />
+        </p>
       </section>
     </>
   );
