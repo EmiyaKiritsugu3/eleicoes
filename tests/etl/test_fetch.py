@@ -132,7 +132,7 @@ def test_midstream_failure_leaves_no_partial(sandbox_tmp, monkeypatch):
     else:
         raise AssertionError("expected ConnectionError after retries")
     assert not dest.exists()
-    assert not dest.with_name(dest.name + ".part").exists()
+    assert list(dest.parent.glob("v.zip.part*")) == []
 
 
 def test_retries_zero_raises_valueerror(sandbox_tmp, monkeypatch):
