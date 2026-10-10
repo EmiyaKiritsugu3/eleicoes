@@ -33,6 +33,7 @@ describe("textos (fonte única SEM_DADO)", () => {
       "components/Explorar.tsx",
       "app/perguntas/Curada.tsx",
       "app/verificar/Verificar.tsx",
+      "app/analisar/page.tsx",
     ]) {
       const src = readFileSync(join(root, f), "utf8");
       // Literal canônico (só o identificador MOTIVO_SEM_HASH pode aparecer).

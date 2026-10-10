@@ -104,15 +104,16 @@ export default function MapaBrasil({
     // Resolução única: chamador que já resolveu (features) não refaz fetch.
     // Rotação de manifest (decisão EVOLVE-6 T6-b): features novas do
     // chamador substituem o estado — sem sync, o mapa grudava no velho
-    // (`useState` só lê a prop na montagem). Erro anterior sempre limpo
-    // (chegada de features OU nova URL): fallback não gruda após recovery.
+    // (`useState` só lê a prop na montagem). Erro anterior limpa SÓ no
+    // sucesso (chegada de features OU loadMalha resolvido): limpar na
+    // partida do fetch escondia o fallback durante o refetch pendente,
+    // deixando canvas vazio não-selecionável após a falha anterior.
     if (featuresProp !== undefined) {
       setFeatures(featuresProp);
       setErroMalha(null);
       return;
     }
     let vivo = true;
-    setErroMalha(null);
     loadMalha(malhaUrl).then(
       (f) => {
         if (vivo) {

@@ -74,6 +74,12 @@ describe("task3 micro-batch morto", () => {
     expect(entryDate({ date: "ontem" })).toBe("");
     expect(entryDate({ date: "javascript:alert(1)" })).toBe("");
     expect(entryDate({})).toBe("");
+    // Round-trip calendário: Date.parse transborda 2026-02-30 → Mar 02.
+    expect(entryDate({ date: "2026-02-30" })).toBe("");
+    expect(entryDate({ date: "2026-02-30T12:00:00Z" })).toBe("");
+    expect(entryDate({ date: "2026-13-01" })).toBe("");
+    expect(entryDate({ date: "2026-02-29" })).toBe("");
+    expect(entryDate({ date: "2024-02-29" })).toBe("2024-02-29");
   });
 
   it("(f) decodeTopojson conta skips c/ debug warn e segue fail-closed", () => {

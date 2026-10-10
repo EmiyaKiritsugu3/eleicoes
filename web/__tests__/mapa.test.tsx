@@ -466,6 +466,40 @@ describe("rotação de manifest não gruda no mapa velho (decisão EVOLVE-6 T6-b
       restoreCtx();
     }
   });
+  it("fallback segue visível durante o refetch pendente (só limpa no sucesso)", async () => {
+    const restorePath = mockPath2D();
+    const restoreCtx = mockCanvas2d();
+    mockFetchMalhaAusente();
+    try {
+      const div = await renderJsdom(
+        <MapaBrasil malhaUrl="/data/v1.topojson" nivel="uf" onSelectIbge={() => {}} />,
+      );
+      // Falhou: fallback em lista, sem canvas.
+      expect(div.querySelector("canvas")).toBeNull();
+      // Rotação com fetch ainda pendente: fallback mantido, sem canvas vazio.
+      let resolver!: (v: unknown) => void;
+      const pendente = new Promise((res) => {
+        resolver = res;
+      });
+      vi.stubGlobal("fetch", vi.fn(() => pendente));
+      await rerenderJsdom(
+        <MapaBrasil malhaUrl="/data/v2.topojson" nivel="uf" onSelectIbge={() => {}} />,
+      );
+      expect(div.querySelector("canvas")).toBeNull();
+      expect(div.querySelector('[role="alert"]')).not.toBeNull();
+      // Sucesso resolve: canvas volta.
+      await act(async () => {
+        resolver({ ok: true, json: async () => FIXTURE_TOPO });
+      });
+      for (let i = 0; i < 8; i++) {
+        await act(async () => {});
+      }
+      expect(div.querySelector("canvas")).not.toBeNull();
+    } finally {
+      restorePath();
+      restoreCtx();
+    }
+  });
 });
 
 describe("operável por teclado (lista junto ao mapa)", () => {
