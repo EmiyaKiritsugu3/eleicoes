@@ -15,7 +15,7 @@ export default function Metodologia() {
         <h2>Pipeline (offline-first, custo zero)</h2>
         <ol>
           <li>
-            <strong>Fetch:</strong> download dos zips no CDN oficial do TSE
+            <strong>Fetch:</strong> baixar os zips no CDN oficial do TSE
             (catálogo em dadosabertos.tse.jus.br), com sha256 registrado por
             ingestão.
           </li>
@@ -46,7 +46,7 @@ export default function Metodologia() {
           <li>
             Um número só é apresentado como oficial quando há hash válido em
             ingestão não-sintética no manifest (<code>isOfficialDisplay</code>{" "}
-            exige <code>sha256</code> não-vazio e ausência de{" "}
+            exige <code>sha256</code> com 64 dígitos hexadecimais e ausência de{" "}
             <code>fixture:true</code>).
           </li>
           <li>
@@ -68,7 +68,7 @@ export default function Metodologia() {
           </li>
         </ul>
         <p>
-          Ingestões, hashes e downloads em <a href="/auditoria">/auditoria</a>.
+          Ingestões, hashes e arquivos para baixar em <a href="/auditoria">/auditoria</a>.
         </p>
       </section>
 

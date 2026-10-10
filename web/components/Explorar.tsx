@@ -712,13 +712,13 @@ export function ExplorarConteudo({
               média de derrota não descreve onde venceu.
             </p>
           ) : !perfil || !base || perfil.nMun === 0 ? (
-            <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}</p>
+            <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}{!fato || hashAuditado ? "" : " — sem hash auditado no manifest; números exigem fato hash-verificado"}</p>
           ) : (
             <>
               {(perfil.pesoFonte === "misto") && <p role="note">{NOTA_PESO_MISTO}</p>}
               <p>
                 n = {formatVotes(perfil.nMun)} municípios · {formatVotes(perfil.nEleitores)} eleitores (peso:{" "}
-                {perfil.pesoFonte})
+                {perfil.pesoFonte === "misto" ? "eleitorado, total ou população" : "eleitorado"})
               </p>
               <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Médias ponderadas vs Brasil">
               <table>
