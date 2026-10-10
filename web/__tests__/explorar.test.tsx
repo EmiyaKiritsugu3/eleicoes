@@ -95,6 +95,14 @@ describe("explorar (quintis em percentual, paridade com ranking/foco)", () => {
     const tabela = html.split("<caption>Percentual médio de votos por quintil")[1].split("</table>")[0];
     expect(tabela).toMatch(/\d+,\d%/); // pt-BR + % (ex. 60,0%)
     expect(tabela).not.toMatch(/>0,\d+</); // fração crua 0,456 nunca
+    // Fecha o buraco fração-com-%: sem ×100 o fixture daria 0,5% (casa com
+    // \d+,\d% e escapa de >0,\d+< por causa do % antes do <).
+    expect(tabela).not.toMatch(/>0,\d+%/);
+    // Pin exato do fixture determinístico (40 linhas lineares a=500+i*10):
+    // fração não-escalada jamais produz estes valores.
+    for (const v of ["53,5%", "61,5%", "69,5%", "77,5%", "85,5%"]) {
+      expect(tabela).toContain(v);
+    }
   });
 });
 
