@@ -1,7 +1,10 @@
 /** Regras de auditoria visível (ledger rulings a/b/c — Task 5, reusado pela Task 6).
  *
  * - Formatação pt-BR de votos: 1234567 -> "1.234.567".
- * - `isAudited(obj)`: true somente se houver hash não-vazio (`sha256` ou `hash`).
+ * - `isAudited(obj)`: true somente se houver hash sha256 64-hex
+ *   (`sha256` ou `hash`), espelhando o que o ETL exige na escrita
+ *   (`etl/manifest.py:_validate_entry` — 64-hex, maiúsculas aceitas).
+ *   Qualquer outra string (ex. `"abc123"`) nega o selo (fail-closed).
  * - `isOfficialDisplay(obj)`: `isAudited` E não-fixture (`fixture:true` tem hash
  *   para transparência, mas nunca usa o selo oficial — ver /auditoria).
  * - Sem manifest / manifest inválido -> a página mostra banner "dado não auditado"
@@ -92,13 +95,16 @@ export function formatVotes(n: number): string {
   return neg + Math.trunc(Math.abs(n)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
 
-/** false quando o objeto não carrega hash (`sha256` ou `hash`).
- *  Hash só-espaços não audita (F5): exige `trim().length > 0`. */
+/** false quando o objeto não carrega hash sha256 64-hex (`sha256` ou `hash`).
+ *  Espelho exato do ETL (`etl/manifest.py:_validate_entry`: fullmatch
+ *  64-hex após lower — maiúsculas aceitas aqui também, sem trim, como lá).
+ *  Hash curto, só-espaços ou com caractere fora de [0-9a-fA-F] não
+ *  audita (fail-closed, F5). */
 export function isAudited(obj: unknown): boolean {
   if (!obj || typeof obj !== "object") return false;
   const o = obj as Record<string, unknown>;
   const h = o.sha256 ?? o.hash;
-  return typeof h === "string" && h.trim().length > 0;
+  return typeof h === "string" && /^[0-9a-fA-F]{64}$/.test(h);
 }
 
 /** URL segura p/ links de fonte (M10): só `http(s)`; qualquer outro

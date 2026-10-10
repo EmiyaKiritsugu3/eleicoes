@@ -52,7 +52,7 @@ const FATO: FatoRegiao = {
 
 const SEAL_OFICIAL: SealState = {
   official: {
-    hash: "abc123def456789",
+    hash: "ab".repeat(32),
     url: "https://cdn.tse.jus.br/x.zip",
     date: "2026-01-01",
   },
@@ -159,7 +159,7 @@ describe("PainelRegiao (município)", () => {
 describe("pixel-mentiroso (toda resposta exibe fonte+hash)", () => {
   // Stem de 12 chars do hash do selo oficial (SourceBadge renderiza
   // `<code>{stem}…</code>` + `title="sha256: {hash cheio}"`).
-  const HASH_SHORT = "abc123def456";
+  const HASH_SHORT = "ab".repeat(6);
   /** Outcome honesto POR SEÇÃO: hash curto, selo oficial ou aviso fail-closed. */
   function secaoHonesta(s: string): boolean {
     return (

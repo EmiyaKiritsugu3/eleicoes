@@ -5,29 +5,30 @@ import path from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import Auditoria from "../app/auditoria/page";
 describe("auditoria", () => {
-  it("requires hash to show numbers as official", async () => {
+  it("requires hash 64-hex to show numbers as official (lixo nega selo)", async () => {
     const { isAudited } = await import("../lib/data");
-    expect(isAudited({ sha256: "x" })).toBe(true);
+    expect(isAudited({ sha256: "ab".repeat(32) })).toBe(true);
+    expect(isAudited({ sha256: "abc123" })).toBe(false);
   });
   it("fixture with hash is audited but never official display", async () => {
     const { isAudited, isFixtureEntry, isOfficialDisplay } = await import("../lib/data");
-    const fixture = { sha256: "x", fixture: true };
+    const fixture = { sha256: "ab".repeat(32), fixture: true };
     expect(isAudited(fixture)).toBe(true);
     expect(isFixtureEntry(fixture)).toBe(true);
     expect(isOfficialDisplay(fixture)).toBe(false);
-    expect(isOfficialDisplay({ sha256: "x" })).toBe(true);
+    expect(isOfficialDisplay({ sha256: "ab".repeat(32) })).toBe(true);
     expect(isOfficialDisplay({})).toBe(false);
   });
   it("getOfficialAuditInfo skips fixtures", async () => {
     const { getOfficialAuditInfo } = await import("../lib/data");
     const m = {
       ingestions: [
-        { source_url: "u", sha256: "f", fixture: true },
-        { source_url: "u2", sha256: "abc", date: "2026-01-01" },
+        { source_url: "u", sha256: "f".repeat(64), fixture: true },
+        { source_url: "u2", sha256: "ab".repeat(32), date: "2026-01-01" },
       ],
     };
-    expect(getOfficialAuditInfo(m)).toEqual({ hash: "abc", url: "u2", date: "2026-01-01" });
-    expect(getOfficialAuditInfo({ ingestions: [{ sha256: "f", fixture: true }] })).toBe(null);
+    expect(getOfficialAuditInfo(m)).toEqual({ hash: "ab".repeat(32), url: "u2", date: "2026-01-01" });
+    expect(getOfficialAuditInfo({ ingestions: [{ sha256: "f".repeat(64), fixture: true }] })).toBe(null);
     expect(getOfficialAuditInfo(null)).toBe(null);
   });
 });

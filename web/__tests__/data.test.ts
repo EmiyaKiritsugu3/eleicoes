@@ -11,9 +11,15 @@ describe("manifest guard", () => {
     expect(isAudited({})).toBe(false);
   });
 });
-describe("ledger rulings", () => {  it("isAudited true com sha256 presente", async () => {
+describe("ledger rulings", () => {  it("isAudited exige sha256 64-hex (lixo nega selo)", async () => {
     const { isAudited } = await import("../lib/data");
-    expect(isAudited({ sha256: "abc123" })).toBe(true);
+    expect(isAudited({ sha256: "a".repeat(64) })).toBe(true);
+    expect(isAudited({ hash: "A".repeat(64) })).toBe(true); // ETL aceita maiúsculas (lower)
+    expect(isAudited({ sha256: "abc123" })).toBe(false);
+    expect(isAudited({ sha256: "x".repeat(64) })).toBe(false); // fora de [0-9a-fA-F]
+    expect(isAudited({ sha256: "a".repeat(63) })).toBe(false);
+    expect(isAudited({ sha256: "a".repeat(65) })).toBe(false);
+    expect(isAudited({ sha256: ` ${"a".repeat(64)} ` })).toBe(false); // espelho exato do ETL: sem trim
   });
   it("audited trim: hash só-espaços é falso (F5)", async () => {
     const { isAudited } = await import("../lib/data");
@@ -22,7 +28,7 @@ describe("ledger rulings", () => {  it("isAudited true com sha256 presente", asy
   });
   it("official display ignora chaves extras desconhecidas (M14)", async () => {
     const { isOfficialDisplay } = await import("../lib/data");
-    expect(isOfficialDisplay({ sha256: "x".repeat(64), outraChave: 1 })).toBe(true);
+    expect(isOfficialDisplay({ sha256: "ab".repeat(32), outraChave: 1 })).toBe(true);
   });
   it("getOfficialAuditInfo null sem manifest (dado não auditado)", async () => {
     const { getOfficialAuditInfo } = await import("../lib/data");
@@ -153,22 +159,33 @@ describe("getSealState (selo único de /, /analisar e /auditoria)", () => {
     const { getSealState } = await import("../lib/data");
     const seal = getSealState({
       ingestions: [
-        { source_url: "u", sha256: "f", fixture: true },
-        { source_url: "u2", sha256: "abc", date: "2026-01-01" },
+        { source_url: "u", sha256: "f".repeat(64), fixture: true },
+        { source_url: "u2", sha256: "ab".repeat(32), date: "2026-01-01" },
       ],
     });
-    expect(seal.official).toEqual({ hash: "abc", url: "u2", date: "2026-01-01" });
+    expect(seal.official).toEqual({ hash: "ab".repeat(32), url: "u2", date: "2026-01-01" });
     expect(seal.hasFixture).toBe(true);
-    expect(seal.fixtureHash).toBe("f");
+    expect(seal.fixtureHash).toBe("f".repeat(64));
   });
   it("oficial-only: selo oficial, sem fixture", async () => {
     const { getSealState } = await import("../lib/data");
     const seal = getSealState({
-      ingestions: [{ source_url: "u2", sha256: "abc", date: "2026-01-01" }],
+      ingestions: [{ source_url: "u2", sha256: "ab".repeat(32), date: "2026-01-01" }],
     });
-    expect(seal.official).toEqual({ hash: "abc", url: "u2", date: "2026-01-01" });
+    expect(seal.official).toEqual({ hash: "ab".repeat(32), url: "u2", date: "2026-01-01" });
     expect(seal.hasFixture).toBe(false);
     expect(seal.fixtureHash).toBe("");
+  });
+  it("hash lixo (não 64-hex) nega o selo oficial (fail-closed)", async () => {
+    const { getSealState } = await import("../lib/data");
+    for (const m of [
+      { ingestions: [{ source_url: "u2", sha256: "abc123", date: "2026-01-01" }] },
+      { ingestions: [{ source_url: "u2", sha256: "x".repeat(64), date: "2026-01-01" }] },
+      { ingestions: [{ source_url: "u2", sha256: "abc123", fixture: true }] },
+    ]) {
+      const seal = getSealState(m);
+      expect(seal.official).toBe(null);
+    }
   });
   it("ausente/vazio/sem-hash: sem selo e sem fixture (fail-closed)", async () => {
     const { getSealState } = await import("../lib/data");
