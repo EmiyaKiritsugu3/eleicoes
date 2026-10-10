@@ -62,3 +62,10 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 
 ## EVOLVE-1 completo (final review: Merge Yes)
 - 6/6 tasks + revisão final limpa; nenhum MUST-FIX; minors → EVOLVE-2 backlog.
+
+## EVOLVE-1 pós-review: Sonar + cubic + CodeRabbit (2026-10-10 ~14:40 UTC)
+- Sonar gate: duplicação 4.2%→1.7% OK (helper DV compartilhado); restou só Security Rating C (6× S8707 path-traversal em build_marts.py).
+- Ruling (autorizado pelo usuário): won't-fix com justificativa nos 6 issues — ETL batch local, paths dos args do próprio operador (só auto-ataque); mitigação runtime `_dentro_de` + 8 testes TDD; motor de taint não reconhece sanitizer custom. Chaves: AaEj-mP2BIquHGRj1Xcc/cd, AaEj62gSVyNZiS698IBr/Bo/Bp/Bq. Revisitar se os paths forem remotamente alcançáveis. Ação via API direta (MCP sonarqube-mcp-server 1.10.21 com bug no endpoint markIssueWontFix — "issue parameter missing"; reportar upstream).
+- cubic 23 issues triadas: 13 corrigidas (commit 054b5da, review Approved), 10 diferidas → EVOLVE-2.
+- CodeRabbit MAJOR (9 IBGEs oficiais fora do mod-10, confirmado na API oficial: 5571 municípios, exatamente 9 falham) corrigido com allowlist + teste (commit 9ebb6fb, review Approved); final pass sem achados novos.
+- Sonar MCP instalado (sonarqube-mcp-server@1.10.21, org emiyakiritsugu3) — token no config OpenCode.
