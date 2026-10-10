@@ -92,9 +92,22 @@ describe("Home com malha: mapa clicável foca o filtro UF", () => {
       ) as HTMLInputElement | null;
       expect(ufInput).not.toBeNull();
       expect(ufInput!.value).toBe("SP");
-      const pRJ = cliqueCssParaMalha(canvas!, 11.5, -0.5);
+      // Slice-2 (EVOLVE-5 Task 3): o foco UF aproxima o mapa p/ os
+      // municípios da UF; p/ clicar outra UF é preciso voltar ao nível UF.
+      const voltar = div.querySelector(
+        'section[aria-label="Mapa por UF"] button',
+      ) as HTMLButtonElement | null;
+      expect(voltar).not.toBeNull();
       await act(async () => {
-        canvas!.dispatchEvent(
+        voltar!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      const canvasUf = div.querySelector(
+        'section[aria-label="Mapa por UF"] canvas',
+      ) as HTMLCanvasElement | null;
+      expect(canvasUf).not.toBeNull();
+      const pRJ = cliqueCssParaMalha(canvasUf!, 11.5, -0.5);
+      await act(async () => {
+        canvasUf!.dispatchEvent(
           new MouseEvent("click", { bubbles: true, clientX: pRJ.x, clientY: pRJ.y }),
         );
       });
