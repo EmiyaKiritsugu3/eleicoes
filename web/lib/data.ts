@@ -59,8 +59,23 @@ export interface ManifestIngestion {
   [key: string]: unknown;
 }
 
+/** Hash de um arquivo servido (EVOLVE-2 Task 1): `arquivo` é o nome sob
+ *  `/data/`, `sha256`/`size_bytes` medidos dos bytes servidos
+ *  (`register_served_artifacts`). Estende sem quebrar: `ingestions`
+ *  segue o contrato; `artifacts` é opcional (legado só-ingestions). */
+export interface ManifestArtifact {
+  source_url?: string;
+  sha256?: string;
+  arquivo?: string;
+  size_bytes?: number;
+  date?: string;
+  data?: string;
+  [key: string]: unknown;
+}
+
 export interface Manifest {
   ingestions?: ManifestIngestion[];
+  artifacts?: ManifestArtifact[];
   [key: string]: unknown;
 }
 
@@ -107,6 +122,22 @@ export function isOfficialDisplay(obj: unknown): boolean {
   return isAudited(obj) && !isFixtureEntry(obj);
 }
 
+/** Artifacts com prova de bytes (EVOLVE-2 Task 1): só entries dict com
+ *  `arquivo` e hash não-vazios, na ordem do manifest. Legado
+ *  só-ingestions (sem chave) devolve [] — a página mostra nota honesta. */
+export function getArtifacts(manifest: unknown): ManifestArtifact[] {
+  if (!manifest || typeof manifest !== "object") return [];
+  const raw = (manifest as Manifest).artifacts;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (e): e is ManifestArtifact =>
+      !!e &&
+      typeof e === "object" &&
+      typeof (e as ManifestArtifact).arquivo === "string" &&
+      ((e as ManifestArtifact).arquivo as string).length > 0 &&
+      isAudited(e),
+  );
+}
 /** Primeira ingestão exibível como OFICIAL (audited + não-fixture), ou null.
  *  Usado pela /auditoria (e, via `getSealState`, por / e /analisar): fixture
  *  tem hash mas nunca usa o selo oficial.
