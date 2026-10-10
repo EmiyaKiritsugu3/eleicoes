@@ -67,6 +67,12 @@ describe("hash-formato (EVOLVE-3 Task 1: sha256 lixo nega selo)", () => {
     expect(seal.official).toBe(null);
     expect(vereditoTemProva(seal)).toBe(false);
   });
+  it("ingestão só com alias `hash` (sem `sha256`) não sela — ETL nunca a produziria", () => {
+    const seal = getSealState({
+      ingestions: [{ source_url: "https://cdn.tse.jus.br/x.zip", hash: HASH_REAL, date: "2026-01-01" }],
+    });
+    expect(seal.official).toBe(null);
+  });
   it("manifest com sha256 64-hex real -> selo oficial concedido (controle)", () => {
     const seal: SealState = getSealState(MANIFEST_REAL);
     expect(seal.official).toEqual({

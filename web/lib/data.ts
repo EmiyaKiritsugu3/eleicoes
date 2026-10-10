@@ -1,10 +1,10 @@
 /** Regras de auditoria visível (ledger rulings a/b/c — Task 5, reusado pela Task 6).
  *
  * - Formatação pt-BR de votos: 1234567 -> "1.234.567".
- * - `isAudited(obj)`: true somente se houver hash sha256 64-hex
- *   (`sha256` ou `hash`), espelhando o que o ETL exige na escrita
+ * - `isAudited(obj)`: true somente se houver `sha256` 64-hex
+ *   (sem alias `hash`), espelhando o que o ETL exige na escrita
  *   (`etl/manifest.py:_validate_entry` — 64-hex, maiúsculas aceitas).
- *   Qualquer outra string (ex. `"abc123"`) nega o selo (fail-closed).
+ *   Qualquer outra coisa (ex. `"abc123"`, só-`hash`) nega o selo (fail-closed).
  * - `isOfficialDisplay(obj)`: `isAudited` E não-fixture (`fixture:true` tem hash
  *   para transparência, mas nunca usa o selo oficial — ver /auditoria).
  * - Sem manifest / manifest inválido -> a página mostra banner "dado não auditado"
@@ -56,7 +56,6 @@ export interface PorCandidatoRow {
 export interface ManifestIngestion {
   source_url?: string;
   sha256?: string;
-  hash?: string;
   date?: string;
   data?: string;
   [key: string]: unknown;
@@ -95,15 +94,18 @@ export function formatVotes(n: number): string {
   return neg + Math.trunc(Math.abs(n)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
 
-/** false quando o objeto não carrega hash sha256 64-hex (`sha256` ou `hash`).
+/** false quando o objeto não carrega `sha256` 64-hex.
  *  Espelho exato do ETL (`etl/manifest.py:_validate_entry`: fullmatch
  *  64-hex após lower — maiúsculas aceitas aqui também, sem trim, como lá).
+ *  O alias `hash` NÃO audita: nenhum produtor (build_fato, build_marts,
+ *  censo, seed) escreve a chave `hash` — ingestão só-`hash` é rejeitada
+ *  pelo ETL na escrita e nunca recebe selo aqui (fail-closed).
  *  Hash curto, só-espaços ou com caractere fora de [0-9a-fA-F] não
- *  audita (fail-closed, F5). */
+ *  audita (F5). */
 export function isAudited(obj: unknown): boolean {
   if (!obj || typeof obj !== "object") return false;
   const o = obj as Record<string, unknown>;
-  const h = o.sha256 ?? o.hash;
+  const h = o.sha256;
   return typeof h === "string" && /^[0-9a-fA-F]{64}$/.test(h);
 }
 
@@ -156,7 +158,7 @@ export function getOfficialAuditInfo(manifest: unknown): AuditInfo | null {
     if (isOfficialDisplay(entry)) {
       const e = entry as ManifestIngestion;
       return {
-        hash: String(e.sha256 ?? e.hash),
+        hash: String(e.sha256),
         url: typeof e.source_url === "string" ? e.source_url : "",
         date: typeof e.date === "string" ? e.date : typeof e.data === "string" ? e.data : "",
       };
@@ -186,9 +188,7 @@ export function getSealState(manifest: unknown): SealState {
     if (isFixtureEntry(entry)) {
       hasFixture = true;
       if (!fixtureHash && isAudited(entry)) {
-        const e = entry as ManifestIngestion;
-        const h = e.sha256 ?? e.hash;
-        if (typeof h === "string" && h.length > 0) fixtureHash = h;
+        fixtureHash = String((entry as ManifestIngestion).sha256);
       }
     }
   }

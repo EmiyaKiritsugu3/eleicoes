@@ -14,7 +14,7 @@ describe("manifest guard", () => {
 describe("ledger rulings", () => {  it("isAudited exige sha256 64-hex (lixo nega selo)", async () => {
     const { isAudited } = await import("../lib/data");
     expect(isAudited({ sha256: "a".repeat(64) })).toBe(true);
-    expect(isAudited({ hash: "A".repeat(64) })).toBe(true); // ETL aceita maiúsculas (lower)
+    expect(isAudited({ hash: "A".repeat(64) })).toBe(false); // alias `hash` nunca produzido pelo ETL — rejeitado
     expect(isAudited({ sha256: "abc123" })).toBe(false);
     expect(isAudited({ sha256: "x".repeat(64) })).toBe(false); // fora de [0-9a-fA-F]
     expect(isAudited({ sha256: "a".repeat(63) })).toBe(false);

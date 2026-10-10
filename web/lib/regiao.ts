@@ -11,7 +11,6 @@ export interface ManifestFato {
   tipo?: string;
   dataset?: string;
   sha256?: string;
-  hash?: string;
   source_url?: string;
   date?: string;
   data?: string;
@@ -78,7 +77,7 @@ export function getSealParaDataset(manifest: unknown, dataset: string | null): S
   if (auditada) {
     return {
       official: {
-        hash: String(auditada.sha256 ?? auditada.hash),
+        hash: String(auditada.sha256),
         url: typeof auditada.source_url === "string" ? auditada.source_url : "",
         date:
           typeof auditada.date === "string"
@@ -98,7 +97,7 @@ export function getSealParaDataset(manifest: unknown, dataset: string | null): S
     return {
       official: null,
       hasFixture: true,
-      fixtureHash: isAudited(fixture) ? String(fixture.sha256 ?? fixture.hash) : "",
+      fixtureHash: isAudited(fixture) ? String(fixture.sha256) : "",
     };
   }
   return vazio;
