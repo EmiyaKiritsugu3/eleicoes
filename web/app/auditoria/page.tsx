@@ -169,8 +169,8 @@ export default function Auditoria() {
                         if (fontes.length === 0) return SEM_DADO;
                         return (
                           <ul>
-                            {fontes.map((f) => (
-                              <li key={f}>
+                            {fontes.map((f, j) => (
+                              <li key={`${f}#${j}`}>
                                 <a href={f} target="_blank" rel="noreferrer">
                                   {f}
                                 </a>
