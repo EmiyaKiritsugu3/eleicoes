@@ -44,11 +44,14 @@ página do catálogo. `sha256` é `None` até a primeira ingestão — o hash
 real é calculado por `etl.fetch.download_dataset` e registrado via
 `etl.censo.register_censo_ingest`.
 
-# PENDING: confirmar path real no FTP — o nível
-# https://ftp.ibge.gov.br/Censos/Censo_Demografico_2022/ não contém um
-# agregados_por_municipios.zip, por isso `url` fica None até a confirmação,
-# para que nenhum arquivo errado possa ser baixado. Sem Censo auditado, as
-# seções de perfil exibem "sem dado oficial".
+# Confirmado em 2026-10-10 (EVOLVE-4 Task 4): índice do FTP lista
+# Agregados_por_Setores_Censitarios/Agregados_por_Municipio_csv/ com
+# Agregados_por_municipios_basico_BR_20260520.zip (HTTP 200, 326327 bytes,
+# 5570 municípios; CSV sep=";" encoding latin1, CD_MUN + v0001=pop).
+# `normalize_censo` consome sem adaptação (V0001→pop; soma pop =
+# 203080756, total oficial). Escolaridade vive em
+# Agregados_por_municipios_alfabetizacao_BR.zip (V-codes sem mapeamento
+# p/ esc_* — esc_* seguem nulos fail-closed, "sem dado oficial").
 """
 
 _CENSO_FTP = "https://ftp.ibge.gov.br/Censos/Censo_Demografico_2022"
@@ -61,7 +64,11 @@ CENSO_DATASETS: list[dict] = [
     {
         "ano": 2022,
         "nome": "censo_demografico_2022_municipios",
-        "url": None,  # PENDING: confirmar path real no FTP (ver nota acima)
+        "url": (
+            "https://ftp.ibge.gov.br/Censos/Censo_Demografico_2022/"
+            "Agregados_por_Setores_Censitarios/Agregados_por_Municipio_csv/"
+            "Agregados_por_municipios_basico_BR_20260520.zip"
+        ),  # confirmado no FTP em 2026-10-10 (ver nota acima)
         "dataset": _CENSO_CATALOG,
         "sha256": None,
     },
