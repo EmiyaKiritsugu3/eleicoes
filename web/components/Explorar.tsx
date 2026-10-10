@@ -565,7 +565,7 @@ export function ExplorarConteudo({
           <p role="note">{ECO_SEAL} — cada ponto é um município, nunca uma pessoa.</p>
           {!coberto ? (
             <p role="alert" style={ALERTA_STYLE}>
-              {SEM_DADO} — sem cobertura nos blocos; ajuste quem · onde · cruzar com acima
+              {SEM_DADO}{!hashAuditado ? " — sem hash auditado no manifest; números exigem fato hash-verificado" : " — sem cobertura nos blocos; ajuste quem · onde · cruzar com acima"}
             </p>
           ) : !corr || !corrS ? (
             <p role="alert" style={ALERTA_STYLE}>
@@ -669,7 +669,7 @@ export function ExplorarConteudo({
           <h2>Ranking — maior share de {quemNome}</h2>
           {badge}
           {!coberto || ranking.length === 0 ? (
-            <p role="alert" style={ALERTA_STYLE}>{SEM_DADO} — sem cobertura neste recorte</p>
+            <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}{!hashAuditado ? " — sem hash auditado no manifest; números exigem fato hash-verificado" : " — sem cobertura neste recorte"}</p>
           ) : (
             <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Top municípios por share">
             <table>

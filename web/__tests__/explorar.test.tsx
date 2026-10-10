@@ -403,6 +403,38 @@ describe("explorar (gate de hash: fato sem hash não sustenta número)", () => {
     const mapa = html.split('aria-label="Mapa"')[1].split("<section")[0];
     expect(mapa).not.toContain("sem dado oficial");
   });
+  it("Dispersão sem hash nomeia o hash (não 'sem cobertura nos blocos')", () => {
+    const html = htmlExplorar({ candidatos: CANDIDATOS, municipios: linhasValidas() }, SEAL_SEM_HASH);
+    const dispersao = html.split('aria-label="Dispersão"')[1].split("<section")[0];
+    expect(dispersao).toContain("sem dado oficial");
+    expect(dispersao).toContain("sem hash auditado no manifest");
+    expect(dispersao).not.toContain("sem cobertura nos blocos");
+  });
+  it("Ranking sem hash nomeia o hash (não 'sem cobertura neste recorte')", () => {
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo
+        fato={{ candidatos: CANDIDATOS, municipios: linhasValidas() }}
+        seal={SEAL_SEM_HASH}
+        initial={{ ...SEL_VALIDA, ver: ["ranking"] }}
+      />,
+    );
+    const ranking = html.split('aria-label="Ranking"')[1].split("<section")[0];
+    expect(ranking).toContain("sem dado oficial");
+    expect(ranking).toContain("sem hash auditado no manifest");
+    expect(ranking).not.toContain("sem cobertura neste recorte");
+  });
+  it("Dispersão sem cobertura COM hash mantém motivo de cobertura (sem regressão)", () => {
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo
+        fato={{ candidatos: CANDIDATOS, municipios: linhasValidas() }}
+        seal={SEAL_OK}
+        initial={{ ...SEL_VALIDA, quem: "" }}
+      />,
+    );
+    const dispersao = html.split('aria-label="Dispersão"')[1].split("<section")[0];
+    expect(dispersao).toContain("sem cobertura nos blocos");
+    expect(dispersao).not.toContain("sem hash auditado");
+  });
 });
 
 describe("explorar (decimais pt-BR: vírgula, nunca ponto)", () => {
