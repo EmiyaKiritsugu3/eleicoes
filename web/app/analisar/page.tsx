@@ -25,7 +25,7 @@ import {
   parseAnalisarSearchParams,
   semCoberturaTurnoZona,
 } from "../../lib/export";
-import { vereditoTemProva } from "../../lib/regiao";
+import { manifestoValidoParaRotacao, vereditoTemProva } from "../../lib/regiao";
 import { fetchJson } from "../../lib/fetchJson";
 import { MOTIVO_SEM_HASH, SEM_DADO } from "../../lib/textos";
 
@@ -64,20 +64,6 @@ const CHAVE_SEM_PARTIDO = "__sem_partido__";
 
 function chavePartido(bruto: string): string {
   return bruto === "" ? CHAVE_SEM_PARTIDO : `partido:${bruto}`;
-}
-
-// Manifest legível: objeto com `ingestions` array (`200` com corpo
-// null/array/texto OU `{}` sem ingestions não é manifest — `getSealState`
-// derivaria selo vazio e o wipe apagaria dado validado; ver guard da
-// rotação abaixo). Vazio (`[]`) É válido: atesta nada e suprime por
-// fail-closed.
-function manifestoValido(d: unknown): d is Record<string, unknown> {
-  return (
-    typeof d === "object" &&
-    d !== null &&
-    !Array.isArray(d) &&
-    Array.isArray((d as { ingestions?: unknown }).ingestions)
-  );
 }
 
 function downloadCsv(filename: string, csv: string) {
@@ -193,7 +179,7 @@ export default function Analisar() {
     const aoRetomar = async () => {
       await correrSobGuard(async (minha) => {
         const leitura = await fetchJson("/data/manifest.json");
-        if (leitura.status !== "ok" || !manifestoValido(leitura.data)) return;
+        if (leitura.status !== "ok" || !manifestoValidoParaRotacao(leitura.data)) return;
         if (geracaoRef.current !== minha) return;
         const conferido = getSealState(leitura.data);
         if (JSON.stringify(conferido) === seloRef.current) return;

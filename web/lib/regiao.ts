@@ -118,6 +118,25 @@ export function vereditoTemProva(seal: SealState): boolean {
   return seal.hasFixture && isAudited({ sha256: seal.fixtureHash });
 }
 
+/** Manifest legível para rotação (FONTE ÚNICA — EVOLVE-9 R4, dedupe Sonar:
+ *  as 5 superfícies com trigger vivo — Home, Explorar, Analisar, Verificar,
+ *  /regiao — importam daqui em vez de forkar): objeto com `ingestions`
+ *  array. `200` com corpo null/array/texto OU `{}` sem ingestions NÃO é
+ *  manifest (derivaria selo vazio e o wipe apagaria dado validado — os
+ *  guards de rotação saem antes da comparação, stale-while-revalidate).
+ *  Vazio (`{ingestions:[]}`) É válido: atesta nada e a rotação prossegue
+ *  para suprimir por fail-closed. Semântica exata das 5 cópias anteriores
+ *  (sem fortalecer nem enfraquecer).
+ */
+export function manifestoValidoParaRotacao(d: unknown): d is Record<string, unknown> {
+  return (
+    typeof d === "object" &&
+    d !== null &&
+    !Array.isArray(d) &&
+    Array.isArray((d as { ingestions?: unknown }).ingestions)
+  );
+}
+
 /** Arquivo servido do Censo (espelho de
  *  `etl/censo.py::CENSO_ARTIFACT_FILENAME`): a entry `artifacts` do manifest
  *  grava este basename (`register_censo_artifact`/`register_served_artifacts`).

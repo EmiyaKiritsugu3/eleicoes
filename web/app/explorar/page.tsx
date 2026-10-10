@@ -6,7 +6,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import SealSlot from "../../components/SealSlot";
 import { ExplorarConteudo, parseExplorarQuery, type ExplorarSelecao } from "../../components/Explorar";
 import type { SealState } from "../../lib/data";
-import { fatoDatasetDe, getSealParaDataset, isHashDivergente } from "../../lib/regiao";
+import { fatoDatasetDe, getSealParaDataset, isHashDivergente, manifestoValidoParaRotacao } from "../../lib/regiao";
 import { fetchJson } from "../../lib/fetchJson";
 import type { FatoRegiao } from "../../components/PainelRegiao";
 
@@ -42,20 +42,6 @@ function derivarDatasetESelo(manifest: unknown): {
 } {
   const dataset = fatoDatasetDe(manifest, fatoParamDaUrl());
   return { dataset, novoSeal: getSealParaDataset(manifest, dataset) };
-}
-
-// Manifest legível: objeto com `ingestions` array (`200` com corpo
-// null/array/texto OU `{}` sem ingestions não é manifest —
-// `getSealState`/`fatoDatasetDe` derivariam selo vazio e o wipe apagaria
-// dado validado; ver guard da rotação abaixo). Vazio (`[]`) É válido:
-// atesta nada e suprime por fail-closed.
-function manifestoValido(d: unknown): d is Record<string, unknown> {
-  return (
-    typeof d === "object" &&
-    d !== null &&
-    !Array.isArray(d) &&
-    Array.isArray((d as { ingestions?: unknown }).ingestions)
-  );
 }
 
 export default function Explorar() {
@@ -125,7 +111,7 @@ export default function Explorar() {
         // validado (stale-while-revalidate); só um fetch OK com objeto e
         // selo diferente rotaciona. Falha nunca publica selo vazio.
         const leitura = await fetchJson("/data/manifest.json");
-        if (leitura.status !== "ok" || !manifestoValido(leitura.data)) return;
+        if (leitura.status !== "ok" || !manifestoValidoParaRotacao(leitura.data)) return;
         if (geracaoRef.current !== minha) return;
         const { dataset, novoSeal } = derivarDatasetESelo(leitura.data);
         if (JSON.stringify({ ds: dataset, seal: novoSeal }) === seloRef.current) return;

@@ -14,6 +14,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import SealSlot from "../../components/SealSlot";
 import { getSealState, type SealState } from "../../lib/data";
+import { manifestoValidoParaRotacao } from "../../lib/regiao";
 import { fetchJson } from "../../lib/fetchJson";
 import { checksParaRegiao, type Check } from "./Verificar";
 import checksJson from "../../data/checks.json";
@@ -55,20 +56,6 @@ function lerRegiaoDaUrl(): string {
   }
 }
 
-// Manifest legível: objeto com `ingestions` array (`200` com corpo
-// null/array/texto OU `{}` sem ingestions não é manifest — `getSealState`
-// derivaria selo vazio e o wipe apagaria o selo validado; ver guard da
-// rotação abaixo). Vazio (`[]`) É válido: atesta nada e suprime por
-// fail-closed.
-function manifestoValido(d: unknown): d is Record<string, unknown> {
-  return (
-    typeof d === "object" &&
-    d !== null &&
-    !Array.isArray(d) &&
-    Array.isArray((d as { ingestions?: unknown }).ingestions)
-  );
-}
-
 function PaginaVerificarIndice() {
   const [regiao, setRegiao] = useState("");
   const [seal, setSeal] = useState<SealState>({ official: null, hasFixture: false, fixtureHash: "" });
@@ -87,7 +74,7 @@ function PaginaVerificarIndice() {
   const carregarSelo = useCallback(async () => {
     const leitura = await fetchJson("/data/manifest.json");
     return {
-      ok: leitura.status === "ok" && manifestoValido(leitura.data),
+      ok: leitura.status === "ok" && manifestoValidoParaRotacao(leitura.data),
       novoSeal: getSealState(leitura.data),
     };
   }, []);

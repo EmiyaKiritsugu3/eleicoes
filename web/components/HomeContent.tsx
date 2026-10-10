@@ -22,7 +22,7 @@ import {
   type ResumoJson,
   type SealState,
 } from "../lib/data";
-import { vereditoTemProva } from "../lib/regiao";
+import { manifestoValidoParaRotacao, vereditoTemProva } from "../lib/regiao";
 import { fetchJson } from "../lib/fetchJson";
 import { MOTIVO_SEM_HASH, SEM_DADO } from "../lib/textos";
 
@@ -57,19 +57,9 @@ function Bar({ value, max }: { value: number; max: number }) {
  *  `Home()` sem args que delega para cá. Em produção monta com `{}`.
  */
 
-// Manifest legível: objeto com `ingestions` array (`200` com corpo
-// null/array/texto OU `{}` sem ingestions não é manifest — `getSealState`
-// derivaria selo vazio e o wipe apagaria os números validados; ver guard
-// da rotação abaixo). Vazio (`[]`) É válido: atesta nada e suprime por
-// fail-closed.
-function manifestoValido(d: unknown): d is Record<string, unknown> {
-  return (
-    typeof d === "object" &&
-    d !== null &&
-    !Array.isArray(d) &&
-    Array.isArray((d as { ingestions?: unknown }).ingestions)
-  );
-}export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
+// Fonte única do predicado de manifest p/ rotação: `manifestoValidoParaRotacao`
+// em `lib/regiao` (dedupe R4 — sem fork local).
+export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   const [resumo, setResumo] = useState<ResumoJson | null>(null);
   const [porUf, setPorUf] = useState<PorUfRow[]>([]);
   const [porCand, setPorCand] = useState<PorCandidatoRow[]>([]);
@@ -130,7 +120,7 @@ function manifestoValido(d: unknown): d is Record<string, unknown> {
         // (stale-while-revalidate); só fetch OK com objeto e selo diferente
         // refaz o pesado.
         const leitura = await fetchJson("/data/manifest.json");
-        if (leitura.status !== "ok" || !manifestoValido(leitura.data)) return;
+        if (leitura.status !== "ok" || !manifestoValidoParaRotacao(leitura.data)) return;
         const novoSeal = getSealState(leitura.data);
         if (JSON.stringify(novoSeal) === JSON.stringify(sealRef.current)) return;
         sealRef.current = await carregarPesados();

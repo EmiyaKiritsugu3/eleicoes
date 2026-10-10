@@ -20,22 +20,8 @@ import PainelRegiao, {
   type FatoRegiao,
 } from "../../../components/PainelRegiao";
 import type { SealState } from "../../../lib/data";
-import { censoTemProva, entradaCensoAuditada, fatoDatasetDe, getSealParaDataset } from "../../../lib/regiao";
+import { censoTemProva, entradaCensoAuditada, fatoDatasetDe, getSealParaDataset, manifestoValidoParaRotacao } from "../../../lib/regiao";
 import { fetchJson } from "../../../lib/fetchJson";
-
-// Manifest legível: objeto com `ingestions` array (`200` com corpo
-// null/array/texto OU `{}` sem ingestions não é manifest — derivaria
-// dataset nulo + selo vazio e o wipe apagaria fato+selo+Censo validados;
-// ver guard da rotação abaixo). Vazio (`[]`) É válido: atesta nada e
-// suprime por fail-closed.
-function manifestoValido(d: unknown): d is Record<string, unknown> {
-  return (
-    typeof d === "object" &&
-    d !== null &&
-    !Array.isArray(d) &&
-    Array.isArray((d as { ingestions?: unknown }).ingestions)
-  );
-}
 
 function ConteudoRegiao({ ibge }: { ibge: string }) {
   const search = useSearchParams();
@@ -160,7 +146,7 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
         // (stale-while-revalidate); só fetch OK com objeto e par
         // dataset+selo+censo diferente refaz o pesado.
         const leitura = await fetchJson("/data/manifest.json");
-        if (leitura.status !== "ok" || !manifestoValido(leitura.data)) return;
+        if (leitura.status !== "ok" || !manifestoValidoParaRotacao(leitura.data)) return;
         const manifest = leitura.data;
         const ds = fatoDatasetDe(manifest, param);
         const novoSeal = getSealParaDataset(manifest, ds);
