@@ -203,7 +203,8 @@ export default function MapaBrasil({
   const municipiosTeclado = comZoom ? features.filter((f) => f.uf === ufSelecionada) : null;
 
   const aoEscolherTeclado = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const v = e.target.value;
+    // Paridade com Explorar: seleção por teclado chega aparada (sem espaços).
+    const v = e.target.value.trim();
     if (v) onSelectIbge(v);
   };
 

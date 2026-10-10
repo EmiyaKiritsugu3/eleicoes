@@ -5,6 +5,7 @@ import { ArtifactsTable } from "../../components/ArtifactsTable";
 import SourceBadge from "../../components/SourceBadge";
 import FixtureBadge from "../../components/FixtureBadge";
 import {
+  entryDate,
   fontesDaEntrada,
   getArtifacts,
   getOfficialAuditInfo,
@@ -14,7 +15,6 @@ import {
   safeUrl,
   type AuditInfo,
   type Manifest,
-  type ManifestIngestion,
 } from "../../lib/data";
 import { SEM_DADO } from "../../lib/textos";
 
@@ -28,11 +28,7 @@ async function fetchJson<T>(path: string): Promise<T | null> {
   }
 }
 
-function entryDate(e: ManifestIngestion): string {
-  if (typeof e.date === "string" && e.date) return e.date;
-  if (typeof e.data === "string" && e.data) return e.data;
-  return "";
-}
+/** Data da ingestão (ISO validada, cf. `entryDate` em `lib/data`). */
 
 /** Selo de amostra sintética compartilhado (components/FixtureBadge):
  *  tratamento de aviso, NUNCA o selo oficial — mesmo com hash presente.

@@ -320,7 +320,10 @@ def _csv_has_ano(path: Path) -> bool:
 
 
 def quarantine_invalid_csvs(raw_dir, quarantine_dir=None) -> list[Path]:
-    """Move CSVs com schema irreconhecível para quarentena; devolve destinos."""
+    """Move CSVs com schema irreconhecível para quarentena; devolve destinos.
+
+    Quarentena de raw é pré-gate: roda antes de qualquer gate/fato.
+    """
     raw = Path(raw_dir)
     if not raw.is_dir():
         return []

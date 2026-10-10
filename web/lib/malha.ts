@@ -15,9 +15,6 @@ export const MALHA_MUNICIPIOS_URL = "/data/malha_municipios.topojson";
 /** Sentinela da unidade Exterior (separada, spec §5). Contrato p/ Tasks 7–8. */
 export const EXTERIOR = "EXTERIOR";
 
-/** Alias de compatibilidade (mesmo valor de EXTERIOR). */
-export const EXTERIOR_IBGE = EXTERIOR;
-
 /** Seleção emitida por `onSelectIbge`: IBGE7 (7 dígitos) no canvas,
  *  sigla de UF na lista do fallback, ou EXTERIOR (botão separado). */
 export type MapaSelecao = string;
@@ -107,6 +104,9 @@ export function decodeTopojson(topo: TopoJson): MalhaFeature[] {
   const out: MalhaFeature[] = [];
   const obj = topo.objects["municipios"] ?? Object.values(topo.objects)[0];
   if (!obj) return out;
+  // Skips fail-closed (geometria não-Polygon ou sem IBGE): conta e avisa
+  // em debug sem mudar o retorno — só features válidas saem daqui.
+  let ignorados = 0;
   for (const g of obj.geometries) {
     const polygons: MalhaFeature["polygons"] = [];
     const pushPolygon = (ringsIdxs: number[][]) => {
@@ -126,11 +126,15 @@ export function decodeTopojson(topo: TopoJson): MalhaFeature[] {
         pushPolygon(poly);
       }
     } else {
+      ignorados++;
       continue;
     }
     const props = g.properties ?? {};
     const ibge7 = String(props.ibge7 ?? props.id ?? "");
-    if (!ibge7 || polygons.length === 0) continue;
+    if (!ibge7 || polygons.length === 0) {
+      ignorados++;
+      continue;
+    }
     out.push({
       ibge7,
       uf: String(props.uf ?? ""),
@@ -138,6 +142,9 @@ export function decodeTopojson(topo: TopoJson): MalhaFeature[] {
       polygons,
       bbox: bboxOf(polygons),
     });
+  }
+  if (ignorados > 0) {
+    console.debug(`malha: ${ignorados} geometria(s) ignorada(s) (fail-closed)`);
   }
   return out;
 }

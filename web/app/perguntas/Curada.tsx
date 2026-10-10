@@ -108,7 +108,7 @@ export function resolverCandidato(
     const c = ordem.find((k) => k?.id === q);
     return c ? { id: String(c.id), nome: String(c.nome ?? c.id) } : null;
   }
-  const somas = ordem.map((c, i) => {
+  const somas = ordem.map((_c, i) => {
     let s = 0;
     let algum = false;
     for (const r of fato!.municipios ?? []) {
@@ -118,7 +118,6 @@ export function resolverCandidato(
         algum = true;
       }
     }
-    void c;
     return algum ? s : -Infinity;
   });
   const rank = somas

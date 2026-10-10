@@ -135,6 +135,19 @@ export function fontesDaEntrada(e: ManifestIngestion): string[] {
   return url ? [url] : [];
 }
 
+/** Data da ingestão p/ a tabela da /auditoria: só ISO (AAAA-MM-DD ou
+ *  datetime ISO); raw fora do formato cai p/ "" (fail-closed: a célula
+ *  mostra SEM_DADO). Extraída p/ cá p/ ser testável (page não exporta). */
+export function entryDate(e: ManifestIngestion): string {
+  const raw =
+    (typeof e.date === "string" && e.date.trim()) ||
+    (typeof e.data === "string" && e.data.trim()) ||
+    "";
+  if (!raw) return "";
+  if (!/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$/.test(raw)) return "";
+  return Number.isNaN(Date.parse(raw)) ? "" : raw;
+}
+
 /** Exibição como oficial: hash válido E não-fixture. */
 export function isOfficialDisplay(obj: unknown): boolean {
   return isAudited(obj) && !isFixtureEntry(obj);

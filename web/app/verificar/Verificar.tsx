@@ -156,7 +156,7 @@ function verificarVencedorRegiao(
   const linhas = linhasDoRecorte(fato.municipios ?? [], str(params.regiao) || "BR");
   if (linhas.length === 0) return semProva("nenhum município neste recorte", metodo);
   const ordem = fato.candidatos ?? [];
-  const somas = ordem.map((c, i) => {
+  const somas = ordem.map((_c, i) => {
     let s = 0;
     let algum = false;
     for (const r of linhas) {
@@ -166,7 +166,6 @@ function verificarVencedorRegiao(
         algum = true;
       }
     }
-    void c;
     return algum ? s : -Infinity;
   });
   const rank = somas
