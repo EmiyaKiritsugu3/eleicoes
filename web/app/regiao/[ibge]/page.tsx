@@ -20,17 +20,8 @@ import PainelRegiao, {
   type FatoRegiao,
 } from "../../../components/PainelRegiao";
 import type { SealState } from "../../../lib/data";
-import { fatoDatasetDe, getSealParaDataset } from "../../../lib/regiao";
-
-async function fetchJson<T>(path: string): Promise<T | null> {
-  try {
-    const res = await fetch(path, { cache: "no-store" });
-    if (!res.ok) return null;
-    return (await res.json()) as T;
-  } catch {
-    return null;
-  }
-}
+import { censoTemProva, entradaCensoAuditada, fatoDatasetDe, getSealParaDataset } from "../../../lib/regiao";
+import { fetchJson } from "../../../lib/fetchJson";
 
 function ConteudoRegiao({ ibge }: { ibge: string }) {
   const search = useSearchParams();
@@ -64,21 +55,25 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
   const fatoParamRef = useRef(fatoParam);
   fatoParamRef.current = fatoParam;
 
-  // Núcleo puro de leitura (sem setState): manifest → dataset+selo → fato.
-  // O Censo viaja separado (`buscarCenso`, webfix Finding 2): artefato
-  // lento não segura o painel atrás do loader — o fato assentado renderiza
-  // e a pop preenche quando chega. O gate é o mesmo de antes (helpers de
-  // lib/regiao só chamados, nunca alterados); a pop segue
-  // fato-independente com proveniência na entry `artifacts` do Censo (sem
-  // atestação runtime — assunção de confiança documentada em PainelRegiao).
-  const buscarFato = useCallback(async (param: string) => {
-    const manifest = await fetchJson("/data/manifest.json");
+  // Núcleo puro de leitura (sem setState): dataset+selo → fato, sobre um
+  // manifest já lido. O manifest viaja UMA vez (`manifestP` no effect):
+  // fato e Censo partem do mesmo doc em paralelo — o JSON do fato (lento)
+  // nunca segura o fetch do Censo, nem vice-versa. O gate é o mesmo de
+  // antes (helpers de lib/regiao só chamados, nunca alterados); a pop
+  // segue fato-independente com selo runtime na entry `artifacts` do Censo
+  // (EVOLVE-8 Task 1: sem entry auditada, o mapa é null — JSON forjado no
+  // path servido nunca vira número, paridade com o gate do fato).
+  const buscarFato = useCallback(async (param: string, manifest: unknown) => {
     const ds = fatoDatasetDe(manifest, param);
     const novoSeal = getSealParaDataset(manifest, ds);
-    const f = ds ? await fetchJson<FatoRegiao>(`/data/${ds}.json`) : null;
-    return { ds, novoSeal, f };
+    const f = ds ? (await fetchJson<FatoRegiao>(`/data/${ds}.json`)).data : null;
+    return { ds, novoSeal, f, manifest };
   }, []);
-  const buscarCenso = useCallback(async () => parseCensoMapa(await fetchJson<unknown>(CENSO_URL)), []);
+  const buscarCenso = useCallback(
+    async (manifest: unknown) =>
+      censoTemProva(manifest) ? parseCensoMapa((await fetchJson<unknown>(CENSO_URL)).data) : null,
+    [],
+  );
 
   useEffect(() => {
     let vivo = true;
@@ -89,15 +84,24 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
     // NÃO gateia o painel: corre em paralelo e assenta quando chega.
     setManifestChecked(false);
     ocupadoRef.current = true;
+    // Uma única leitura do manifest alimenta fato E Censo (sem fetch
+    // duplicado — custo zero): o selo do Censo deriva do mesmo doc, e os
+    // dois fetches pesados (fato + Censo) disparam em paralelo sobre ele.
+    const manifestP = fetchJson("/data/manifest.json");
+    const leitura = manifestP.then((m) => buscarFato(fatoParam, m.data));
     (async () => {
       try {
-        const r = await buscarFato(fatoParam);
+        const r = await leitura;
         if (!vivo || geracaoRef.current !== minha) return;
         // Selo ligado ao dataset selecionado: ?fato= sem registro auditado
         // falha fechado (sem oficial), nunca com hash de outra ingestão.
         setSeal(r.novoSeal);
         setDataset(r.ds);
-        seloRef.current = JSON.stringify({ ds: r.ds, seal: r.novoSeal });
+        seloRef.current = JSON.stringify({
+          ds: r.ds,
+          seal: r.novoSeal,
+          censo: entradaCensoAuditada(r.manifest)?.sha256 ?? null,
+        });
         // Limpa o fato anterior ANTES de publicar o novo: sem isso, a troca
         // de ?fato= exibiria transitoriamente números do dataset antigo sob
         // o selo do novo. Fail-closed também no transiente. (O censo é
@@ -110,8 +114,12 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
       }
     })();
     void (async () => {
-      const c = await buscarCenso();
-      if (vivo && geracaoRef.current === minha) setCenso(c);
+      try {
+        const c = await buscarCenso((await manifestP).data);
+        if (vivo && geracaoRef.current === minha) setCenso(c);
+      } catch {
+        // fail-closed: sem mapa, a pop exibe SEM_DADO (nunca throw)
+      }
     })();
     return () => {
       vivo = false;
@@ -132,23 +140,34 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
       const minha = ++geracaoRef.current;
       try {
         const param = fatoParamRef.current;
-        const manifest = await fetchJson("/data/manifest.json");
+        const manifest = (await fetchJson("/data/manifest.json")).data;
         const ds = fatoDatasetDe(manifest, param);
         const novoSeal = getSealParaDataset(manifest, ds);
-        if (JSON.stringify({ ds, seal: novoSeal }) === seloRef.current) return;
-        const [f, rawCenso] = await Promise.all([
+        // A comparação inclui a identidade da entry do Censo (sha): sem
+        // isso, um manifest refrescado que remove SÓ o Censo (fato+selo
+        // idênticos) caía no early return e a pop ia stale com prova
+        // ausente. sha ausente (entry removida) → null ≠ sha anterior.
+        const novoCenso = entradaCensoAuditada(manifest)?.sha256 ?? null;
+        if (JSON.stringify({ ds, seal: novoSeal, censo: novoCenso }) === seloRef.current) return;
+        // Selo runtime do Censo (EVOLVE-8 Task 1): sem entry auditada, o
+        // artefato nem é buscado (custo zero no caso forjado) e a pop cai
+        // p/ SEM_DADO junto com os votos.
+        const censoOk = censoTemProva(manifest);
+        const [rf, rc] = await Promise.all([
           ds ? fetchJson<FatoRegiao>(`/data/${ds}.json`) : Promise.resolve(null),
-          fetchJson<unknown>(CENSO_URL),
+          censoOk ? fetchJson<unknown>(CENSO_URL) : Promise.resolve(null),
         ]);
+        const f = rf?.data ?? null;
+        const rawCenso = rc?.data ?? null;
         // ?fato= trocou no meio do load: o effect do novo param recarrega;
         // este run stale não escreve (nunca número antigo sob selo novo).
         // Geração idem: run superado por outro load não publica nem limpa.
         if (fatoParamRef.current !== param || geracaoRef.current !== minha) return;
         setSeal(novoSeal);
         setDataset(ds);
-        seloRef.current = JSON.stringify({ ds, seal: novoSeal });
+        seloRef.current = JSON.stringify({ ds, seal: novoSeal, censo: novoCenso });
         setFato(f);
-        setCenso(parseCensoMapa(rawCenso));
+        setCenso(censoOk ? parseCensoMapa(rawCenso) : null);
       } finally {
         if (geracaoRef.current === minha) ocupadoRef.current = false;
       }

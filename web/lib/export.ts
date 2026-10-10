@@ -101,11 +101,13 @@ export function semCoberturaTurnoZona(
 }
 
 function csvEscape(v: unknown): string {
-  const s = v === null || v === undefined ? "" : String(v);
-  const q = /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  // Neutraliza fórmula de planilha (M12): célula que começa com =,+,-,@
-  // ganha apóstrofo à frente, após o quote.
-  return /^[=+\-@]/.test(s) ? `'${q}` : q;
+  // Contrato blank-cell (deliberado): null/undefined viram célula vazia "" —
+  // nunca os literais "null"/"undefined" (planilha lê como vazio honesto).
+  const s0 = v === null || v === undefined ? "" : String(v);
+  // Neutraliza fórmula de planilha (M12): apóstrofo ANTES do quote CSV,
+  // senão `'"=a,b"'` quebra em dois campos — o correto é `"'=a,b"`.
+  const s = /^[=+\-@]/.test(s0) ? `'${s0}` : s0;
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 /** CSV das linhas filtradas + colunas de proveniência.
@@ -126,7 +128,7 @@ export function buildCsvExport(
       if (!dataKeys.includes(k)) dataKeys.push(k);
     }
   }
-  const header = [...dataKeys, "fonte", "url", "hash", "data"].join(",");
+  const header = [...dataKeys.map(csvEscape), "fonte", "url", "hash", "data"].join(",");
   const fonte = "tse";
   const url = audit?.url ?? "";
   const hash = audit?.hash ?? "";

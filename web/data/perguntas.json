@@ -39,115 +39,115 @@
     "slug": "estudo-voto-vencedor",
     "titulo": "Lugares mais escolarizados votaram mais no vencedor?",
     "blocos": { "quem": "@vencedor", "onde": "venceu", "cruzar": "esc_sup", "ver": ["dispersao"] },
-    "texto_metodo": "Correlação de Pearson (e Spearman) entre escolaridade superior e o share do vencedor nos municípios do recorte, com piso de 30 municípios. A tabela por quintis mostra o share médio por faixa de escolaridade. Correlação não implica causa."
+    "texto_metodo": "Correlação de Pearson (e Spearman) entre escolaridade superior e o percentual de votos do vencedor nos municípios do recorte, com piso de 30 municípios. A tabela por quintis mostra o percentual médio de votos por faixa de escolaridade. Correlação não implica causa."
   },
   {
     "slug": "estudo-voto-vice",
     "titulo": "Lugares mais escolarizados votaram mais no segundo colocado?",
     "blocos": { "quem": "@vice", "onde": "venceu", "cruzar": "esc_sup", "ver": ["dispersao"] },
-    "texto_metodo": "Correlação de Pearson (e Spearman) entre escolaridade superior e o share do segundo colocado nos municípios do recorte, com piso de 30 municípios. A tabela por quintis mostra o share médio por faixa. Correlação não implica causa."
+    "texto_metodo": "Correlação de Pearson (e Spearman) entre escolaridade superior e o percentual de votos do segundo colocado nos municípios do recorte, com piso de 30 municípios. A tabela por quintis mostra o percentual médio de votos por faixa. Correlação não implica causa."
   },
   {
     "slug": "estudo-medio-voto-vencedor",
     "titulo": "Ensino médio e voto no vencedor: há relação?",
     "blocos": { "quem": "@vencedor", "onde": "venceu", "cruzar": "esc_med", "ver": ["dispersao"] },
-    "texto_metodo": "Correlação de Pearson (e Spearman) entre ensino médio completo e o share do vencedor nos municípios do recorte, com piso de 30 municípios. Divergência entre Pearson e Spearman denuncia outlier ou relação não-linear. Correlação não implica causa."
+    "texto_metodo": "Correlação de Pearson (e Spearman) entre ensino médio completo e o percentual de votos do vencedor nos municípios do recorte, com piso de 30 municípios. Divergência entre Pearson e Spearman denuncia outlier ou relação não-linear. Correlação não implica causa."
   },
   {
     "slug": "estudo-fundamental-voto-vencedor",
     "titulo": "Ensino fundamental e voto no vencedor: há relação?",
     "blocos": { "quem": "@vencedor", "onde": "venceu", "cruzar": "esc_fund", "ver": ["dispersao"] },
-    "texto_metodo": "Correlação de Pearson (e Spearman) entre ensino fundamental e o share do vencedor nos municípios do recorte, com piso de 30 municípios. A tabela por quintis mostra o share médio por faixa. Correlação não implica causa."
+    "texto_metodo": "Correlação de Pearson (e Spearman) entre ensino fundamental e o percentual de votos do vencedor nos municípios do recorte, com piso de 30 municípios. A tabela por quintis mostra o percentual médio de votos por faixa. Correlação não implica causa."
   },
   {
     "slug": "pobreza-voto-vencedor",
     "titulo": "Lugares mais pobres votaram mais no vencedor?",
     "blocos": { "quem": "@vencedor", "onde": "venceu", "cruzar": "pobres_pct", "ver": ["dispersao"] },
-    "texto_metodo": "Correlação de Pearson (e Spearman) entre percentual de pobres e o share do vencedor nos municípios do recorte, com piso de 30 municípios. Pobreza do lugar não identifica o voto de nenhuma pessoa. Correlação não implica causa."
+    "texto_metodo": "Correlação de Pearson (e Spearman) entre percentual de pobres e o percentual de votos do vencedor nos municípios do recorte, com piso de 30 municípios. Pobreza do lugar não identifica o voto de nenhuma pessoa. Correlação não implica causa."
   },
   {
     "slug": "pobreza-voto-vice",
     "titulo": "Lugares mais pobres votaram mais no segundo colocado?",
     "blocos": { "quem": "@vice", "onde": "venceu", "cruzar": "pobres_pct", "ver": ["dispersao"] },
-    "texto_metodo": "Correlação de Pearson (e Spearman) entre percentual de pobres e o share do segundo colocado nos municípios do recorte, com piso de 30 municípios. A tabela por quintis mostra o share médio por faixa. Correlação não implica causa."
+    "texto_metodo": "Correlação de Pearson (e Spearman) entre percentual de pobres e o percentual de votos do segundo colocado nos municípios do recorte, com piso de 30 municípios. A tabela por quintis mostra o percentual médio de votos por faixa. Correlação não implica causa."
   },
   {
     "slug": "renda-voto-vencedor",
     "titulo": "Lugares de renda alta votaram mais no vencedor?",
     "blocos": { "quem": "@vencedor", "onde": "venceu", "cruzar": "renda_media", "ver": ["dispersao"] },
-    "texto_metodo": "Correlação de Pearson (e Spearman) entre renda média e o share do vencedor nos municípios do recorte, com piso de 30 municípios. A tabela por quintis mostra o share médio por faixa de renda. Correlação não implica causa."
+    "texto_metodo": "Correlação de Pearson (e Spearman) entre renda média e o percentual de votos do vencedor nos municípios do recorte, com piso de 30 municípios. A tabela por quintis mostra o percentual médio de votos por faixa de renda. Correlação não implica causa."
   },
   {
     "slug": "renda-voto-vice",
     "titulo": "Lugares de renda alta votaram mais no segundo colocado?",
     "blocos": { "quem": "@vice", "onde": "venceu", "cruzar": "renda_media", "ver": ["dispersao"] },
-    "texto_metodo": "Correlação de Pearson (e Spearman) entre renda média e o share do segundo colocado nos municípios do recorte, com piso de 30 municípios. A tabela por quintis mostra o share médio por faixa de renda. Correlação não implica causa."
+    "texto_metodo": "Correlação de Pearson (e Spearman) entre renda média e o percentual de votos do segundo colocado nos municípios do recorte, com piso de 30 municípios. A tabela por quintis mostra o percentual médio de votos por faixa de renda. Correlação não implica causa."
   },
   {
     "slug": "idade-voto-vencedor",
     "titulo": "Lugares mais velhos votaram mais no vencedor?",
     "blocos": { "quem": "@vencedor", "onde": "venceu", "cruzar": "idade_mediana", "ver": ["dispersao"] },
-    "texto_metodo": "Correlação de Pearson (e Spearman) entre idade mediana e o share do vencedor nos municípios do recorte, com piso de 30 municípios. Idade aqui é do município (Censo), nunca perfil individual de eleitor. Correlação não implica causa."
+    "texto_metodo": "Correlação de Pearson (e Spearman) entre idade mediana e o percentual de votos do vencedor nos municípios do recorte, com piso de 30 municípios. Idade aqui é do município (Censo), nunca perfil individual de eleitor. Correlação não implica causa."
   },
   {
     "slug": "idade-voto-vice",
     "titulo": "Lugares mais velhos votaram mais no segundo colocado?",
     "blocos": { "quem": "@vice", "onde": "venceu", "cruzar": "idade_mediana", "ver": ["dispersao"] },
-    "texto_metodo": "Correlação de Pearson (e Spearman) entre idade mediana e o share do segundo colocado nos municípios do recorte, com piso de 30 municípios. A tabela por quintis mostra o share médio por faixa. Correlação não implica causa."
+    "texto_metodo": "Correlação de Pearson (e Spearman) entre idade mediana e o percentual de votos do segundo colocado nos municípios do recorte, com piso de 30 municípios. A tabela por quintis mostra o percentual médio de votos por faixa. Correlação não implica causa."
   },
   {
     "slug": "urbanizacao-voto-vencedor",
     "titulo": "Lugares mais urbanos votaram mais no vencedor?",
     "blocos": { "quem": "@vencedor", "onde": "venceu", "cruzar": "urbanizacao", "ver": ["dispersao"] },
-    "texto_metodo": "Correlação de Pearson (e Spearman) entre urbanização e o share do vencedor nos municípios do recorte, com piso de 30 municípios. A tabela por quintis mostra o share médio por faixa de urbanização. Correlação não implica causa."
+    "texto_metodo": "Correlação de Pearson (e Spearman) entre urbanização e o percentual de votos do vencedor nos municípios do recorte, com piso de 30 municípios. A tabela por quintis mostra o percentual médio de votos por faixa de urbanização. Correlação não implica causa."
   },
   {
     "slug": "urbanizacao-voto-vice",
     "titulo": "Lugares mais urbanos votaram mais no segundo colocado?",
     "blocos": { "quem": "@vice", "onde": "venceu", "cruzar": "urbanizacao", "ver": ["dispersao"] },
-    "texto_metodo": "Correlação de Pearson (e Spearman) entre urbanização e o share do segundo colocado nos municípios do recorte, com piso de 30 municípios. A tabela por quintis mostra o share médio por faixa. Correlação não implica causa."
+    "texto_metodo": "Correlação de Pearson (e Spearman) entre urbanização e o percentual de votos do segundo colocado nos municípios do recorte, com piso de 30 municípios. A tabela por quintis mostra o percentual médio de votos por faixa. Correlação não implica causa."
   },
   {
     "slug": "porque-estudo-voto",
     "titulo": "Por que escolaridade e voto andam juntos? (estratos)",
     "blocos": { "quem": "@vencedor", "onde": "venceu", "cruzar": "esc_sup", "ver": ["dispersao", "tabela"] },
-    "texto_metodo": "Repete a correlação escolaridade × share do vencedor dentro de cada região e faixa de renda. Se o padrão some nos estratos, era confusão regional; se fica, é robusto. O veredito em linguagem leiga resume a evidência, nunca como causa."
+    "texto_metodo": "Repete a correlação escolaridade × percentual de votos do vencedor dentro de cada região e faixa de renda. Se o padrão some nos estratos, era confusão regional; se fica, é robusto. O veredito em linguagem leiga resume a evidência, nunca como causa."
   },
   {
     "slug": "porque-pobreza-voto",
     "titulo": "Por que pobreza e voto andam juntos? (estratos)",
     "blocos": { "quem": "@vencedor", "onde": "venceu", "cruzar": "pobres_pct", "ver": ["dispersao", "tabela"] },
-    "texto_metodo": "Repete a correlação pobreza × share do vencedor dentro de cada região e faixa de renda. Estrato com menos de 30 municípios é suprimido, nunca zerado. O veredito em linguagem leiga resume a evidência, nunca como causa."
+    "texto_metodo": "Repete a correlação pobreza × percentual de votos do vencedor dentro de cada região e faixa de renda. Estrato com menos de 30 municípios é suprimido, nunca zerado. O veredito em linguagem leiga resume a evidência, nunca como causa."
   },
   {
     "slug": "porque-renda-voto",
     "titulo": "Por que renda e voto andam juntos? (estratos)",
     "blocos": { "quem": "@vencedor", "onde": "venceu", "cruzar": "renda_media", "ver": ["dispersao", "tabela"] },
-    "texto_metodo": "Repete a correlação renda × share do vencedor dentro de cada região e faixa de renda. Sinais opostos entre estratos geram veredito misto (evidência contraditória). O veredito nunca afirma causa."
+    "texto_metodo": "Repete a correlação renda × percentual de votos do vencedor dentro de cada região e faixa de renda. Sinais opostos entre estratos geram veredito misto (evidência contraditória). O veredito nunca afirma causa."
   },
   {
     "slug": "porque-urbanizacao-voto",
     "titulo": "Por que urbanização e voto andam juntos? (estratos)",
     "blocos": { "quem": "@vencedor", "onde": "venceu", "cruzar": "urbanizacao", "ver": ["dispersao", "tabela"] },
-    "texto_metodo": "Repete a correlação urbanização × share do vencedor dentro de cada região e faixa de renda. Cada ponto segue sendo um município, nunca uma pessoa. O veredito em linguagem leiga resume a evidência, nunca como causa."
+    "texto_metodo": "Repete a correlação urbanização × percentual de votos do vencedor dentro de cada região e faixa de renda. Cada ponto segue sendo um município, nunca uma pessoa. O veredito em linguagem leiga resume a evidência, nunca como causa."
   },
   {
     "slug": "margem-ampla-vencedor",
     "titulo": "Onde o vencedor lavou a disputa (margem acima de 10 pontos)?",
     "blocos": { "quem": "@vencedor", "onde": "margem_10", "cruzar": "renda_media", "ver": ["ranking"] },
-    "texto_metodo": "Recorte de municípios onde o vencedor venceu com margem acima de 10 pontos percentuais sobre o segundo colocado. O ranking ordena pelo share do vencedor. Margem = (votos do 1º − votos do 2º) ÷ total de votos."
+    "texto_metodo": "Recorte de municípios onde o vencedor venceu com margem acima de 10 pontos percentuais sobre o segundo colocado. O ranking ordena pelo percentual de votos do vencedor. Margem = (votos do 1º − votos do 2º) ÷ total de votos."
   },
   {
     "slug": "margem-ampla-vice",
     "titulo": "Onde o segundo colocado venceu com folga?",
     "blocos": { "quem": "@vice", "onde": "margem_10", "cruzar": "renda_media", "ver": ["ranking"] },
-    "texto_metodo": "Recorte de municípios onde o segundo colocado nacional venceu com margem acima de 10 pontos percentuais. O ranking ordena pelo share dele no recorte. Margem = (votos do 1º − votos do 2º) ÷ total de votos."
+    "texto_metodo": "Recorte de municípios onde o segundo colocado nacional venceu com margem acima de 10 pontos percentuais. O ranking ordena pelo percentual de votos dele no recorte. Margem = (votos do 1º − votos do 2º) ÷ total de votos."
   },
   {
     "slug": "onde-foi-segundo-vencedor",
     "titulo": "Onde o vencedor nacional ficou em segundo lugar?",
     "blocos": { "quem": "@vencedor", "onde": "segundo", "cruzar": "esc_sup", "ver": ["ranking"] },
-    "texto_metodo": "Recorte de municípios onde o vencedor nacional foi apenas o segundo colocado. O ranking ordena pelo share dele nesses lugares. Perder num município não diz nada sobre quem votou nele ali: voto é secreto."
+    "texto_metodo": "Recorte de municípios onde o vencedor nacional foi apenas o segundo colocado. O ranking ordena pelo percentual de votos dele nesses lugares. Perder num município não diz nada sobre quem votou nele ali: voto é secreto."
   },
   {
     "slug": "participacao-alta-vencedor",

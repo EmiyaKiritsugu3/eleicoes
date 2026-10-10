@@ -15,7 +15,7 @@ import SourceBadge from "./SourceBadge";
 import SealSlot from "./SealSlot";
 import CopyShare from "./CopyShare";
 import { formatVotes, type SealState } from "../lib/data";
-import { isFatoDataset } from "../lib/regiao";
+import { censoTemProva, isFatoDataset } from "../lib/regiao";
 import { SEM_DADO } from "../lib/textos";
 import {
   indiceVencedor,
@@ -36,11 +36,12 @@ export const ECO_SEAL = "dado de município, não de pessoa";
  *  `register_served_artifacts` atesta
  *  os bytes com entry de fonte do Censo (nunca fan-out TSE) — a
  *  proveniência da pop vive nessa entry `artifacts`, não no gate do fato.
- *  ASSUNÇÃO DE CONFIANÇA (build-time): o runtime NÃO revalida a entry —
- *  vale enquanto `/data/` for imutável pós-`register_served_artifacts`
- *  (qualquer JSON neste path renderiza como fato). Endurecimento futuro:
- *  checar a entry do Censo no manifest (selo) antes de renderizar.
- *  Ausente → fetch fail-closed (null) e a linha exibe SEM_DADO. */
+ *  SELO RUNTIME (EVOLVE-8 Task 1): o runtime CHECA a entry antes de
+ *  renderizar — `censoTemProva(manifest)` (entry `censo_municipios.json`
+ *  com sha256 64-hex, mesma strictness de `isAudited` do gate do fato;
+ *  fixture com hash válido conta, paridade com `vereditoTemProva`).
+ *  Sem entry → mapa null e a linha exibe SEM_DADO (fail-closed: JSON
+ *  forjado neste path nunca vira número). */
 export const CENSO_URL = "/data/censo_municipios.json";
 
 /** Rótulo pt-BR da linha de população real (Censo 2022). */
@@ -298,10 +299,12 @@ interface PainelRegiaoProps {
   /** Dataset selecionado (`?fato=` resolvido pela página): preservado no
    *  link "Por quê?" para analisar o pleito exibido, não o default. */
   fatoDataset?: string | null;
-  /** Mapa `{ibge7: pop}` do Censo (artefato servido). `undefined`
-   *  (omitido) → busca client-side de `CENSO_URL` com fail-closed;
-   *  `null`/mapa → valor resolvido (determinístico p/ SSR/testes, sem
-   *  fetch). A pop NUNCA vem de `demo.pop` do fato (fixture). */
+  /** Mapa `{ibge7: pop}` do Censo (artefato servido, dado pós-gate: a
+   *  página só repassa o mapa com entry `artifacts` auditada no manifest).
+   *  `undefined` (omitido) → busca client-side de `CENSO_URL` com selo
+   *  runtime (`censoTemProva`); `null`/mapa → valor resolvido
+   *  (determinístico p/ SSR/testes, sem fetch). A pop NUNCA vem de
+   *  `demo.pop` do fato (fixture). */
   censo?: CensoMapa | null;
 }
 
@@ -310,14 +313,20 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
   const cod = String(ibge ?? "").trim().toUpperCase();
   const ehExterior = cod === "EXTERIOR";
   const ehUF = /^[A-Z]{2}$/.test(cod);
-  // Censo fato-independente: resolve da prop (SSR/testes) ou do fetch
-  // client-side do artefato servido (fail-closed: erro/rede → null).
+  // Censo fato-independente COM selo runtime (EVOLVE-8 Task 1): resolve
+  // da prop (SSR/testes, dado pós-gate da página) ou do fetch client-side
+  // do artefato servido — que exige a entry `artifacts` do Censo no
+  // manifest antes de aceitar os bytes (fail-closed: erro/rede/sem entry
+  // → null, a linha exibe SEM_DADO, nunca throw nem número forjado).
   const [censoFetch, setCensoFetch] = React.useState<CensoMapa | null>(null);
   React.useEffect(() => {
     if (censo !== undefined) return;
     let vivo = true;
     void (async () => {
       try {
+        const resM = await fetch("/data/manifest.json", { cache: "no-store" });
+        const manifest: unknown = resM.ok ? await resM.json() : null;
+        if (!censoTemProva(manifest)) return;
         const res = await fetch(CENSO_URL, { cache: "no-store" });
         if (!res.ok) return;
         const json = await res.json();

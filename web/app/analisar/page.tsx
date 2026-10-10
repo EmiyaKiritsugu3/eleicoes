@@ -26,6 +26,7 @@ import {
   semCoberturaTurnoZona,
 } from "../../lib/export";
 import { vereditoTemProva } from "../../lib/regiao";
+import { fetchJson } from "../../lib/fetchJson";
 import { MOTIVO_SEM_HASH, SEM_DADO } from "../../lib/textos";
 
 const SEM_COBERTURA_AGG =
@@ -35,16 +36,6 @@ interface AnalisarFiltros extends Filtros {
   turno?: string;
   zona?: string;
   partido?: string;
-}
-
-async function fetchJson<T>(path: string): Promise<T | null> {
-  try {
-    const res = await fetch(path, { cache: "no-store" });
-    if (!res.ok) return null;
-    return (await res.json()) as T;
-  } catch {
-    return null;
-  }
 }
 
 /** Filtra linhas genéricas por partido quando o agregado carrega a coluna. */
@@ -119,12 +110,12 @@ export default function Analisar() {
     setCompB(q.b ?? "");
     setUrlHash(q.hash ?? "");
     (async () => {
-      setResumo(await fetchJson<ResumoJson>("/data/resumo.json"));
-      setPorUf((await fetchJson<PorUfRow[]>("/data/por_uf.json")) ?? []);
+      setResumo((await fetchJson<ResumoJson>("/data/resumo.json")).data);
+      setPorUf((await fetchJson<PorUfRow[]>("/data/por_uf.json")).data ?? []);
       setPorCand(
-        (await fetchJson<PorCandidatoRow[]>("/data/por_candidato.json")) ?? [],
+        (await fetchJson<PorCandidatoRow[]>("/data/por_candidato.json")).data ?? [],
       );
-      setSeal(getSealState(await fetchJson("/data/manifest.json")));
+      setSeal(getSealState((await fetchJson("/data/manifest.json")).data));
       setManifestChecked(true);
     })();
   }, []);

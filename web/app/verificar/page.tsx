@@ -14,6 +14,7 @@
 import React, { useEffect, useState } from "react";
 import SealSlot from "../../components/SealSlot";
 import { getSealState, type SealState } from "../../lib/data";
+import { fetchJson } from "../../lib/fetchJson";
 import { checksParaRegiao, type Check } from "./Verificar";
 import checksJson from "../../data/checks.json";
 
@@ -54,16 +55,6 @@ function lerRegiaoDaUrl(): string {
   }
 }
 
-async function fetchJson<T>(path: string): Promise<T | null> {
-  try {
-    const res = await fetch(path, { cache: "no-store" });
-    if (!res.ok) return null;
-    return (await res.json()) as T;
-  } catch {
-    return null;
-  }
-}
-
 function PaginaVerificarIndice() {
   const [regiao, setRegiao] = useState("");
   const [seal, setSeal] = useState<SealState>({ official: null, hasFixture: false, fixtureHash: "" });
@@ -73,7 +64,7 @@ function PaginaVerificarIndice() {
     // regional aplica de imediato em vez de exibir a biblioteca inteira.
     setRegiao(lerRegiaoDaUrl());
     (async () => {
-      const manifest = await fetchJson("/data/manifest.json");
+      const manifest = (await fetchJson("/data/manifest.json")).data;
       setSeal(getSealState(manifest));
     })();
   }, []);

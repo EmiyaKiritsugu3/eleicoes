@@ -41,6 +41,43 @@ describe("csv formula (M12)", () => {
   });
 });
 
+describe("csv blank-cell (T4)", () => {
+  it("null vira célula vazia deliberada (não 'null')", () => {
+    const csv = buildCsvExport([{ a: null, b: 1 }], AUDIT);
+    expect(csv.split("\n")[1].split(",")[0]).toBe("");
+    expect(csv).not.toContain("null");
+  });
+  it("undefined vira célula vazia deliberada (não 'undefined')", () => {
+    const csv = buildCsvExport([{ a: undefined, b: 1 }], AUDIT);
+    expect(csv.split("\n")[1].split(",")[0]).toBe("");
+    expect(csv).not.toContain("undefined");
+  });
+});
+
+describe("csv header escape (T4)", () => {
+  it("chave com vírgula sai escapada com aspas", () => {
+    const csv = buildCsvExport([{ "a,b": 1 }], AUDIT);
+    expect(csv.split("\n")[0]).toContain('"a,b"');
+  });
+  it("chave com aspa sai com aspa duplicada", () => {
+    const csv = buildCsvExport([{ 'a"b': 1 }], AUDIT);
+    expect(csv.split("\n")[0]).toContain('"a""b"');
+  });
+});
+
+describe("csv formula+quote (CodeRabbit minor)", () => {
+  it("header fórmula com vírgula fica um campo só: apóstrofo dentro das aspas", () => {
+    const csv = buildCsvExport([{ "=a,b": 1 }], AUDIT);
+    const header = csv.split("\n")[0];
+    expect(header).toContain("\"'=a,b\"");
+    expect(header).not.toContain("'\"=a,b\"");
+  });
+  it("valor fórmula com vírgula fica um campo só", () => {
+    const csv = buildCsvExport([{ c: "=a,b" }], AUDIT);
+    expect(csv.split("\n")[1]).toContain("\"'=a,b\"");
+  });
+});
+
 describe("share hash trim (F5)", () => {
   it("hash só-espaços não entra na URL", () => {
     expect(buildShareUrl({ ano: "2022" }, "   ")).not.toContain("hash=");

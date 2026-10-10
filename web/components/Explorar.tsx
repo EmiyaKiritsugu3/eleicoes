@@ -552,7 +552,7 @@ export function ExplorarConteudo({
               {String(focoRow.nome ?? focoRow.ibge)} ({String(focoRow.ibge)}) — UF{" "}
               {String(focoRow.uf ?? "")}
               {idxQuem >= 0 && hashAuditado && shareCandidato(focoRow, idxQuem) !== null
-                ? ` · share de ${quemNome}: ${((shareCandidato(focoRow, idxQuem) as number) * 100).toFixed(1).replace(".", ",")}%`
+                ? ` · percentual de votos de ${quemNome}: ${((shareCandidato(focoRow, idxQuem) as number) * 100).toFixed(1).replace(".", ",")}%`
                 : ""}
             </p>
           )}
@@ -561,7 +561,7 @@ export function ExplorarConteudo({
 
       {verSeguro.includes("dispersao") && (
         <section aria-label="Dispersão">
-          <h2>Dispersão — {sel.cruzar} × share de {quemNome}</h2>
+          <h2>Dispersão — {sel.cruzar} × percentual de votos de {quemNome}</h2>
           {badge}
           <p role="note">{ECO_SEAL} — cada ponto é um município, nunca uma pessoa.</p>
           {!coberto ? (
@@ -592,7 +592,7 @@ export function ExplorarConteudo({
                   <svg
                     viewBox="0 0 400 300"
                     role="img"
-                    aria-label={`Dispersão de ${sel.cruzar} por share de ${quemNome}: ${pontos.length} municípios`}
+                    aria-label={`Dispersão de ${sel.cruzar} por percentual de votos de ${quemNome}: ${pontos.length} municípios`}
                   >
                     {(() => {
                       const W = 400;
@@ -639,13 +639,13 @@ export function ExplorarConteudo({
                   </svg>
                 </figure>
               )}
-              <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label={`Share médio por quintil de ${sel.cruzar}`}>
+              <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label={`Percentual médio de votos por quintil de ${sel.cruzar}`}>
               <table>
-                <caption>Share médio por quintil de {sel.cruzar}</caption>
+                <caption>Percentual médio de votos por quintil de {sel.cruzar}</caption>
                 <thead>
                   <tr>
                     <th scope="col">Faixa</th>
-                    <th scope="col">Share médio</th>
+                    <th scope="col">Percentual médio</th>
                     <th scope="col">n</th>
                   </tr>
                 </thead>
@@ -653,7 +653,7 @@ export function ExplorarConteudo({
                   {faixas.map((f) => (
                     <tr key={f.faixa}>
                       <td>{f.faixa}</td>
-                      <td>{f.mediaY.toFixed(3).replace(".", ",")}</td>
+                      <td>{(f.mediaY * 100).toFixed(1).replace(".", ",")}%</td>
                       <td>{f.n}</td>
                     </tr>
                   ))}
@@ -667,19 +667,19 @@ export function ExplorarConteudo({
 
       {verSeguro.includes("ranking") && (
         <section aria-label="Ranking">
-          <h2>Ranking — maior share de {quemNome}</h2>
+          <h2>Ranking — maior percentual de votos de {quemNome}</h2>
           {badge}
           {!coberto || ranking.length === 0 ? (
             <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}{!hashAuditado ? ` — ${MOTIVO_SEM_HASH}` : " — sem cobertura neste recorte"}</p>
           ) : (
-            <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Top municípios por share">
+            <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Top municípios por percentual de votos">
             <table>
-              <caption>Top municípios por share</caption>
+              <caption>Top municípios por percentual de votos</caption>
               <thead>
                 <tr>
                   <th scope="col">Município</th>
                   <th scope="col">IBGE</th>
-                  <th scope="col">Share</th>
+                  <th scope="col">Percentual</th>
                 </tr>
               </thead>
               <tbody>

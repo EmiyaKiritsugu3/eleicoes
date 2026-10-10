@@ -203,12 +203,12 @@ describe("curada (fail-closed sem fato + escopos fora do fato municipal)", () =>
   });
 });
 
-describe("curada (Resultado mostra o share médio ponderado afirmado)", () => {
-  it("Resultado exibe share médio ponderado de quem, com %", () => {
+describe("curada (Resultado mostra o percentual médio de votos ponderado afirmado)", () => {
+  it("Resultado exibe percentual médio de votos ponderado de quem, com %", () => {
     const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
     const html = htmlDe(p, fato40(), SEAL_OK);
     const resultado = html.split('aria-label="Resultado"')[1].split("<section")[0];
-    expect(resultado).toContain("share médio");
+    expect(resultado).toContain("percentual médio de votos");
     expect(resultado).toMatch(/%/);
   });
 });
@@ -306,12 +306,12 @@ function secaoResultadoCurada(html: string): string {
 }
 
 describe("curada (gate de hash: fato sem hash não sustenta número)", () => {
-  it("fato presente sem hash → Resultado SEM_DADO, sem r nem share", () => {
+  it("fato presente sem hash → Resultado SEM_DADO, sem r nem percentual", () => {
     const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
     const resultado = secaoResultadoCurada(htmlDe(p, fato40(), SEAL_NULO));
     expect(resultado).toContain("sem dado oficial");
     expect(resultado).not.toMatch(/r \(Pearson\) = -?\d/);
-    expect(resultado).not.toMatch(/share médio[^%]*%/);
+    expect(resultado).not.toMatch(/percentual médio de votos[^%]*%/);
   });
   it("selo fixture com hash segue sustentando números (paridade com Verificar)", () => {
     const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
@@ -319,12 +319,12 @@ describe("curada (gate de hash: fato sem hash não sustenta número)", () => {
       /r \(Pearson\) = -?\d/,
     );
   });
-  it("official com hash vazio → SEM_DADO, sem r nem share (paridade com Verificar)", () => {
+  it("official com hash vazio → SEM_DADO, sem r nem percentual (paridade com Verificar)", () => {
     const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
     const resultado = secaoResultadoCurada(htmlDe(p, fato40(), SEAL_HASH_VAZIO));
     expect(resultado).toContain("sem dado oficial");
     expect(resultado).not.toMatch(/r \(Pearson\) = -?\d/);
-    expect(resultado).not.toMatch(/share médio[^%]*%/);
+    expect(resultado).not.toMatch(/percentual médio de votos[^%]*%/);
   });
   it("selo com hash + fato null → Método SEM_DADO (sem n=0, sem veredito)", () => {
     const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
@@ -393,5 +393,60 @@ describe("curada (decimais pt-BR: vírgula, nunca ponto)", () => {
     expect(html).toMatch(/r \(Pearson\) = -?\d+,\d{3}/);
     expect(html).not.toMatch(/r \(Pearson\) = -?\d+\.\d{3}/);
     expect(html).not.toMatch(/r \(Spearman\) = -?\d+\.\d{3}/);
+  });
+});
+
+describe("curada (EVOLVE-8 Task 5: share→percentual + peso completo no Resultado)", () => {
+  function perguntaTudo() {
+    const base = perguntas.find((q) => q.slug === "porque-estudo-voto")!;
+    return { ...base, blocos: { ...base.blocos, ver: ["dispersao", "tabela", "ranking"] } };
+  }
+  it("render sem 'share' na página inteira, incluindo Método", () => {
+    // Método exibe pergunta.texto_metodo (perguntas.json alinhado ao mesmo
+    // termo nesta task) — o zero-share vale para a página inteira.
+    const html = htmlDe(perguntaTudo(), fato40(), SEAL_OK);
+    expect(html).not.toMatch(/share/i);
+    const metodo = html.split(`aria-label="Método"`)[1].split("<section")[0];
+    expect(metodo, "Método").toContain("percentual de votos");
+    expect(html).toContain("percentual médio de votos de");
+    expect(html).toContain("Percentual médio de votos por quintil");
+    expect(html).toContain("Top municípios por percentual de votos");
+  });
+  it("zero 'share' em todas as 30 (loop, não só uma página)", () => {
+    for (const p of perguntas) {
+      const html = htmlDe(p, fato40(), SEAL_OK);
+      expect(html, p.slug).not.toMatch(/share/i);
+    }
+  });
+  it("quintis em percentual ×100 + % (nunca fração crua 0-1)", () => {
+    const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
+    const html = htmlDe(p, fato40(), SEAL_OK);
+    const tabela = html.split("<caption>Percentual médio de votos por quintil")[1].split("</table>")[0];
+    expect(tabela).toMatch(/\d+,\d%/); // pt-BR + % (paridade com Resultado/Ranking)
+    expect(tabela).not.toMatch(/>0,\d+</);
+    // Fecha o buraco fração-com-%: sem ×100 o fixture daria 0,5% (casa com
+    // \d+,\d% e escapa de >0,\d+< por causa do % antes do <).
+    expect(tabela).not.toMatch(/>0,\d+%</);
+    // Pin exato do fixture determinístico (40 linhas lineares a=500+i*10):
+    // fração não-escalada jamais produz estes valores.
+    for (const v of ["53,5%", "61,5%", "69,5%", "77,5%", "85,5%"]) {
+      expect(tabela).toContain(v);
+    }
+  });
+  it("Resultado puro: peso completo (peso: eleitorado), sem 'share'", () => {
+    const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
+    const resultado = secaoResultadoCurada(htmlDe(p, fato40(), SEAL_OK));
+    expect(resultado).toContain("percentual médio de votos de");
+    expect(resultado).toContain("peso: eleitorado");
+    expect(resultado).not.toMatch(/share/i);
+  });
+  it("Resultado misto: peso efetivo + nota de pesos, sem 'share'", () => {
+    const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
+    const resultado = secaoResultadoCurada(
+      htmlDe(p, { candidatos: CANDIDATOS, municipios: linhasMistas() }, SEAL_OK),
+    );
+    expect(resultado).toContain("peso efetivo — eleitorado, total ou população");
+    expect(resultado).toContain("pesos mistos");
+    expect(resultado).not.toMatch(/share/i);
   });
 });

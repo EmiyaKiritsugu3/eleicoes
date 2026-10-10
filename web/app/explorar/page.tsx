@@ -7,6 +7,7 @@ import SealSlot from "../../components/SealSlot";
 import { ExplorarConteudo, parseExplorarQuery, type ExplorarSelecao } from "../../components/Explorar";
 import type { SealState } from "../../lib/data";
 import { fatoDatasetDe, getSealParaDataset, isHashDivergente } from "../../lib/regiao";
+import { fetchJson } from "../../lib/fetchJson";
 import type { FatoRegiao } from "../../components/PainelRegiao";
 
 const ALERTA_STYLE: React.CSSProperties = {
@@ -14,16 +15,6 @@ const ALERTA_STYLE: React.CSSProperties = {
   border: "1px solid #b45309",
   fontWeight: "bold",
 };
-
-async function fetchJson<T>(path: string): Promise<T | null> {
-  try {
-    const res = await fetch(path, { cache: "no-store" });
-    if (!res.ok) return null;
-    return (await res.json()) as T;
-  } catch {
-    return null;
-  }
-}
 
 const SEL_VAZIA: ExplorarSelecao = {
   quem: "",
@@ -48,7 +39,7 @@ export default function Explorar() {
     // do fato (antes, fato=null exibia SEM_DADO transitório).
     setManifestChecked(false);
     (async () => {
-      const manifest = await fetchJson("/data/manifest.json");
+      const manifest = (await fetchJson("/data/manifest.json")).data;
       let fatoParam = "";
       try {
         fatoParam = new URLSearchParams(window.location.search).get("fato") ?? "";
@@ -57,7 +48,7 @@ export default function Explorar() {
       }
       const dataset = fatoDatasetDe(manifest, fatoParam);
       setSeal(getSealParaDataset(manifest, dataset));
-      setFato(dataset ? await fetchJson<FatoRegiao>(`/data/${dataset}.json`) : null);
+      setFato(dataset ? (await fetchJson<FatoRegiao>(`/data/${dataset}.json`)).data : null);
       setManifestChecked(true);
     })();
   }, []);

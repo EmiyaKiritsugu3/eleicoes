@@ -18,6 +18,8 @@
  *  (Artefato gerado, ignorado pelo git — cf. `web/.gitignore`.)
  */
 
+import { SEM_DADO } from "./textos";
+
 /** URL canônica da malha municipal (fonte única: call sites usam esta
  *  constante p/ não divergir do gerador `scripts/malha.py` nem da doc acima). */
 export const MALHA_MUNICIPIOS_URL = "/data/malha_municipios.topojson";
@@ -214,12 +216,23 @@ export interface CliqueMapa {
 }
 
 /** Converte clique (CSS px) → coordenadas da malha e resolve o IBGE7.
- *  Multiplica pelo fator backing/CSS em cada eixo; ret nulo = null. */
+ *  Multiplica pelo fator backing/CSS em cada eixo; ret nulo = null.
+ *  Guarda estrito (EVOLVE-8 T3): `transform` precisa ser tripla de números
+ *  finitos; qualquer outro shape (null, curto, longo, string, NaN,
+ *  Infinity) falha fechado sem seleção — o fallback p/ identidade [1,0,0]
+ *  poderia acertar um município por acaso na malha real (lat sul → y>0). */
 export function resolverCliqueMapa(c: CliqueMapa): string | null {
   if (c.rect.width <= 0 || c.rect.height <= 0) return null;
   const px = (c.clientX - c.rect.left) * (c.backingWidth / c.rect.width);
   const py = (c.clientY - c.rect.top) * (c.backingHeight / c.rect.height);
-  const [s, ox, oy] = c.transform ?? [1, 0, 0];
+  const t = c.transform;
+  if (
+    !Array.isArray(t) ||
+    t.length !== 3 ||
+    !t.every((n) => typeof n === "number" && Number.isFinite(n))
+  )
+    return null;
+  const [s, ox, oy] = t;
   if (!s) return null;
   return hitTest(c.features, (px - ox) / s, (py - oy) / s);
 }
@@ -228,12 +241,12 @@ export function resolverCliqueMapa(c: CliqueMapa): string | null {
 export async function loadMalha(malhaUrl: string): Promise<MalhaFeature[]> {
   const res = await fetch(malhaUrl);
   if (!res.ok) {
-    throw new Error(`malha indisponível (${res.status}): sem dado oficial`);
+    throw new Error(`malha indisponível (${res.status}): ${SEM_DADO}`);
   }
   const topo = (await res.json()) as TopoJson;
   const feats = decodeTopojson(topo);
   if (feats.length === 0) {
-    throw new Error("malha vazia ou inválida: sem dado oficial");
+    throw new Error(`malha vazia ou inválida: ${SEM_DADO}`);
   }
   return feats;
 }

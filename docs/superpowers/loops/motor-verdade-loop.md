@@ -11,12 +11,17 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 5. **Anti-regressão**: todo ciclo roda a suíte completa local antes do push; CI precisa estar verde; findings viram testes quando aplicável.
 6. **Contexto**: sem ferramenta de compactação manual — mitigação é contexto enxuto + este arquivo + git. Se compactar, retomar por aqui.
 
-## Estado atual (atualizado 2026-10-10 ~16:50 UTC)
+## Estado atual (atualizado 2026-10-10 ~21:38 UTC)
 
 - [x] PR #2 (motor-verdade → main): mergeado 47d6895, CI verde.
 - [x] EVOLVE-1: mergeado 453a9da (PR #3).
 - [x] EVOLVE-2: mergeado 71aa4ff (PR #4).
-- [ ] EVOLVE-3: PR #5 aberto — CI/GitGuardian/CodeRabbit/Sonar verdes pós-triagem; cubic re-review pendente; 5 achados CodeRabbit em triagem/fix.
+- [x] EVOLVE-3: mergeado 39c2258 (PR #5).
+- [x] EVOLVE-4: mergeado 9bada45 (PR #6).
+- [x] EVOLVE-5: mergeado 140f8fa (PR #7) — primeiro dado REAL fluindo (Censo 2022 e2e).
+- [x] EVOLVE-6: mergeado 145de27 (PR #8).
+- [x] EVOLVE-7: mergeado eb96878 (PR #9) — primeiro pixel real na UI (pop Censo).
+- [x] EVOLVE-8: completo na branch `evolve-8` — 6/6 tasks + revisão final limpa (PR #10 aberto p/ merge).
 - (Histórico original deste bloco preservado abaixo por valor de auditoria.)
 
 ## Log de ciclos
@@ -129,3 +134,13 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 ## EVOLVE-7 mergeado (2026-10-10 ~21:15 UTC)
 - Merge PR #9 (merge commit eb96878): tudo verde — CI ×2, GitGuardian, CodeRabbit, cubic, Sonar. Branch evolve-7 deletada.
 - Total: 6 tasks + R1/R3/R4/R5 com re-reviews limpos. Primeiro pixel real na UI (pop Censo). Suítes finais: pytest 202 + vitest 412 + tsc clean + build.
+
+## EVOLVE-8 em progresso — timings das suítes (2026-10-10 ~21:38 UTC, Task 6)
+- Tasks 1–5 completas (reviews Approved); Task 6 (processo, docs-only) em execução na branch `evolve-8`.
+- Medição Task 6 (comandos a partir da raiz do repo; `npm test` roda em `web/`):
+  - `pytest tests/ -q` → 202 passed, 1 skipped em 15.50s (wall ~15s).
+  - `(cd web && npm test)` → 26 arquivos, 447/447 passed, vitest Duration 2.55s (wall ~3s).
+- (Futuros ciclos: anexar novas linhas abaixo neste formato — comando, resultado, wall.)
+
+## EVOLVE-8 completo (final review: Merge Yes)
+- 6/6 tasks + revisão final limpa; minors (PainelRegiao fetch cru, Verificar share) → EVOLVE-9 micros.

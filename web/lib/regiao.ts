@@ -5,7 +5,7 @@
  * de `NOTA_CANDIDATO_GLOBAL` em `lib/data.ts`.
  */
 
-import { isAudited, isFixtureEntry, type SealState } from "./data";
+import { getArtifacts, isAudited, isFixtureEntry, type ManifestArtifact, type SealState } from "./data";
 
 export interface ManifestFato {
   tipo?: string;
@@ -116,6 +116,35 @@ export function getSealParaDataset(manifest: unknown, dataset: string | null): S
 export function vereditoTemProva(seal: SealState): boolean {
   if (seal.official !== null && isAudited({ sha256: seal.official.hash })) return true;
   return seal.hasFixture && isAudited({ sha256: seal.fixtureHash });
+}
+
+/** Arquivo servido do Censo (espelho de
+ *  `etl/censo.py::CENSO_ARTIFACT_FILENAME`): a entry `artifacts` do manifest
+ *  grava este basename (`register_censo_artifact`/`register_served_artifacts`).
+ */
+export const CENSO_ARQUIVO = "censo_municipios.json";
+
+/** Entry auditada do Censo no manifest: `artifacts` com basename do Censo
+ *  e sha256 64-hex (mesma strictness de `isAudited` do gate do fato —
+ *  delega a `getArtifacts`, sem fork de validador). Fixture com hash
+ *  válido CONTA como prova (paridade com `vereditoTemProva`: o seed
+ *  legítimo marca tudo fixture:true — pin de `test_seed_artifact_entries`).
+ *  Qualquer outra coisa (sem entry, hash curto, alias `hash`) → null:
+ *  JSON forjado no path servido não sustenta a pop.
+ */
+export function entradaCensoAuditada(manifest: unknown): ManifestArtifact | null {
+  const arts = getArtifacts(manifest);
+  const entry = arts.find(
+    (a) => String(a?.arquivo ?? "").split("/").pop() === CENSO_ARQUIVO,
+  );
+  return entry ?? null;
+}
+
+/** Há prova para exibir a pop do Censo: entry `artifacts` auditada
+ *  (fonte única da verdade do selo runtime do Censo, paridade com
+ *  `vereditoTemProva` do fato). Sem entry → SEM_DADO, nunca número. */
+export function censoTemProva(manifest: unknown): boolean {
+  return entradaCensoAuditada(manifest) !== null;
 }
 
 /** Divergência entre o hash da URL compartilhada e o hash oficial atual.
