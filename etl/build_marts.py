@@ -659,6 +659,174 @@ def _discard_staging(paths) -> None:
         _remove_path(p, Path(p).parent)
 
 
+def _votos_particoes_publicadas(curated_dir) -> int | None:
+    """Soma de `votos` nas partições publicadas (`ano=/.../data.parquet').
+
+    Devolve None quando não há partição legível (dir ausente, só-fontes ou
+    nenhuma partição íntegra): sem geração publicada, nada a comparar.
+    Partição ilegível isolada é ignorada aqui (o build a partir das fontes
+    cura o dano); a comparação de geração usa só partições íntegras.
+    """
+    curated = Path(curated_dir)
+    if not curated.is_dir():
+        return None
+    total, linhas = 0, 0
+    for part in sorted(curated.rglob("ano=*")):
+        if not (part.is_file() and part.suffix.lower() == ".parquet"
+                and _is_generated(part)):
+            continue
+        try:
+            df = pd.read_parquet(part, columns=["votos"])
+        except Exception:
+            continue
+        linhas += 1
+        if not df.empty and df["votos"].notna().any():
+            total += int(df["votos"].fillna(0).sum())
+    return total if linhas else None
+
+
+def _resumo_publicado(web_dir) -> tuple | None:
+    """`(total_votos, total_linhas)` do `resumo.json` público, ou None."""
+    resumo = Path(web_dir) / "resumo.json"
+    try:
+        payload = json.loads(resumo.read_bytes().decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    votos, linhas = payload.get("total_votos"), payload.get("total_linhas")
+    if isinstance(votos, bool) or not isinstance(votos, int):
+        return None
+    if isinstance(linhas, bool) or not isinstance(linhas, int):
+        return None
+    return (votos, linhas)
+
+
+def _fato_publicado(db_file) -> tuple | None:
+    """`(SUM(votos), COUNT(*))` do `fato_voto` público, ou None.
+
+    Leitura `read_only` (nunca muta o público); DB ausente/ilegível/sem a
+    tabela é None — os gates do build reprovam o que for dano real, aqui só
+    se compara geração.
+    """
+    if not Path(db_file).is_file():
+        return None
+    try:
+        con = duckdb.connect(str(db_file), read_only=True)
+        try:
+            n = con.execute("SELECT COUNT(*) FROM fato_voto").fetchone()[0]
+            s = con.execute("SELECT SUM(votos) FROM fato_voto").fetchone()[0]
+        finally:
+            con.close()
+    except Exception:
+        return None
+    return (int(s) if s is not None else 0, int(n))
+
+
+def _linhas_tse_publicadas(manifest_file) -> int | None:
+    """Soma de `rows` das ingestões TSE publicadas, ou None.
+
+    Conta só entries com `sha_origin` em ("source", "derived") — fato
+    (`fato_json`), Censo e artifacts nunca entram na conta, então appends
+    legítimos pós-build (seed, `build_fato` standalone) não geram falso
+    positivo. Manifest ausente/ilegível/sem ingestão TSE é None (pula a
+    perna, sem bloquear fluxos legítimos).
+    """
+    try:
+        payload = json.loads(Path(manifest_file).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    ingestions = payload.get("ingestions")
+    if not isinstance(ingestions, list):
+        return None
+    total, achou = 0, False
+    for entry in ingestions:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("sha_origin") not in ("source", "derived"):
+            continue
+        rows = entry.get("rows")
+        if isinstance(rows, bool) or not isinstance(rows, int):
+            return None
+        total += rows
+        achou = True
+    return total if achou else None
+
+
+def _verificar_geracao_integra(curated, db_file, manifest_file, web_dir) -> None:
+    """Detecta árvore meio-promovida e falha fail-closed em pt-BR (Task 5).
+
+    DECISÃO (EVOLVE-2 Task 5): fail-closed em vez de auto-restore. Restaurar
+    às cegas (`<alvo>.prev` por cima de tudo) misturaria a geração N-1 dos
+    alvos já promovidos com a N-2 dos não promovidos; restaurar só o
+    "promovido" exige saber quem é novo x velho por alvo, isto é, ids de
+    geração no protocolo de promote (mudança de protocolo, fora do escopo).
+    O `.prev` segue escrito/usado como backup last-good p/ reparo manual
+    do operador — a mensagem abaixo diz como. Nunca se publica um mix: o
+    erro sai antes de qualquer escrita (inclusive antes do descarte dos
+    `.tmp`, preservados p/ diagnóstico).
+
+    Sinais (todos de conteúdo, custo zero, sem arquivos novos):
+    - totais de votos: partições publicadas x `fato_voto` x `resumo.json`;
+    - contagem de linhas: `fato_voto` x `resumo.json` x ingestões TSE.
+    Alvo ausente/ilegível não conta (primeiro build, seed, E5 vazio seguem
+    intactos); mistura integral-equivalente (mesmos totais, ex. rebuild
+    idêntico interrompido) não é mix publicado — o rebuild cura.
+
+    Residual documentado: crash exatamente entre o promote do DB e o do
+    manifest canônico, com gerações de mesma contagem de linhas, não é
+    detectado — mas a superfície servida (JSONs + espelho + DB) está
+    consistente nesse estado e o próximo build cura o canônico via dedupe.
+    """
+    votos: dict = {}
+    parcial = _votos_particoes_publicadas(curated)
+    if parcial is not None:
+        votos[f"curated ({curated})"] = parcial
+    fato = _fato_publicado(db_file)
+    if fato is not None:
+        votos[f"duckdb ({db_file})"] = fato[0]
+    resumo = _resumo_publicado(web_dir)
+    if resumo is not None:
+        votos[f"resumo.json ({web_dir})"] = resumo[0]
+    linhas: dict = {}
+    if fato is not None:
+        linhas[f"duckdb ({db_file})"] = fato[1]
+    if resumo is not None:
+        linhas[f"resumo.json ({web_dir})"] = resumo[1]
+    tse = _linhas_tse_publicadas(manifest_file)
+    if tse is not None:
+        linhas[f"manifest ({manifest_file})"] = tse
+    divergentes = []
+    if len(set(votos.values())) > 1:
+        divergentes.append(
+            "totais de votos distintos entre alvos públicos: "
+            + ", ".join(f"{k}={v}" for k, v in sorted(votos.items()))
+        )
+    if len(set(linhas.values())) > 1:
+        divergentes.append(
+            "contagens de linhas distintas entre alvos públicos: "
+            + ", ".join(f"{k}={v}" for k, v in sorted(linhas.items()))
+        )
+    if not divergentes:
+        return
+    prevs = [str(_prev_for(t)) for t in (curated, db_file, manifest_file, web_dir)
+             if _prev_for(t).exists() or _prev_for(t).is_symlink()]
+    detalhe_prevs = (
+        f" Backups `.prev` encontrados: {', '.join(sorted(prevs))}."
+        if prevs else " Nenhum backup `.prev` encontrado."
+    )
+    raise RuntimeError(
+        "build_marts: geração meio-promovida detectada (alvos públicos de "
+        "gerações distintas — possível crash entre promotes); nenhum dado "
+        "foi publicado e nada foi alterado. "
+        + "; ".join(divergentes) + "." + detalhe_prevs
+        + " Restaure a geração íntegra anterior a partir dos backups `.prev`,"
+        " remova restos `.tmp` do build interrompido e rode o build novamente."
+    )
+
+
 def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
               source_shas=None) -> None:
     """Pipeline completo: Parquet particionado + DuckDB + JSONs + manifest.
@@ -698,6 +866,10 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
     db_st = _relocated_staging(db_file, dir_publics)
     manifest_st = _relocated_staging(manifest_file, dir_publics)
     stagings = (curated_st, db_st, manifest_st, web_st)
+    # Recovery de crash entre promotes (EVOLVE-2 Task 5): árvore
+    # meio-promovida falha fail-closed em pt-BR ANTES de qualquer escrita
+    # (nunca publica um mix; `.tmp` do crash preservado p/ diagnóstico).
+    _verificar_geracao_integra(curated, db_file, manifest_file, web_dir)
     # Staging obsoleto de build anterior crashado: descarta (nunca promove).
     _discard_staging(stagings)
     df = _load_canonical(curated)
