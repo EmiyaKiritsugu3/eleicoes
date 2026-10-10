@@ -41,3 +41,7 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 ## PR-GREEN iteração 2 (2026-10-10 ~02:45 UTC)
 - Push 2f1d4bd: CI avançou (install OK) mas 1 fail — teste CI importa `yaml` ausente no runner.
 - Fix: `pyyaml>=6` no extra test + `importorskip` no teste (Context7 não necessário — stdlib/pytest pattern; deps só free).
+
+## PR-GREEN iteração 3 (2026-10-10 ~02:55 UTC)
+- Push f0f2e0d: install OK, pytest 93 OK, vitest 238/238 OK — mas exit 1 por "unhandled error" (P2 cubic confirmado): jsdom 30 exige Node 22+, CI rodava Node 20 (EOL).
+- Fix: ci.yml node-version 20 → 22 + teste de piso (tomllib/regex). Local é Node 26 (não reproduz; CI é a prova).
