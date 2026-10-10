@@ -245,6 +245,21 @@ export async function focarRotacao(): Promise<void> {
   await flushRotacao();
 }
 
+// visibilitychange com aba visível (os handlers de rotação só reagem a
+// visible): restaura `prerender` (default do jsdom) ao final para não vazar
+// estado entre testes.
+export async function voltarVisivelRotacao(): Promise<void> {
+  Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+  try {
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await flushRotacao();
+  } finally {
+    Object.defineProperty(document, "visibilityState", { value: "prerender", configurable: true });
+  }
+}
+
 // Monta o nó num host jsdom próprio e drena os effects; devolve el + root
 // p/ o teardown local de cada teste (hosts distintos por arquivo).
 export async function montarRotacao(

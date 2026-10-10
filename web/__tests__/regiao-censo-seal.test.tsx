@@ -2,8 +2,9 @@
 // EVOLVE-8 Task 1 (selo runtime do Censo): a pop só renderiza com entry
 // `artifacts` do Censo no manifest (64-hex, paridade com o gate do fato).
 // JSON forjado no path servido + manifest sem entry → SEM_DADO; com entry
-// → número. Cobre os dois produtores runtime: a página (prop `censo`) e o
-// self-fetch do PainelRegiao (prop omitida).
+// → número. Produtor runtime único: a página (prop `censo` — o self-fetch
+// do PainelRegiao foi removido na EVOLVE-9 Task 3; prop omitida → SEM_DADO
+// sem fetch, pinado nos dois últimos testes).
 import React from "react";
 import { describe, it, expect, afterEach, vi } from "vitest";
 import PaginaRegiao from "../app/regiao/[ibge]/page";
@@ -131,8 +132,13 @@ describe("/regiao: selo runtime do Censo (EVOLVE-8 Task 1)", () => {
     expect(div.innerHTML).not.toContain("987.654.321");
   });
 
-  it("self-fetch do PainelRegiao (prop omitida): sem entry → SEM_DADO", async () => {
+  // EVOLVE-9 Task 3: self-fetch do PainelRegiao REMOVIDO (morto em prod —
+  // o único call site produtivo, /regiao/[ibge], sempre passa a prop, então
+  // `censo===undefined` nunca ocorria fora de testes). Prop omitida →
+  // SEM_DADO sem nenhum fetch (fail-closed); a página detém o mapa.
+  it("PainelRegiao sem prop censo: SEM_DADO sem nenhum fetch (sem self-fetch)", async () => {
     instalar(MANIFEST_SEM_CENSO, CENSO_FORJADO);
+    chamadas.length = 0;
     const div = await montar(
       <PainelRegiao ibge="3550308" fato={FATO} seal={SEAL_NULO} manifestChecked />,
     );
@@ -140,13 +146,18 @@ describe("/regiao: selo runtime do Censo (EVOLVE-8 Task 1)", () => {
     const linha = (p.split("População (Censo 2022)")[1] ?? "").split("</li>")[0];
     expect(linha).toContain(SEM_DADO);
     expect(div.innerHTML).not.toContain("987.654.321");
+    expect(chamadas).toEqual([]);
   });
 
-  it("self-fetch do PainelRegiao (prop omitida): com entry → número", async () => {
+  it("PainelRegiao sem prop censo: SEM_DADO mesmo com entry válida (página detém o mapa)", async () => {
     instalar(comEntryCenso(MANIFEST_SEM_CENSO, "c".repeat(64)), CENSO_FORJADO);
+    chamadas.length = 0;
     const div = await montar(
       <PainelRegiao ibge="3550308" fato={FATO} seal={SEAL_NULO} manifestChecked />,
     );
-    expect(perfil(div.innerHTML)).toContain("987.654.321");
+    const p = perfil(div.innerHTML);
+    const linha = (p.split("População (Censo 2022)")[1] ?? "").split("</li>")[0];
+    expect(linha).toContain(SEM_DADO);
+    expect(chamadas).toEqual([]);
   });
 });

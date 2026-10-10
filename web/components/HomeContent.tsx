@@ -22,7 +22,7 @@ import {
   type ResumoJson,
   type SealState,
 } from "../lib/data";
-import { vereditoTemProva } from "../lib/regiao";
+import { manifestoValidoParaRotacao, vereditoTemProva } from "../lib/regiao";
 import { fetchJson } from "../lib/fetchJson";
 import { MOTIVO_SEM_HASH, SEM_DADO } from "../lib/textos";
 
@@ -56,6 +56,9 @@ function Bar({ value, max }: { value: number; max: number }) {
  *  extras no default export da rota, então a rota (`app/page.tsx`) é um
  *  `Home()` sem args que delega para cá. Em produção monta com `{}`.
  */
+
+// Fonte única do predicado de manifest p/ rotação: `manifestoValidoParaRotacao`
+// em `lib/regiao` (dedupe R4 — sem fork local).
 export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   const [resumo, setResumo] = useState<ResumoJson | null>(null);
   const [porUf, setPorUf] = useState<PorUfRow[]>([]);
@@ -111,7 +114,14 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
       if (ocupadoRef.current) return;
       ocupadoRef.current = true;
       try {
-        const novoSeal = getSealState((await fetchJson("/data/manifest.json")).data);
+        // Blip ≠ rotação: manifest ilegível (`status !== "ok"`) OU corpo
+        // sem objeto (`200` com `null`/array/texto — derivaria selo vazio)
+        // sai ANTES da comparação e mantém os números validados
+        // (stale-while-revalidate); só fetch OK com objeto e selo diferente
+        // refaz o pesado.
+        const leitura = await fetchJson("/data/manifest.json");
+        if (leitura.status !== "ok" || !manifestoValidoParaRotacao(leitura.data)) return;
+        const novoSeal = getSealState(leitura.data);
         if (JSON.stringify(novoSeal) === JSON.stringify(sealRef.current)) return;
         sealRef.current = await carregarPesados();
         setSeal(sealRef.current);
@@ -267,7 +277,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
           <>
             {comZoom && (
               <div>
-                <p role="status">Mostrando municípios de {ufFoco}</p>
+                <p role="status">Mostrando municípios de <a href={`/regiao/${ufFoco}`}>{ufFoco}</a></p>
                 <button type="button" onClick={() => setF((prev) => ({ ...prev, uf: "" }))}>
                   Voltar para todas as UFs
                 </button>
@@ -294,7 +304,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
             </thead>
             <tbody>
               {ufs.map((r) => (
-                <tr key={r.uf}><td>{r.uf}</td><td>{formatVotes(r.votos)}</td></tr>
+                <tr key={r.uf}><td><a href={`/regiao/${r.uf}`}>{r.uf}</a></td><td>{formatVotes(r.votos)}</td></tr>
               ))}
             </tbody>
           </table>

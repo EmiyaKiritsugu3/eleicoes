@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import SourceBadge from "../../components/SourceBadge";
 import SealSlot from "../../components/SealSlot";
 import CopyShare from "../../components/CopyShare";
@@ -25,7 +25,7 @@ import {
   parseAnalisarSearchParams,
   semCoberturaTurnoZona,
 } from "../../lib/export";
-import { vereditoTemProva } from "../../lib/regiao";
+import { manifestoValidoParaRotacao, vereditoTemProva } from "../../lib/regiao";
 import { fetchJson } from "../../lib/fetchJson";
 import { MOTIVO_SEM_HASH, SEM_DADO } from "../../lib/textos";
 
@@ -56,6 +56,16 @@ function filtrarPorPartido(
   return rows.filter((r) => String(r.partido ?? "").toLowerCase().includes(q));
 }
 
+/** Chave interna estável do grupo sem-partido (EVOLVE-9 Task 4b):
+ *  o agrupamento usa `chave`, o display usa `rotulo` (SEM_DADO só display).
+ *  Categorias reais usam o namespace `partido:<nome>` — nem um partido
+ *  chamado literalmente "sem dado oficial" colide com o grupo vazio. */
+const CHAVE_SEM_PARTIDO = "__sem_partido__";
+
+function chavePartido(bruto: string): string {
+  return bruto === "" ? CHAVE_SEM_PARTIDO : `partido:${bruto}`;
+}
+
 function downloadCsv(filename: string, csv: string) {
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -82,6 +92,42 @@ export default function Analisar() {
   const [compA, setCompA] = useState("");
   const [compB, setCompB] = useState("");
   const [urlHash, setUrlHash] = useState("");
+  // Trigger vivo de rotação (paridade Home/regiao, EVOLVE-9 Task 3):
+  // `seloRef` é a verdade comparável fora do closure (o effect de foco
+  // monta uma vez); `ocupadoRef` evita fetch duplicado com um load em voo;
+  // `geracaoRef` barra publish de run stale.
+  const seloRef = useRef<string | null>(null);
+  const ocupadoRef = useRef(false);
+  const geracaoRef = useRef(0);
+
+  // Guard de geração partilhado (mount + rotação — sem fork do epílogo):
+  // reserva `ocupadoRef`, carimba a geração do run e só libera o flag se o
+  // run atual ainda for o dono (finally de run stale nunca solta o flag
+  // alheio). `carga` recebe `minha` e barra o próprio publish quando
+  // `geracaoRef.current !== minha`.
+  const correrSobGuard = useCallback(async (carga: (minha: number) => Promise<void>) => {
+    if (ocupadoRef.current) return;
+    ocupadoRef.current = true;
+    const minha = ++geracaoRef.current;
+    try {
+      await carga(minha);
+    } finally {
+      if (geracaoRef.current === minha) ocupadoRef.current = false;
+    }
+  }, []);
+
+  // Núcleo único de leitura pesada (paridade com `carregarPesados` da Home,
+  // webfix Finding 6): mount (`effect` abaixo) e rotação (`aoRetomar`)
+  // partilham este helper — a sequência de fetches existe UMA vez (sem
+  // fork). Devolve o selo lido; cada chamador aplica o seu epílogo.
+  const carregarPesados = useCallback(async () => {
+    setResumo((await fetchJson<ResumoJson>("/data/resumo.json")).data);
+    setPorUf((await fetchJson<PorUfRow[]>("/data/por_uf.json")).data ?? []);
+    setPorCand(
+      (await fetchJson<PorCandidatoRow[]>("/data/por_candidato.json")).data ?? [],
+    );
+    return getSealState((await fetchJson("/data/manifest.json")).data);
+  }, []);
 
   useEffect(() => {
     // Hidrata só chaves do allowlist (parseAnalisarSearchParams): ?modoX=1
@@ -109,16 +155,53 @@ export default function Analisar() {
     setCompA(q.a ?? "");
     setCompB(q.b ?? "");
     setUrlHash(q.hash ?? "");
-    (async () => {
-      setResumo((await fetchJson<ResumoJson>("/data/resumo.json")).data);
-      setPorUf((await fetchJson<PorUfRow[]>("/data/por_uf.json")).data ?? []);
-      setPorCand(
-        (await fetchJson<PorCandidatoRow[]>("/data/por_candidato.json")).data ?? [],
-      );
-      setSeal(getSealState((await fetchJson("/data/manifest.json")).data));
+    void correrSobGuard(async (minha) => {
+      const novoSeal = await carregarPesados();
+      if (geracaoRef.current !== minha) return;
+      seloRef.current = JSON.stringify(novoSeal);
+      setSeal(novoSeal);
       setManifestChecked(true);
-    })();
-  }, []);
+    });
+    return () => {
+      ocupadoRef.current = false;
+    };
+  }, [carregarPesados, correrSobGuard]);
+
+  // Rotação de manifest (paridade Home/regiao): no foco da janela ou na
+  // volta de visibilidade, re-lê SÓ o manifest (barato) e só refaz o fetch
+  // pesado quando o selo mudou — sem fetch duplicado quando inalterado, sem
+  // números stale após rotação. Blip ≠ rotação: manifest ilegível
+  // (`status !== "ok"`) OU corpo sem objeto (`200` com `null`/array/texto)
+  // sai antes da comparação e mantém o último selo validado
+  // (stale-while-revalidate). Troca silenciosa: sem "a carregar",
+  // sem tocar nos filtros — só selo + dados assentam juntos.
+  useEffect(() => {
+    const aoRetomar = async () => {
+      await correrSobGuard(async (minha) => {
+        const leitura = await fetchJson("/data/manifest.json");
+        if (leitura.status !== "ok" || !manifestoValidoParaRotacao(leitura.data)) return;
+        if (geracaoRef.current !== minha) return;
+        const conferido = getSealState(leitura.data);
+        if (JSON.stringify(conferido) === seloRef.current) return;
+        const novoSeal = await carregarPesados();
+        if (geracaoRef.current !== minha) return;
+        seloRef.current = JSON.stringify(novoSeal);
+        setSeal(novoSeal);
+      });
+    };
+    const aoFocar = () => {
+      void aoRetomar();
+    };
+    const aoVisibilidade = () => {
+      if (document.visibilityState === "visible") void aoRetomar();
+    };
+    window.addEventListener("focus", aoFocar);
+    document.addEventListener("visibilitychange", aoVisibilidade);
+    return () => {
+      window.removeEventListener("focus", aoFocar);
+      document.removeEventListener("visibilitychange", aoVisibilidade);
+    };
+  }, [carregarPesados, correrSobGuard]);
 
   const set =
     (k: keyof AnalisarFiltros) => (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -185,16 +268,21 @@ export default function Analisar() {
       .sort((a, b) => (Number(b.votos) || 0) - (Number(a.votos) || 0));
   }, [porCand, f.partido, f.candidato, semCob, semProva]);
 
-  const pivoRows: { chave: string; votos: number }[] = useMemo(() => {
-    if (pivo === "uf") return ufs.map((r) => ({ chave: r.uf, votos: r.votos }));
-    if (pivo === "ano") return ev.map((r) => ({ chave: String(r.ano), votos: r.votos }));
+  const pivoRows: { chave: string; rotulo: string; votos: number }[] = useMemo(() => {
+    if (pivo === "uf") return ufs.map((r) => ({ chave: `uf:${r.uf}`, rotulo: r.uf, votos: r.votos }));
+    if (pivo === "ano") return ev.map((r) => ({ chave: `ano:${String(r.ano)}`, rotulo: String(r.ano), votos: r.votos }));
     const acc = new Map<string, number>();
     for (const r of cands) {
-      const k = String(r.partido ?? "") || SEM_DADO;
+      const bruto = String(r.partido ?? "").trim();
+      const k = chavePartido(bruto);
       acc.set(k, (acc.get(k) ?? 0) + (Number(r.votos) || 0));
     }
     return [...acc.entries()]
-      .map(([chave, votos]) => ({ chave, votos }))
+      .map(([chave, votos]) => ({
+        chave,
+        rotulo: chave === CHAVE_SEM_PARTIDO ? SEM_DADO : chave.slice("partido:".length),
+        votos,
+      }))
       .sort((a, b) => b.votos - a.votos);
   }, [pivo, ufs, ev, cands]);
 
@@ -261,7 +349,7 @@ export default function Analisar() {
   const csvRows = useMemo(
     () =>
       pivoRows.map((r) => ({
-        chave: r.chave,
+        chave: r.rotulo,
         votos: r.votos,
         pivo,
         ano: f.ano ?? "",
@@ -402,7 +490,7 @@ export default function Analisar() {
             <tbody>
               {pivoRows.map((r) => (
                 <tr key={r.chave}>
-                  <td>{r.chave}</td>
+                  <td>{r.rotulo}</td>
                   <td>{formatVotes(r.votos)}</td>
                 </tr>
               ))}

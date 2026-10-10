@@ -20,7 +20,7 @@ import PainelRegiao, {
   type FatoRegiao,
 } from "../../../components/PainelRegiao";
 import type { SealState } from "../../../lib/data";
-import { censoTemProva, entradaCensoAuditada, fatoDatasetDe, getSealParaDataset } from "../../../lib/regiao";
+import { censoTemProva, entradaCensoAuditada, fatoDatasetDe, getSealParaDataset, manifestoValidoParaRotacao } from "../../../lib/regiao";
 import { fetchJson } from "../../../lib/fetchJson";
 
 function ConteudoRegiao({ ibge }: { ibge: string }) {
@@ -140,7 +140,14 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
       const minha = ++geracaoRef.current;
       try {
         const param = fatoParamRef.current;
-        const manifest = (await fetchJson("/data/manifest.json")).data;
+        // Blip ≠ rotação: manifest ilegível (`status !== "ok"`) OU corpo
+        // sem objeto (`200` com `null`/array/texto — derivaria selo vazio)
+        // sai ANTES da comparação e mantém fato+selo+Censo validados
+        // (stale-while-revalidate); só fetch OK com objeto e par
+        // dataset+selo+censo diferente refaz o pesado.
+        const leitura = await fetchJson("/data/manifest.json");
+        if (leitura.status !== "ok" || !manifestoValidoParaRotacao(leitura.data)) return;
+        const manifest = leitura.data;
         const ds = fatoDatasetDe(manifest, param);
         const novoSeal = getSealParaDataset(manifest, ds);
         // A comparação inclui a identidade da entry do Censo (sha): sem

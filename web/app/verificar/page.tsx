@@ -11,9 +11,10 @@
  * não computa nenhum número (sem fato carregado aqui).
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import SealSlot from "../../components/SealSlot";
 import { getSealState, type SealState } from "../../lib/data";
+import { manifestoValidoParaRotacao } from "../../lib/regiao";
 import { fetchJson } from "../../lib/fetchJson";
 import { checksParaRegiao, type Check } from "./Verificar";
 import checksJson from "../../data/checks.json";
@@ -58,16 +59,80 @@ function lerRegiaoDaUrl(): string {
 function PaginaVerificarIndice() {
   const [regiao, setRegiao] = useState("");
   const [seal, setSeal] = useState<SealState>({ official: null, hasFixture: false, fixtureHash: "" });
+  // Trigger vivo de rotação (paridade Home/regiao, EVOLVE-9 Task 3):
+  // `seloRef` é a verdade comparável fora do closure (o effect de foco
+  // monta uma vez); `ocupadoRef` evita fetch duplicado com um load em voo;
+  // `geracaoRef` barra publish de run stale.
+  const seloRef = useRef<string | null>(null);
+  const ocupadoRef = useRef(false);
+  const geracaoRef = useRef(0);
+
+  // Núcleo único de leitura (mount + rotação partilham — sem fork):
+  // devolve `ok` (fetch com `status === "ok"` E corpo objeto não-nulo) +
+  // selo derivado. A rotação só publica com `ok` (blip ≠ rotação: falha ou
+  // 200+null mantém o último selo validado, nunca publica selo vazio).
+  const carregarSelo = useCallback(async () => {
+    const leitura = await fetchJson("/data/manifest.json");
+    return {
+      ok: leitura.status === "ok" && manifestoValidoParaRotacao(leitura.data),
+      novoSeal: getSealState(leitura.data),
+    };
+  }, []);
 
   useEffect(() => {
     // ?regiao= lido ANTES do fetch do manifest: com manifest lento, o filtro
     // regional aplica de imediato em vez de exibir a biblioteca inteira.
     setRegiao(lerRegiaoDaUrl());
+    const minha = ++geracaoRef.current;
+    ocupadoRef.current = true;
     (async () => {
-      const manifest = (await fetchJson("/data/manifest.json")).data;
-      setSeal(getSealState(manifest));
+      try {
+        const r = await carregarSelo();
+        if (geracaoRef.current !== minha) return;
+        seloRef.current = JSON.stringify(r.novoSeal);
+        setSeal(r.novoSeal);
+      } finally {
+        if (geracaoRef.current === minha) ocupadoRef.current = false;
+      }
     })();
-  }, []);
+    return () => {
+      ocupadoRef.current = false;
+    };
+  }, [carregarSelo]);
+
+  // Rotação de manifest (paridade Home/regiao): no foco da janela ou na
+  // volta de visibilidade, re-lê o manifest e só publica quando o selo
+  // mudou — sem selo stale após rotação, sem set duplicado quando inalterado.
+  useEffect(() => {
+    const aoRetomar = async () => {
+      if (ocupadoRef.current) return;
+      ocupadoRef.current = true;
+      const minha = ++geracaoRef.current;
+      try {
+        const r = await carregarSelo();
+        // Blip ≠ rotação: manifest ilegível mantém o último selo validado.
+        if (!r.ok) return;
+        if (geracaoRef.current !== minha) return;
+        if (JSON.stringify(r.novoSeal) === seloRef.current) return;
+        seloRef.current = JSON.stringify(r.novoSeal);
+        setSeal(r.novoSeal);
+      } finally {
+        if (geracaoRef.current === minha) ocupadoRef.current = false;
+      }
+    };
+    const aoFocar = () => {
+      void aoRetomar();
+    };
+    const aoVisibilidade = () => {
+      if (document.visibilityState === "visible") void aoRetomar();
+    };
+    window.addEventListener("focus", aoFocar);
+    document.addEventListener("visibilitychange", aoVisibilidade);
+    return () => {
+      window.removeEventListener("focus", aoFocar);
+      document.removeEventListener("visibilitychange", aoVisibilidade);
+    };
+  }, [carregarSelo]);
 
   const badge = <SealSlot seal={seal} />;
   const filtro = normalizarRegiao(regiao);

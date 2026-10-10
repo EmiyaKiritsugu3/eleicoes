@@ -30,6 +30,15 @@ describe("ledger rulings", () => {  it("isAudited exige sha256 64-hex (lixo nega
     const { isOfficialDisplay } = await import("../lib/data");
     expect(isOfficialDisplay({ sha256: "ab".repeat(32), outraChave: 1 })).toBe(true);
   });
+  it("official display: fixture com hash válido nunca é oficial (fail-closed, T5)", async () => {
+    const { isOfficialDisplay } = await import("../lib/data");
+    // Contrato usado em prod por /auditoria (tabela de ingestões) e
+    // ArtifactsTable (arquivos servidos), via getOfficialAuditInfo/getSealState.
+    expect(isOfficialDisplay({ sha256: "ab".repeat(32) })).toBe(true);
+    expect(isOfficialDisplay({ sha256: "ab".repeat(32), fixture: true })).toBe(false);
+    expect(isOfficialDisplay({ sha256: "abc123", fixture: true })).toBe(false);
+    expect(isOfficialDisplay({})).toBe(false);
+  });
   it("getOfficialAuditInfo null sem manifest (dado não auditado)", async () => {
     const { getOfficialAuditInfo } = await import("../lib/data");
     expect(getOfficialAuditInfo(null)).toBe(null);
