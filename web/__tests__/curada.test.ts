@@ -337,3 +337,35 @@ describe("curada (blocos.ver honored: só as visões pedidas renderizam)", () =>
     expect(htmlTab).not.toContain('aria-label="Ranking"');
   });
 });
+
+const SEAL_FIXTURE: SealState = { official: null, hasFixture: true, fixtureHash: "c".repeat(64) };
+
+function secaoResultadoCurada(html: string): string {
+  return html.split('aria-label="Resultado"')[1].split("<section")[0];
+}
+
+describe("curada (gate de hash: fato sem hash não sustenta número)", () => {
+  it("fato presente sem hash → Resultado SEM_DADO, sem r nem share", () => {
+    const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
+    const resultado = secaoResultadoCurada(htmlDe(p, fato40(), SEAL_NULO));
+    expect(resultado).toContain("sem dado oficial");
+    expect(resultado).not.toMatch(/r \(Pearson\) = -?\d/);
+    expect(resultado).not.toMatch(/share médio[^%]*%/);
+  });
+  it("selo fixture com hash segue sustentando números (paridade com Verificar)", () => {
+    const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
+    expect(secaoResultadoCurada(htmlDe(p, fato40(), SEAL_FIXTURE))).toMatch(
+      /r \(Pearson\) = -?\d/,
+    );
+  });
+});
+
+describe("curada (decimais pt-BR: vírgula, nunca ponto)", () => {
+  it("r (Pearson/Spearman) renderiza com vírgula", () => {
+    const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
+    const html = htmlDe(p, fato40(), SEAL_OK);
+    expect(html).toMatch(/r \(Pearson\) = -?\d+,\d{3}/);
+    expect(html).not.toMatch(/r \(Pearson\) = -?\d+\.\d{3}/);
+    expect(html).not.toMatch(/r \(Spearman\) = -?\d+\.\d{3}/);
+  });
+});

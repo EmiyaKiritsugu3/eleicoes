@@ -342,3 +342,43 @@ describe("explorar (participação = comparecimento auditado)", () => {
     expect(aplicarOnde(fora, CANDIDATOS, "lula", "participacao_80")).toHaveLength(0);
   });
 });
+
+const SEAL_SEM_HASH = { official: null, hasFixture: false, fixtureHash: "" };
+const SEAL_FIXTURE = { official: null, hasFixture: true, fixtureHash: "c".repeat(64) };
+
+function htmlExplorar(fato: { candidatos: typeof CANDIDATOS; municipios: MunRow[] }, seal: typeof SEAL_OK) {
+  return renderToStaticMarkup(
+    <ExplorarConteudo fato={fato} seal={seal} initial={SEL_VALIDA} />,
+  );
+}
+
+function secaoResultado(html: string): string {
+  return html.split('aria-label="Resultado"')[1].split("<section")[0];
+}
+
+describe("explorar (gate de hash: fato sem hash não sustenta número)", () => {
+  it("fato presente sem hash → Resultado SEM_DADO, sem r", () => {
+    const html = htmlExplorar({ candidatos: CANDIDATOS, municipios: linhasValidas() }, SEAL_SEM_HASH);
+    expect(secaoResultado(html)).toContain("sem dado oficial");
+    expect(secaoResultado(html)).not.toMatch(/r \(Pearson\) = -?\d/);
+  });
+  it("fato presente sem hash → Dispersão sem r, só SEM_DADO", () => {
+    const html = htmlExplorar({ candidatos: CANDIDATOS, municipios: linhasValidas() }, SEAL_SEM_HASH);
+    const dispersao = html.split('aria-label="Dispersão"')[1].split("<section")[0];
+    expect(dispersao).toContain("sem dado oficial");
+    expect(dispersao).not.toMatch(/r \(Pearson\) = -?\d/);
+  });
+  it("selo fixture com hash segue sustentando números (paridade com Verificar)", () => {
+    const html = htmlExplorar({ candidatos: CANDIDATOS, municipios: linhasValidas() }, SEAL_FIXTURE);
+    expect(secaoResultado(html)).toMatch(/r \(Pearson\) = -?\d/);
+  });
+});
+
+describe("explorar (decimais pt-BR: vírgula, nunca ponto)", () => {
+  it("r (Pearson/Spearman) renderiza com vírgula", () => {
+    const html = htmlExplorar({ candidatos: CANDIDATOS, municipios: linhasValidas() }, SEAL_OK);
+    expect(html).toMatch(/r \(Pearson\) = -?\d+,\d{3}/);
+    expect(html).not.toMatch(/r \(Pearson\) = -?\d+\.\d{3}/);
+    expect(html).not.toMatch(/r \(Spearman\) = -?\d+\.\d{3}/);
+  });
+});
