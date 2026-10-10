@@ -287,13 +287,15 @@ export function CuradaConteudo({
             {escopo ? ` — ${escopo}` : " — nenhum município neste recorte"}
           </p>
         ) : (
-          <p>
-            n = {filtradas.length} municípios · share médio de {cand.nome} ={" "}
-            {shareMedio !== null
-              ? `${(shareMedio * 100).toFixed(1).replace(".", ",")}%`
-              : SEM_DADO}{" "}
-            (ponderado pelo{" "}
-            {pesoMistoShare ? "peso disponível — eleitorado, total ou população" : "eleitorado"})
+          <>
+            {pesoMistoShare && <p role="note">{NOTA_PESO_MISTO}</p>}
+            <p>
+              n = {filtradas.length} municípios · percentual médio de votos de {cand.nome} ={" "}
+              {shareMedio !== null
+                ? `${(shareMedio * 100).toFixed(1).replace(".", ",")}%`
+                : SEM_DADO}{" "}
+              (ponderado pelo{" "}
+              {pesoMistoShare ? "peso efetivo — eleitorado, total ou população" : "eleitorado — peso: eleitorado"})
             {corrP ? (
               <>
                 {" "}· r (Pearson) = {fmtR(corrP.r)} (n = {corrP.n})
@@ -307,6 +309,7 @@ export function CuradaConteudo({
               </>
             )}
           </p>
+          </>
         )}
       </section>
 
@@ -377,7 +380,7 @@ export function CuradaConteudo({
 
       {mostraDispersao && (
       <section aria-label="Correlação">
-        <h2>Correlação — {pergunta.blocos.cruzar} × share de {cand ? cand.nome : "—"}</h2>
+        <h2>Correlação — {pergunta.blocos.cruzar} × percentual de votos de {cand ? cand.nome : "—"}</h2>
         {badge}
         <p role="note">{ECO_SEAL} — cada ponto é um município, nunca uma pessoa.</p>
         {!hashAuditado || !fato || !cand ? (
@@ -399,13 +402,13 @@ export function CuradaConteudo({
             <p>
               r (Pearson) = {fmtR(corrP.r)} · r (Spearman) = {fmtR(corrS.r)} (n = {corrP.n})
             </p>
-            <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label={`Share médio por quintil de ${pergunta.blocos.cruzar}`}>
+            <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label={`Percentual médio de votos por quintil de ${pergunta.blocos.cruzar}`}>
             <table>
-              <caption>Share médio por quintil de {pergunta.blocos.cruzar}</caption>
+              <caption>Percentual médio de votos por quintil de {pergunta.blocos.cruzar}</caption>
               <thead>
                 <tr>
                   <th scope="col">Faixa</th>
-                  <th scope="col">Share médio</th>
+                  <th scope="col">Percentual médio</th>
                   <th scope="col">n</th>
                 </tr>
               </thead>
@@ -502,7 +505,7 @@ export function CuradaConteudo({
 
       {mostraRanking && (
       <section aria-label="Ranking">
-        <h2>Ranking — maior share de {cand ? cand.nome : "—"}</h2>
+        <h2>Ranking — maior percentual de votos de {cand ? cand.nome : "—"}</h2>
         {badge}
         {!hashAuditado || ranking.length === 0 ? (
           <p role="alert" style={ALERTA_STYLE}>
@@ -510,14 +513,14 @@ export function CuradaConteudo({
             {!hashAuditado ? ` — ${MOTIVO_SEM_HASH}` : escopo ? ` — ${escopo}` : " — sem cobertura neste recorte"}
           </p>
         ) : (
-          <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Top municípios por share">
+          <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Top municípios por percentual de votos">
           <table>
-            <caption>Top municípios por share</caption>
+            <caption>Top municípios por percentual de votos</caption>
             <thead>
               <tr>
                 <th scope="col">Município</th>
                 <th scope="col">IBGE</th>
-                <th scope="col">Share</th>
+                <th scope="col">Percentual</th>
               </tr>
             </thead>
             <tbody>

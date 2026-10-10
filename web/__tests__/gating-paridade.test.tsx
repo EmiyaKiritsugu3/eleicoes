@@ -121,7 +121,7 @@ describe("gating-paridade Task 4: manifest inválido suprime nas 4 superfícies"
     expect(resultado).toContain(SEM_DADO);
     expect(resultado).not.toMatch(/r \(Pearson\) = -?\d/);
   });
-  it("Curada: selo vazio → Resultado SEM_DADO, sem r nem share", () => {
+  it("Curada: selo vazio → Resultado SEM_DADO, sem r nem percentual", () => {
     const seal = getSealState(MANIFEST_INVALIDO);
     const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
     const html = renderToStaticMarkup(
@@ -130,7 +130,7 @@ describe("gating-paridade Task 4: manifest inválido suprime nas 4 superfícies"
     const resultado = html.split('aria-label="Resultado"')[1].split("<section")[0];
     expect(resultado).toContain(SEM_DADO);
     expect(resultado).not.toMatch(/r \(Pearson\) = -?\d/);
-    expect(resultado).not.toMatch(/share médio[^%]*%/);
+    expect(resultado).not.toMatch(/percentual médio de votos[^%]*%/);
   });
 });
 

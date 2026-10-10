@@ -55,6 +55,29 @@ describe("explorar (combinação válida)", () => {
   });
 });
 
+describe("explorar (EVOLVE-8 Task 5: copy share→percentual, peso intacto)", () => {
+  const SEL_TUDO: ExplorarSelecao = {
+    quem: "lula",
+    onde: "venceu",
+    cruzar: "esc_sup",
+    ver: ["mapa", "dispersao", "ranking", "tabela"],
+    foco: "3550300",
+  };
+  it("render sem 'share': termo leigo consistente em todas as seções", () => {
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo
+        fato={{ candidatos: CANDIDATOS, municipios: linhasValidas() }}
+        seal={SEAL_OK}
+        initial={SEL_TUDO}
+      />,
+    );
+    expect(html).not.toMatch(/share/i);
+    expect(html).toContain("Percentual médio de votos por quintil");
+    expect(html).toContain("Top municípios por percentual de votos");
+    expect(html).toContain("maior percentual de votos de");
+  });
+});
+
 describe("explorar (sem cobertura, fail-closed)", () => {
   it("candidato fora dos blocos -> sem dado oficial, sem tela branca", () => {
     const html = renderToStaticMarkup(
