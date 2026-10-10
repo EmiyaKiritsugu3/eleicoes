@@ -85,3 +85,6 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 ## EVOLVE-2 mergeado (2026-10-10 ~16:10 UTC)
 - Merge PR #4 (merge commit 71aa4ff): tudo verde — CI, GitGuardian, CodeRabbit, Sonar (pós won't-fix justificado dos S8707 mesma-família). Branch evolve-2 deletada.
 - Total: 6 tasks + 3 fix rounds CodeRabbit + guardas build_fato + triagem Sonar 2 rounds. Suítes finais: pytest 143 + vitest 307 + build 52/52.
+
+## EVOLVE-3 completo (final review: Merge Yes)
+- 6/6 tasks + revisão final limpa; nenhum MUST-FIX; minors → EVOLVE-4 backlog.
