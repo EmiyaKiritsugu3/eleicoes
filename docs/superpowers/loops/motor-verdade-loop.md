@@ -11,7 +11,7 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 5. **Anti-regressão**: todo ciclo roda a suíte completa local antes do push; CI precisa estar verde; findings viram testes quando aplicável.
 6. **Contexto**: sem ferramenta de compactação manual — mitigação é contexto enxuto + este arquivo + git. Se compactar, retomar por aqui.
 
-## Estado atual (atualizado 2026-10-10 ~21:38 UTC)
+## Estado atual (atualizado 2026-10-10 ~22:30 UTC)
 
 - [x] PR #2 (motor-verdade → main): mergeado 47d6895, CI verde.
 - [x] EVOLVE-1: mergeado 453a9da (PR #3).
@@ -22,7 +22,7 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 - [x] EVOLVE-6: mergeado 145de27 (PR #8).
 - [x] EVOLVE-7: mergeado eb96878 (PR #9) — primeiro pixel real na UI (pop Censo).
 - [x] EVOLVE-8: mergeado 3f46b89 (PR #10).
-- [ ] EVOLVE-9: em progresso na branch `evolve-9` — Tasks 1–5 completas; Task 6 (processo, docs-only) em execução.
+- [x] EVOLVE-9: completo na branch `evolve-9` — 6/6 tasks + revisão final limpa (PR aberto p/ merge).
 - (Histórico original deste bloco preservado abaixo por valor de auditoria.)
 
 ## Log de ciclos
