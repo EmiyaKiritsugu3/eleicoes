@@ -240,6 +240,49 @@ describe("nota de pesos mistos inclui o baseline", () => {
   });
 });
 
+describe("População real do Censo no ramo UF (EVOLVE-7 Task 3)", () => {
+  // Mapa com RJ extra p/ distinguir soma da UF (SP: 12345+6789=19134) do
+  // baseline Brasil (19134+1000=20134).
+  const CENSO_UF = { "3550308": 12345, "3550309": 6789, "3304557": 1000 };
+  const FATO_UF: FatoRegiao = {
+    candidatos: CANDIDATOS,
+    municipios: [
+      mun("3550308", "SP", [600, 400], demoCompleta(), 1000),
+      mun("3550309", "SP", [100, 900], demoCompleta({ esc_sup: 20 }), 1000),
+      mun("3304557", "RJ", [100, 900], demoCompleta(), 1000),
+    ],
+  };
+  it("UF agrega pop dos municípios (soma) + baseline Brasil + votos intactos", () => {
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="SP" fato={FATO_UF} seal={SEAL_OFICIAL} manifestChecked censo={CENSO_UF} />,
+    );
+    const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+    expect(perfil).toContain("População (Censo 2022)");
+    expect(perfil).toContain("19.134"); // soma SP, nunca demo fixture
+    expect(perfil).toContain("Brasil:");
+    expect(perfil).toContain("20.134"); // baseline = soma do mapa inteiro
+    expect(perfil).toContain(ECO_SEAL); // eco-seal mantido
+    expect(html).toContain("Cand B"); // votos da UF intactos (700 x 1300)
+  });
+  it("UF sem censo: pop em SEM_DADO (fail-closed, sem número inventado)", () => {
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="SP" fato={FATO_UF} seal={SEAL_OFICIAL} manifestChecked censo={null} />,
+    );
+    const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+    expect(perfil).toContain("População (Censo 2022)");
+    const linha = (perfil.split("População (Censo 2022)")[1] ?? "").split("</li>")[0];
+    expect(linha).toContain("sem dado oficial");
+  });
+  it("totalUFCenso: soma só os IBGEs da UF; vazio/ausente -> null", async () => {
+    const { totalUFCenso } = await import("../components/PainelRegiao");
+    expect(totalUFCenso(CENSO_UF, ["3550308", "3550309"])).toBe(19134);
+    expect(totalUFCenso(CENSO_UF, ["3304557"])).toBe(1000);
+    expect(totalUFCenso(CENSO_UF, ["9999999"])).toBe(null);
+    expect(totalUFCenso(CENSO_UF, [])).toBe(null);
+    expect(totalUFCenso(null, ["3550308"])).toBe(null);
+  });
+});
+
 describe("fatoDatasetDe (?fato= com allowlist)", () => {
   const MANIFEST = {
     ingestions: [{ tipo: "fato_municipal", dataset: "fato_2022_1_presidente" }],

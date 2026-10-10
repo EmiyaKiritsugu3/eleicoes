@@ -86,6 +86,26 @@ export function totalBrasilCenso(mapa: CensoMapa | null | undefined): number | n
   return n > 0 ? soma : null;
 }
 
+/** Soma da pop dos IBGEs da UF (ramo agregado UF, Task 3): reusa
+ *  `popNoCenso` por chave (fail-closed por chave, nunca zero inventado).
+ *  Null sem nenhuma pop válida — agregado nunca inventado. */
+export function totalUFCenso(
+  mapa: CensoMapa | null | undefined,
+  ibges: Array<string | number> | null | undefined,
+): number | null {
+  if (!mapa || typeof mapa !== "object" || !Array.isArray(ibges)) return null;
+  let soma = 0;
+  let n = 0;
+  for (const ibge of ibges) {
+    const v = popNoCenso(mapa, String(ibge ?? ""));
+    if (v !== null) {
+      soma += v;
+      n++;
+    }
+  }
+  return n > 0 ? soma : null;
+}
+
 /** Nota honesta quando o motor usou pesos de fallback (ledger: pesoFonte). */
 export const NOTA_PESO_MISTO =
   "nota: pesos mistos — parte dos municípios usa total/pop como aproximação " +
@@ -275,7 +295,8 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
   }, [censo]);
   const mapa = censo !== undefined ? censo : censoFetch;
   // Linha da pop real (ramo município + fallbacks fato-independentes; o
-  // ramo UF é da Task 3). Baseline Brasil inline, padrão das demais linhas.
+  // agregado UF usa `totalUFCenso` + mesma linha pt-BR — Task 3).
+  // Baseline Brasil inline, padrão das demais linhas.
   const pop = popNoCenso(mapa, String(ibge ?? ""));
   const brasilPop = totalBrasilCenso(mapa);
   const liPop = (
@@ -335,6 +356,19 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
 
   if (ehUF) {
     const ag = agregarUF(fato.municipios, cod, fato.candidatos);
+    const linhasUF = fato.municipios.filter(
+      (r) => String(r?.uf ?? "").trim().toUpperCase() === cod,
+    );
+    // Pop agregada da UF (Task 3): soma das pops do Censo sobre os IBGEs
+    // da UF no fato — mesmos helpers/shape da Task 2 (fail-closed por
+    // chave, baseline Brasil idêntico, mesma linha pt-BR).
+    const popUF = totalUFCenso(
+      mapa,
+      linhasUF.map((r) => String(r?.ibge ?? "")),
+    );
+    const liPopUF = (
+      <li>{CENSO_ROTULO}: {popUF !== null ? formatVotes(popUF) : SEM_DADO} (Brasil: {brasilPop !== null ? formatVotes(brasilPop) : SEM_DADO})</li>
+    );
     if (!ag) {
       return (
         <>
@@ -349,6 +383,7 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
             <h2>Perfil do lugar</h2>
             {badge}
             <p role="note">{ECO_SEAL}</p>
+            <ul>{liPopUF}</ul>
             <p>{SEM_DADO}</p>
           </section>
           <section aria-label="Ações">
@@ -359,9 +394,6 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
         </>
       );
     }
-    const linhasUF = fato.municipios.filter(
-      (r) => String(r?.uf ?? "").trim().toUpperCase() === cod,
-    );
     const perfil = perfilOndeVenceu(linhasUF, {
       candidatoId: ag.vencedorId,
       candidatos: fato.candidatos,
@@ -391,12 +423,16 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
           <p role="note">{ECO_SEAL} — médias de municípios onde {ag.vencedorNome} venceu, nunca de pessoas.</p>
           {(perfil.pesoFonte === "misto" || baseUF.pesoFonte === "misto") && <p role="note">{NOTA_PESO_MISTO}</p>}
           {perfil.nMun === 0 ? (
-            <p>{SEM_DADO}</p>
+            <>
+              <ul>{liPopUF}</ul>
+              <p>{SEM_DADO}</p>
+            </>
           ) : (
             <ul>
               <li>Escolaridade superior: {num(perfil.medias.esc_sup)}% (Brasil: {num(baseUF.vsBrasil.esc_sup)}%)</li>
               <li>Renda média: {renda(perfil.medias.renda_media)} (Brasil: {renda(baseUF.vsBrasil.renda_media)})</li>
               <li>Pobres: {num(perfil.medias.pobres_pct)}% (Brasil: {num(baseUF.vsBrasil.pobres_pct)}%)</li>
+              {liPopUF}
               <li>Municípios onde venceu: {formatVotes(perfil.nMun)}</li>
             </ul>
           )}
