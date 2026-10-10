@@ -93,27 +93,6 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
     })();
   }, []);
 
-  // Resolução única da malha municipal (artefato gitignored, gerado por
-  // `scripts/malha.py` no CI): a Home resolve via `loadMalha` e passa as
-  // features prontas ao `MapaBrasil` (sem refetch). Com malha válida, mapa
-  // clicável; sem malha (ausente OU vazia/inválida — HTTP 200 não basta), o
-  // fallback único e honesto na lista v1. Qualquer erro → null (fail-closed,
-  // nunca canvas quebrado; gate de hash intacto abaixo).
-  useEffect(() => {
-    let vivo = true;
-    void (async () => {
-      try {
-        const features = await loadMalha(MALHA_MUNICIPIOS_URL);
-        if (vivo) setMalhaFeatures(features);
-      } catch {
-        if (vivo) setMalhaFeatures(null);
-      }
-    })();
-    return () => {
-      vivo = false;
-    };
-  }, []);
-
   const set = (k: keyof Filtros) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setF((prev) => ({ ...prev, [k]: e.target.value }));
 
@@ -134,6 +113,31 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   // carregados e com o banner "dado não auditado" acima. Só display é
   // gated; fetch e agregação (getResumo/rankingUf/...) não mudam.
   const semProva = manifestChecked && !vereditoTemProva(seal);
+  // Elegibilidade do mapa (espelha o gate de render abaixo): sem ela a seção
+  // suprime de todo jeito, então a malha (1–3MB) nem é buscada/decodificada.
+  const elegivelMapa = manifestChecked && !semProva && ufs.length > 0;
+  // Resolução única da malha municipal (artefato gitignored, gerado por
+  // `scripts/malha.py` no CI): a Home resolve via `loadMalha` e passa as
+  // features prontas ao `MapaBrasil` (sem refetch). Com malha válida, mapa
+  // clicável; sem malha (ausente OU vazia/inválida — HTTP 200 não basta), o
+  // fallback único e honesto na lista v1. Qualquer erro → null (fail-closed,
+  // nunca canvas quebrado). Sucesso é cacheado no estado (sem refetch ao
+  // re-elegibilizar); falha tenta de novo (a malha pode ter surgido).
+  useEffect(() => {
+    if (!elegivelMapa || malhaFeatures) return;
+    let vivo = true;
+    void (async () => {
+      try {
+        const features = await loadMalha(MALHA_MUNICIPIOS_URL);
+        if (vivo) setMalhaFeatures(features);
+      } catch {
+        if (vivo) setMalhaFeatures(null);
+      }
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [elegivelMapa, malhaFeatures]);
   const badge = <SealSlot seal={seal} />;
   const candidatoAtivo = (f.candidato ?? "").trim() !== "";
   // Alerta honesto sem depender de CSS externo (M4-web): fundo/borda inline.

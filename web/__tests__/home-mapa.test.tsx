@@ -23,8 +23,8 @@ import {
 
 afterEach(teardownJsdom);
 
-function renderHome(): Promise<HTMLDivElement> {
-  return renderJsdom(<HomeContent />);
+function renderHome(node: React.ReactElement = <HomeContent />): Promise<HTMLDivElement> {
+  return renderJsdom(node);
 }
 
 function secaoMapa(html: string): string {
@@ -129,6 +129,38 @@ describe("Home com malha: resolução única, sem botão Exterior morto", () => 
       const mapa = secaoMapa(div.innerHTML);
       expect(mapa).toContain("<canvas");
       expect(mapa).not.toContain("Exterior");
+    } finally {
+      restoreCtx();
+      restorePath();
+    }
+  });
+});
+
+describe("Home adia a malha até o mapa ser elegível (sem fetch desperdiçado)", () => {
+  it("semProva: malha nem é buscada (seção suprime de todo jeito)", async () => {
+    const fetchMock = mockFetchHome(MANIFEST_INVALIDO, "ok");
+    const div = await renderHome();
+    const mapa = secaoMapa(div.innerHTML);
+    expect(mapa).not.toBe("");
+    expect(mapa).toContain(SEM_DADO);
+    expect(chamadasMalha(fetchMock)).toBe(0);
+  });
+  it("ufs vazio (filtro sem cobertura): malha nem é buscada", async () => {
+    const fetchMock = mockFetchHome(MANIFEST_OK, "ok");
+    const div = await renderHome(<HomeContent initialFiltros={{ uf: "XX" }} />);
+    const mapa = secaoMapa(div.innerHTML);
+    expect(mapa).not.toBe("");
+    expect(mapa).toContain(SEM_DADO);
+    expect(chamadasMalha(fetchMock)).toBe(0);
+  });
+  it("elegível: busca exatamente uma vez (sem regressão do single-fetch)", async () => {
+    const restorePath = mockPath2D();
+    const restoreCtx = mockCanvas2d();
+    const fetchMock = mockFetchHome(MANIFEST_OK, "ok");
+    try {
+      const div = await renderHome();
+      expect(secaoMapa(div.innerHTML)).toContain("<canvas");
+      expect(chamadasMalha(fetchMock)).toBe(1);
     } finally {
       restoreCtx();
       restorePath();
