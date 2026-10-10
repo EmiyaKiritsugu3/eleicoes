@@ -50,38 +50,49 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
   // `seloRef` é a verdade comparável fora do closure (o effect de foco
   // monta uma vez); `ocupadoRef` evita fetch duplicado com um load em voo;
   // `fatoParamRef` leva o ?fato= atual ao handler sem re-subscrição.
+  // Matriz de guards (webfix Finding 4, P2 — VERIFICADO: overlap real):
+  // - mesmo run em voo → `ocupadoRef` barra o segundo (sem fetch duplicado);
+  // - run stale (rotação vs mount de outro ?fato=) → `geracaoRef`: publica
+  //   e LIMPA o flag SOMENTE se ainda for o run atual; o finally de um run
+  //   morto nunca solta o flag do dono novo (era o buraco: finally
+  //   incondicional + publish só com `vivo`/param);
+  // - ?fato= trocou no meio do voo → `vivo` (mount) / `fatoParamRef`
+  //   (rotação) barram o publish cruzado.
   const seloRef = useRef<string | null>(null);
   const ocupadoRef = useRef(false);
+  const geracaoRef = useRef(0);
   const fatoParamRef = useRef(fatoParam);
   fatoParamRef.current = fatoParam;
 
-  // Núcleo puro de leitura (sem setState): manifest → dataset+selo →
-  // fato + Censo em paralelo. O gate é o mesmo de antes (helpers de
+  // Núcleo puro de leitura (sem setState): manifest → dataset+selo → fato.
+  // O Censo viaja separado (`buscarCenso`, webfix Finding 2): artefato
+  // lento não segura o painel atrás do loader — o fato assentado renderiza
+  // e a pop preenche quando chega. O gate é o mesmo de antes (helpers de
   // lib/regiao só chamados, nunca alterados); a pop segue
   // fato-independente com proveniência na entry `artifacts` do Censo (sem
   // atestação runtime — assunção de confiança documentada em PainelRegiao).
-  const buscar = useCallback(async (param: string) => {
+  const buscarFato = useCallback(async (param: string) => {
     const manifest = await fetchJson("/data/manifest.json");
     const ds = fatoDatasetDe(manifest, param);
     const novoSeal = getSealParaDataset(manifest, ds);
-    const [f, rawCenso] = await Promise.all([
-      ds ? fetchJson<FatoRegiao>(`/data/${ds}.json`) : Promise.resolve(null),
-      fetchJson<unknown>(CENSO_URL),
-    ]);
-    return { ds, novoSeal, f, censo: parseCensoMapa(rawCenso) };
+    const f = ds ? await fetchJson<FatoRegiao>(`/data/${ds}.json`) : null;
+    return { ds, novoSeal, f };
   }, []);
+  const buscarCenso = useCallback(async () => parseCensoMapa(await fetchJson<unknown>(CENSO_URL)), []);
 
   useEffect(() => {
     let vivo = true;
+    const minha = ++geracaoRef.current;
     // Loading honesto a cada ?fato=: volta a "a carregar" no início do run
     // e só libera o painel após o fetch do fato assentar (sem isso, o
-    // setFato(null) intermediário exibia SEM_DADO transitório).
+    // setFato(null) intermediário exibia SEM_DADO transitório). O Censo
+    // NÃO gateia o painel: corre em paralelo e assenta quando chega.
     setManifestChecked(false);
     ocupadoRef.current = true;
     (async () => {
       try {
-        const r = await buscar(fatoParam);
-        if (!vivo) return;
+        const r = await buscarFato(fatoParam);
+        if (!vivo || geracaoRef.current !== minha) return;
         // Selo ligado ao dataset selecionado: ?fato= sem registro auditado
         // falha fechado (sem oficial), nunca com hash de outra ingestão.
         setSeal(r.novoSeal);
@@ -93,17 +104,20 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
         // fato-independente: publica direto, sem flash de SEM_DADO.)
         setFato(null);
         setFato(r.f);
-        setCenso(r.censo);
         setManifestChecked(true);
       } finally {
-        if (vivo) ocupadoRef.current = false;
+        if (geracaoRef.current === minha) ocupadoRef.current = false;
       }
+    })();
+    void (async () => {
+      const c = await buscarCenso();
+      if (vivo && geracaoRef.current === minha) setCenso(c);
     })();
     return () => {
       vivo = false;
       ocupadoRef.current = false;
     };
-  }, [fatoParam, buscar]);
+  }, [fatoParam, buscarFato, buscarCenso]);
 
   // Rotação de manifest (completa o sync do EVOLVE-6 T6 na /regiao, que não
   // tinha trigger algum — nem o fato recarregava no foco): re-lê SÓ o
@@ -115,6 +129,7 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
     const aoRetomar = async () => {
       if (ocupadoRef.current) return;
       ocupadoRef.current = true;
+      const minha = ++geracaoRef.current;
       try {
         const param = fatoParamRef.current;
         const manifest = await fetchJson("/data/manifest.json");
@@ -127,14 +142,15 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
         ]);
         // ?fato= trocou no meio do load: o effect do novo param recarrega;
         // este run stale não escreve (nunca número antigo sob selo novo).
-        if (fatoParamRef.current !== param) return;
+        // Geração idem: run superado por outro load não publica nem limpa.
+        if (fatoParamRef.current !== param || geracaoRef.current !== minha) return;
         setSeal(novoSeal);
         setDataset(ds);
         seloRef.current = JSON.stringify({ ds, seal: novoSeal });
         setFato(f);
         setCenso(parseCensoMapa(rawCenso));
       } finally {
-        ocupadoRef.current = false;
+        if (geracaoRef.current === minha) ocupadoRef.current = false;
       }
     };
     const aoFocar = () => {

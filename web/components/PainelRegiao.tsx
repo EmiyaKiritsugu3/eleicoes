@@ -106,6 +106,43 @@ export function totalUFCenso(
   return n > 0 ? soma : null;
 }
 
+/** Prefixo IBGE de 2 dígitos → sigla UF (códigos estáveis do IBGE).
+ *  FONTE ÚNICA da tabela (webfix Finding 1/6): `HomeContent.ufDeSelecaoMapa`
+ *  importa daqui em vez de forkar — um prefixo, um significado. */
+export const UF_POR_PREFIXO_IBGE: Record<string, string> = {
+  "11": "RO", "12": "AC", "13": "AM", "14": "RR", "15": "PA", "16": "AP", "17": "TO",
+  "21": "MA", "22": "PI", "23": "CE", "24": "RN", "25": "PB", "26": "PE", "27": "AL",
+  "28": "SE", "29": "BA", "31": "MG", "32": "ES", "33": "RJ", "35": "SP",
+  "41": "PR", "42": "SC", "43": "RS", "50": "MS", "51": "MT", "52": "GO", "53": "DF",
+};
+
+/** Chaves IBGE7 do mapa do Censo pertencentes à UF (webfix Finding 1):
+ *  o agregado UF deriva do ARTEFATO (fato-independente), nunca da lista
+ *  de municípios do fato (fato null/parcial subestimava ou zerava).
+ *  Chave fora do shape IBGE7 ou prefixo fora da tabela → ignorada. */
+export function ibgesDaUFNoCenso(
+  mapa: CensoMapa | null | undefined,
+  uf: string,
+): string[] {
+  const alvo = String(uf ?? "").trim().toUpperCase();
+  if (!mapa || typeof mapa !== "object" || alvo === "") return [];
+  const out: string[] = [];
+  for (const k of Object.keys(mapa)) {
+    const m = /^(\d{2})\d{5}$/.exec(k.trim());
+    if (m && UF_POR_PREFIXO_IBGE[m[1]] === alvo) out.push(k);
+  }
+  return out;
+}
+
+/** Pop da UF direto do mapa do Censo (chaves por prefixo IBGE→UF):
+ *  fato-independente — fato null ou parcial não altera a soma. */
+export function popUFNoCenso(
+  mapa: CensoMapa | null | undefined,
+  uf: string,
+): number | null {
+  return totalUFCenso(mapa, ibgesDaUFNoCenso(mapa, uf));
+}
+
 /** Nota honesta quando o motor usou pesos de fallback (ledger: pesoFonte). */
 export const NOTA_PESO_MISTO =
   "nota: pesos mistos — parte dos municípios usa total/pop como aproximação " +
@@ -295,12 +332,19 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
   }, [censo]);
   const mapa = censo !== undefined ? censo : censoFetch;
   // Linha da pop real (ramo município + fallbacks fato-independentes; o
-  // agregado UF usa `totalUFCenso` + mesma linha pt-BR — Task 3).
+  // agregado UF usa `popUFNoCenso` + mesma linha pt-BR — Task 3).
   // Baseline Brasil inline, padrão das demais linhas.
   const pop = popNoCenso(mapa, String(ibge ?? ""));
   const brasilPop = totalBrasilCenso(mapa);
   const liPop = (
     <li>{CENSO_ROTULO}: {pop !== null ? formatVotes(pop) : SEM_DADO} (Brasil: {brasilPop !== null ? formatVotes(brasilPop) : SEM_DADO})</li>
+  );
+  // Agregado UF direto do mapa (webfix Finding 1): deriva das chaves do
+  // artefato por prefixo IBGE→UF — fato null/parcial não zera nem
+  // subestima. Calculado aqui p/ servir o ramo UF E o fallback sem-fato.
+  const popUF = ehUF && !ehExterior ? popUFNoCenso(mapa, cod) : null;
+  const liPopUF = (
+    <li>{CENSO_ROTULO}: {popUF !== null ? formatVotes(popUF) : SEM_DADO} (Brasil: {brasilPop !== null ? formatVotes(brasilPop) : SEM_DADO})</li>
   );
   // Sufixo ?fato= validado pelo mesmo allowlist da rota (nunca traversal).
   const fatoQ =
@@ -341,8 +385,9 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
           <p role="note">{ECO_SEAL}</p>
           {/* Pop fato-independente (proveniência na entry `artifacts` do Censo):
               sem fato, só a pop real pode aparecer — resto segue SEM_DADO.
-              Exterior fora do Censo municipal: lookup falha → SEM_DADO. */}
-          {!ehExterior && <ul>{liPop}</ul>}
+              UF sem fato agrega do mapa (liPopUF); município usa o lookup
+              por IBGE (liPop). Exterior fora do Censo municipal: nada. */}
+          {!ehExterior && <ul>{ehUF ? liPopUF : liPop}</ul>}
           <p>{SEM_DADO}</p>
         </section>
         <section aria-label="Ações">
@@ -358,16 +403,6 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
     const ag = agregarUF(fato.municipios, cod, fato.candidatos);
     const linhasUF = fato.municipios.filter(
       (r) => String(r?.uf ?? "").trim().toUpperCase() === cod,
-    );
-    // Pop agregada da UF (Task 3): soma das pops do Censo sobre os IBGEs
-    // da UF no fato — mesmos helpers/shape da Task 2 (fail-closed por
-    // chave, baseline Brasil idêntico, mesma linha pt-BR).
-    const popUF = totalUFCenso(
-      mapa,
-      linhasUF.map((r) => String(r?.ibge ?? "")),
-    );
-    const liPopUF = (
-      <li>{CENSO_ROTULO}: {popUF !== null ? formatVotes(popUF) : SEM_DADO} (Brasil: {brasilPop !== null ? formatVotes(brasilPop) : SEM_DADO})</li>
     );
     if (!ag) {
       return (

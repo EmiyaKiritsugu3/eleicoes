@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import MapaBrasil from "./MapaBrasil";
+import { UF_POR_PREFIXO_IBGE } from "./PainelRegiao";
 import { loadMalha, MALHA_MUNICIPIOS_URL, UFS, type MalhaFeature } from "../lib/malha";
 import SourceBadge from "./SourceBadge";
 import SealSlot from "./SealSlot";
@@ -24,24 +25,15 @@ import {
 import { vereditoTemProva } from "../lib/regiao";
 import { MOTIVO_SEM_HASH, SEM_DADO } from "../lib/textos";
 
-/** Prefixo IBGE de 2 dígitos → sigla UF (códigos estáveis do IBGE).
- *  Permite ao clique no canvas (que retorna IBGE7 do município) focar o
- *  filtro UF da Home sem adivinhar: prefixo fora da tabela → null. */
-const UF_POR_CODIGO_IBGE: Record<string, string> = {
-  "11": "RO", "12": "AC", "13": "AM", "14": "RR", "15": "PA", "16": "AP", "17": "TO",
-  "21": "MA", "22": "PI", "23": "CE", "24": "RN", "25": "PB", "26": "PE", "27": "AL",
-  "28": "SE", "29": "BA", "31": "MG", "32": "ES", "33": "RJ", "35": "SP",
-  "41": "PR", "42": "SC", "43": "RS", "50": "MS", "51": "MT", "52": "GO", "53": "DF",
-};
-
 /** Seleção do mapa → sigla UF p/ focar o filtro (fail-closed: EXTERIOR e
  *  seleções desconhecidas retornam null em vez de focar errado). Aceita
- *  sigla UF (fallback em lista/teclado) ou IBGE7 (clique no canvas). */
+ *  sigla UF (fallback em lista/teclado) ou IBGE7 (clique no canvas).
+ *  Tabela de prefixos: fonte única `UF_POR_PREFIXO_IBGE` (PainelRegiao). */
 export function ufDeSelecaoMapa(sel: string): string | null {
   const s = (sel ?? "").trim().toUpperCase();
   if ((UFS as readonly string[]).includes(s)) return s;
   const m = /^(\d{2})\d{5}$/.exec(s);
-  if (m) return UF_POR_CODIGO_IBGE[m[1]] ?? null;
+  if (m) return UF_POR_PREFIXO_IBGE[m[1]] ?? null;
   return null;
 }
 
@@ -88,21 +80,30 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   const sealRef = useRef<SealState>(seal);
   const ocupadoRef = useRef(false);
 
+  // Núcleo único de leitura pesada (webfix Finding 6, P3): mount
+  // (`carregarDados`) e rotação (`aoRetomar`) partilham este helper — a
+  // sequência de fetches existe UMA vez (sem fork). Devolve o selo lido;
+  // cada chamador aplica o seu epílogo (mount: `setManifestChecked(true)`;
+  // rotação: só entra aqui com selo mudado). Sem mudança de comportamento.
+  const carregarPesados = useCallback(async () => {
+    setResumo(await fetchJson<ResumoJson>("/data/resumo.json"));
+    setPorUf((await fetchJson<PorUfRow[]>("/data/por_uf.json")) ?? []);
+    setPorCand((await fetchJson<PorCandidatoRow[]>("/data/por_candidato.json")) ?? []);
+    return getSealState(await fetchJson("/data/manifest.json"));
+  }, []);
+
   const carregarDados = useCallback(async () => {
     if (ocupadoRef.current) return;
     ocupadoRef.current = true;
     try {
-      setResumo(await fetchJson<ResumoJson>("/data/resumo.json"));
-      setPorUf((await fetchJson<PorUfRow[]>("/data/por_uf.json")) ?? []);
-      setPorCand((await fetchJson<PorCandidatoRow[]>("/data/por_candidato.json")) ?? []);
-      const novoSeal = getSealState(await fetchJson("/data/manifest.json"));
+      const novoSeal = await carregarPesados();
       sealRef.current = novoSeal;
       setSeal(novoSeal);
       setManifestChecked(true);
     } finally {
       ocupadoRef.current = false;
     }
-  }, []);
+  }, [carregarPesados]);
 
   useEffect(() => {
     void carregarDados();
@@ -121,11 +122,8 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
       try {
         const novoSeal = getSealState(await fetchJson("/data/manifest.json"));
         if (JSON.stringify(novoSeal) === JSON.stringify(sealRef.current)) return;
-        setResumo(await fetchJson<ResumoJson>("/data/resumo.json"));
-        setPorUf((await fetchJson<PorUfRow[]>("/data/por_uf.json")) ?? []);
-        setPorCand((await fetchJson<PorCandidatoRow[]>("/data/por_candidato.json")) ?? []);
-        sealRef.current = novoSeal;
-        setSeal(novoSeal);
+        sealRef.current = await carregarPesados();
+        setSeal(sealRef.current);
       } finally {
         ocupadoRef.current = false;
       }
@@ -142,7 +140,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
       window.removeEventListener("focus", aoFocar);
       document.removeEventListener("visibilitychange", aoVisibilidade);
     };
-  }, []);
+  }, [carregarPesados]);
 
   const set = (k: keyof Filtros) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setF((prev) => ({ ...prev, [k]: e.target.value }));

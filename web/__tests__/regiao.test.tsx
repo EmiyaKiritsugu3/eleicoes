@@ -263,6 +263,7 @@ describe("População real do Censo no ramo UF (EVOLVE-7 Task 3)", () => {
     expect(perfil).toContain("20.134"); // baseline = soma do mapa inteiro
     expect(perfil).toContain(ECO_SEAL); // eco-seal mantido
     expect(html).toContain("Cand B"); // votos da UF intactos (700 x 1300)
+    expect(html).toContain("Votos do vencedor: 1.300"); // B: 400+900, pt-BR
   });
   it("UF sem censo: pop em SEM_DADO (fail-closed, sem número inventado)", () => {
     const html = renderToStaticMarkup(
@@ -280,6 +281,48 @@ describe("População real do Censo no ramo UF (EVOLVE-7 Task 3)", () => {
     expect(totalUFCenso(CENSO_UF, ["9999999"])).toBe(null);
     expect(totalUFCenso(CENSO_UF, [])).toBe(null);
     expect(totalUFCenso(null, ["3550308"])).toBe(null);
+  });
+  it("fato null + Censo: UF agrega do mapa (fato-independente, nunca SEM_DADO)", () => {
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="SP" fato={null} seal={SEAL_NULO} manifestChecked censo={CENSO_UF} />,
+    );
+    const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+    expect(perfil).toContain("População (Censo 2022)");
+    expect(perfil).toContain("19.134"); // soma SP das chaves do mapa, sem fato
+    expect(perfil).toContain(ECO_SEAL);
+  });
+  it("fato parcial: UF soma o mapa inteiro (sem subestimar pelo fato)", () => {
+    const fatoParcial: FatoRegiao = {
+      candidatos: CANDIDATOS,
+      municipios: [mun("3550308", "SP", [600, 400], demoCompleta(), 1000)],
+    };
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="SP" fato={fatoParcial} seal={SEAL_OFICIAL} manifestChecked censo={CENSO_UF} />,
+    );
+    const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+    const linha = (perfil.split("População (Censo 2022)")[1] ?? "").split("</li>")[0];
+    expect(linha).toContain("19.134"); // 12345+6789 do mapa, não só o 3550308 do fato
+  });
+  it("chave UF ausente no mapa soma só o presente (sem fallback, UF)", () => {
+    const censoFalha = { "3550308": 12345, "3304557": 1000 }; // 3550309 sem par
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="SP" fato={FATO_UF} seal={SEAL_OFICIAL} manifestChecked censo={censoFalha} />,
+    );
+    const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+    const linha = (perfil.split("População (Censo 2022)")[1] ?? "").split("</li>")[0];
+    expect(linha).toContain("12.345");
+    expect(linha).not.toContain("19.134"); // soma parcial honesta, sem completar
+  });
+  it("popUFNoCenso/ibgesDaUFNoCenso: agrega pelas chaves do mapa (prefixo IBGE→UF)", async () => {
+    const { popUFNoCenso, ibgesDaUFNoCenso } = await import("../components/PainelRegiao");
+    expect(ibgesDaUFNoCenso(CENSO_UF, "SP").sort()).toEqual(["3550308", "3550309"]);
+    expect(ibgesDaUFNoCenso(CENSO_UF, "RJ")).toEqual(["3304557"]);
+    expect(ibgesDaUFNoCenso(CENSO_UF, "MG")).toEqual([]);
+    expect(ibgesDaUFNoCenso(null, "SP")).toEqual([]);
+    expect(popUFNoCenso(CENSO_UF, "SP")).toBe(19134);
+    expect(popUFNoCenso(CENSO_UF, "RJ")).toBe(1000);
+    expect(popUFNoCenso(CENSO_UF, "MG")).toBe(null);
+    expect(popUFNoCenso(null, "SP")).toBe(null);
   });
 });
 
@@ -632,6 +675,15 @@ describe("População real do Censo (EVOLVE-7 Task 2)", () => {
     const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
     expect(perfil).toContain("População (Censo 2022)");
     expect(linhaPop(perfil)).toContain("sem dado oficial");
+  });
+  it("pop sem par no mapa nunca cai p/ demo.pop fixture nem baseline (município)", () => {
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="3550308" fato={FATO} seal={SEAL_OFICIAL} manifestChecked censo={{}} />,
+    );
+    const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+    const linha = linhaPop(perfil);
+    expect(linha).toContain("sem dado oficial");
+    expect(linha).not.toContain("12.000"); // demo.pop fixture do FATO nunca vaza
   });
   it("helpers do artefato: parse fail-closed + baseline soma do mapa", async () => {
     const { parseCensoMapa, popNoCenso, totalBrasilCenso } = await import(
