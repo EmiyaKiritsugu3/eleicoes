@@ -24,7 +24,12 @@ import { SEM_DADO } from "../../lib/textos";
  *  O hash segue visível na tabela (transparência).
  */
 
-function downloadManifest() {
+/** Mensagem fail-closed do download (EVOLVE-9 Task 4a, pt-BR): erro de rede
+ *  no fetch do manifest vira `role=status` visível — nunca .catch vazio. */
+const MENSAGEM_ERRO_DOWNLOAD_MANIFEST =
+  "falha no download do manifest — tente novamente";
+
+function downloadManifest(onErro?: (mensagem: string) => void) {
   fetch("/data/manifest.json", { cache: "no-store" })
     .then((res) => {
       if (!res.ok) throw new Error("manifest ausente");
@@ -40,13 +45,16 @@ function downloadManifest() {
       a.remove();
       URL.revokeObjectURL(url);
     })
-    .catch(() => {});
+    .catch(() => {
+      onErro?.(MENSAGEM_ERRO_DOWNLOAD_MANIFEST);
+    });
 }
 
 export default function Auditoria() {
   const [manifest, setManifest] = useState<Manifest | null>(null);
   const [official, setOfficial] = useState<AuditInfo | null>(null);
   const [checked, setChecked] = useState(false);
+  const [erroDownload, setErroDownload] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -195,11 +203,15 @@ export default function Auditoria() {
                 ? "Baixar manifest.json (verifique o selo: oficial ou amostra sintética)"
                 : "O download está bloqueado — sem ingestão auditada (manifest ausente, vazio ou sem hash)"
             }
-            onClick={downloadManifest}
+            onClick={() => {
+              setErroDownload("");
+              downloadManifest(setErroDownload);
+            }}
           >
             Baixar manifest
           </button>
         </p>
+        {erroDownload !== "" && <p role="status">{erroDownload}</p>}
         {checked && !canDownload && (
           <p role="alert">
             O download está bloqueado — sem ingestão auditada; sem hash válido não há

@@ -56,6 +56,16 @@ function filtrarPorPartido(
   return rows.filter((r) => String(r.partido ?? "").toLowerCase().includes(q));
 }
 
+/** Chave interna estável do grupo sem-partido (EVOLVE-9 Task 4b):
+ *  o agrupamento usa `chave`, o display usa `rotulo` (SEM_DADO só display).
+ *  Categorias reais usam o namespace `partido:<nome>` — nem um partido
+ *  chamado literalmente "sem dado oficial" colide com o grupo vazio. */
+const CHAVE_SEM_PARTIDO = "__sem_partido__";
+
+function chavePartido(bruto: string): string {
+  return bruto === "" ? CHAVE_SEM_PARTIDO : `partido:${bruto}`;
+}
+
 function downloadCsv(filename: string, csv: string) {
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -248,16 +258,21 @@ export default function Analisar() {
       .sort((a, b) => (Number(b.votos) || 0) - (Number(a.votos) || 0));
   }, [porCand, f.partido, f.candidato, semCob, semProva]);
 
-  const pivoRows: { chave: string; votos: number }[] = useMemo(() => {
-    if (pivo === "uf") return ufs.map((r) => ({ chave: r.uf, votos: r.votos }));
-    if (pivo === "ano") return ev.map((r) => ({ chave: String(r.ano), votos: r.votos }));
+  const pivoRows: { chave: string; rotulo: string; votos: number }[] = useMemo(() => {
+    if (pivo === "uf") return ufs.map((r) => ({ chave: `uf:${r.uf}`, rotulo: r.uf, votos: r.votos }));
+    if (pivo === "ano") return ev.map((r) => ({ chave: `ano:${String(r.ano)}`, rotulo: String(r.ano), votos: r.votos }));
     const acc = new Map<string, number>();
     for (const r of cands) {
-      const k = String(r.partido ?? "") || SEM_DADO;
+      const bruto = String(r.partido ?? "").trim();
+      const k = chavePartido(bruto);
       acc.set(k, (acc.get(k) ?? 0) + (Number(r.votos) || 0));
     }
     return [...acc.entries()]
-      .map(([chave, votos]) => ({ chave, votos }))
+      .map(([chave, votos]) => ({
+        chave,
+        rotulo: chave === CHAVE_SEM_PARTIDO ? SEM_DADO : chave.slice("partido:".length),
+        votos,
+      }))
       .sort((a, b) => b.votos - a.votos);
   }, [pivo, ufs, ev, cands]);
 
@@ -324,7 +339,7 @@ export default function Analisar() {
   const csvRows = useMemo(
     () =>
       pivoRows.map((r) => ({
-        chave: r.chave,
+        chave: r.rotulo,
         votos: r.votos,
         pivo,
         ano: f.ano ?? "",
@@ -465,7 +480,7 @@ export default function Analisar() {
             <tbody>
               {pivoRows.map((r) => (
                 <tr key={r.chave}>
-                  <td>{r.chave}</td>
+                  <td>{r.rotulo}</td>
                   <td>{formatVotes(r.votos)}</td>
                 </tr>
               ))}
