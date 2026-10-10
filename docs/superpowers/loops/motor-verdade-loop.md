@@ -48,3 +48,7 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 
 ## PR-GREEN iteração 3 (2026-10-10 ~03:00 UTC)
 - CI VERDE ×2 (1m15s). Resta: cubic + CodeRabbit re-review dos novos pushes.
+
+## PR-GREEN iteração 4 (2026-10-10 ~04:00 UTC)
+- 2 findings frescos do re-review CodeRabbit: (1) mismatch transitório fato/selo no ?fato= — fix setFato(null) + teste jsdom de transição (RED sem fix confirmado); (2) gate fixture da rota vs contrato do componente — julgado: sugestão procede, rota alinhada via vereditoTemProva() + testes.
+- Local: pytest 95 + vitest 262/15 + tsc + build OK.

@@ -13,7 +13,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { VerificarConteudo, type Check } from "../Verificar";
-import { fatoDatasetDe, getSealParaDataset } from "../../../lib/regiao";
+import { fatoDatasetDe, getSealParaDataset, vereditoTemProva } from "../../../lib/regiao";
 import type { FatoRegiao } from "../../../components/PainelRegiao";
 import checksJson from "../../../data/checks.json";
 
@@ -47,10 +47,12 @@ export default function PaginaVerificar({ params }: { params: { slug: string } }
   const dataset = fatoDatasetDe(manifest, "");
   // Selo do próprio dataset + portão fail-closed: fato sem registro
   // auditado não-fixture nunca alimenta veredito (SEM_DADO, nunca
-  // número sem hash — e nunca sob selo de outra ingestão).
+  // número sem hash — e nunca sob selo de outra ingestão). Fixture com
+  // hash alimenta veredito com badge de amostra (nunca selo oficial),
+  // conforme o contrato de VerificarConteudo.
   const seal = getSealParaDataset(manifest, dataset);
   const fato =
-    seal.official && dataset ? fatoValido(lerJson(path.join(base, `${dataset}.json`))) : null;
+    vereditoTemProva(seal) && dataset ? fatoValido(lerJson(path.join(base, `${dataset}.json`))) : null;
 
   return (
     <VerificarConteudo

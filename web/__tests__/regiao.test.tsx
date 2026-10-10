@@ -503,3 +503,19 @@ describe("isHashDivergente (alerta de hash do /explorar)", () => {
     expect(isHashDivergente("abc123", "", false)).toBe(false);
   });
 });
+
+describe("vereditoTemProva (portão de veredito da rota /verificar)", () => {
+  it("selo oficial -> true; selo vazio -> false", async () => {
+    const { vereditoTemProva } = await import("../lib/regiao");
+    expect(
+      vereditoTemProva({ official: { hash: "ab".repeat(32), url: "u", date: "d" }, hasFixture: false, fixtureHash: "" }),
+    ).toBe(true);
+    expect(vereditoTemProva({ official: null, hasFixture: false, fixtureHash: "" })).toBe(false);
+  });
+  it("fixture com hash -> true (transparência, sem selo oficial); sem hash -> false", async () => {
+    const { vereditoTemProva } = await import("../lib/regiao");
+    expect(vereditoTemProva({ official: null, hasFixture: true, fixtureHash: "cd".repeat(32) })).toBe(true);
+    expect(vereditoTemProva({ official: null, hasFixture: true, fixtureHash: "" })).toBe(false);
+    expect(vereditoTemProva({ official: null, hasFixture: true, fixtureHash: "   " })).toBe(false);
+  });
+});

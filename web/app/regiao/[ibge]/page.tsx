@@ -46,6 +46,10 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
       setSeal(getSealParaDataset(manifest, ds));
       setManifestChecked(true);
       setDataset(ds);
+      // Limpa o fato anterior ANTES de buscar o novo: sem isso, a troca de
+      // ?fato= exibiria transitoriamente números do dataset antigo sob o
+      // selo do novo. Fail-closed também no transiente.
+      setFato(null);
       if (ds) {
         const f = await fetchJson<FatoRegiao>(`/data/${ds}.json`);
         if (!vivo) return;

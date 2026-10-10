@@ -104,6 +104,15 @@ export function getSealParaDataset(manifest: unknown, dataset: string | null): S
   return vazio;
 }
 
+/** Há prova para veredito com este selo: hash oficial ou hash de fixture
+ *  (transparência, sem selo oficial) — espelha `hashAuditado` de
+ *  VerificarConteudo. Sem nenhum dos dois, nenhum fato alimenta veredito.
+ */
+export function vereditoTemProva(seal: SealState): boolean {
+  if (seal.official !== null) return true;
+  return seal.hasFixture && seal.fixtureHash.trim().length > 0;
+}
+
 /** Divergência entre o hash da URL compartilhada e o hash oficial atual.
  *  Manifest só-fixture (sem hash oficial) com hash na URL também diverge:
  *  o link foi criado sobre dado auditado e a página não tem hash oficial
