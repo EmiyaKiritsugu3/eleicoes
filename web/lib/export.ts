@@ -103,11 +103,11 @@ export function semCoberturaTurnoZona(
 function csvEscape(v: unknown): string {
   // Contrato blank-cell (deliberado): null/undefined viram célula vazia "" —
   // nunca os literais "null"/"undefined" (planilha lê como vazio honesto).
-  const s = v === null || v === undefined ? "" : String(v);
-  const q = /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  // Neutraliza fórmula de planilha (M12): célula que começa com =,+,-,@
-  // ganha apóstrofo à frente, após o quote.
-  return /^[=+\-@]/.test(s) ? `'${q}` : q;
+  const s0 = v === null || v === undefined ? "" : String(v);
+  // Neutraliza fórmula de planilha (M12): apóstrofo ANTES do quote CSV,
+  // senão `'"=a,b"'` quebra em dois campos — o correto é `"'=a,b"`.
+  const s = /^[=+\-@]/.test(s0) ? `'${s0}` : s0;
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 /** CSV das linhas filtradas + colunas de proveniência.

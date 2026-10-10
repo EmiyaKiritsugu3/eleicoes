@@ -20,7 +20,7 @@ import PainelRegiao, {
   type FatoRegiao,
 } from "../../../components/PainelRegiao";
 import type { SealState } from "../../../lib/data";
-import { censoTemProva, fatoDatasetDe, getSealParaDataset } from "../../../lib/regiao";
+import { censoTemProva, entradaCensoAuditada, fatoDatasetDe, getSealParaDataset } from "../../../lib/regiao";
 import { fetchJson } from "../../../lib/fetchJson";
 
 function ConteudoRegiao({ ibge }: { ibge: string }) {
@@ -96,7 +96,11 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
         // falha fechado (sem oficial), nunca com hash de outra ingestão.
         setSeal(r.novoSeal);
         setDataset(r.ds);
-        seloRef.current = JSON.stringify({ ds: r.ds, seal: r.novoSeal });
+        seloRef.current = JSON.stringify({
+          ds: r.ds,
+          seal: r.novoSeal,
+          censo: entradaCensoAuditada(r.manifest)?.sha256 ?? null,
+        });
         // Limpa o fato anterior ANTES de publicar o novo: sem isso, a troca
         // de ?fato= exibiria transitoriamente números do dataset antigo sob
         // o selo do novo. Fail-closed também no transiente. (O censo é
@@ -138,7 +142,12 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
         const manifest = (await fetchJson("/data/manifest.json")).data;
         const ds = fatoDatasetDe(manifest, param);
         const novoSeal = getSealParaDataset(manifest, ds);
-        if (JSON.stringify({ ds, seal: novoSeal }) === seloRef.current) return;
+        // A comparação inclui a identidade da entry do Censo (sha): sem
+        // isso, um manifest refrescado que remove SÓ o Censo (fato+selo
+        // idênticos) caía no early return e a pop ia stale com prova
+        // ausente. sha ausente (entry removida) → null ≠ sha anterior.
+        const novoCenso = entradaCensoAuditada(manifest)?.sha256 ?? null;
+        if (JSON.stringify({ ds, seal: novoSeal, censo: novoCenso }) === seloRef.current) return;
         // Selo runtime do Censo (EVOLVE-8 Task 1): sem entry auditada, o
         // artefato nem é buscado (custo zero no caso forjado) e a pop cai
         // p/ SEM_DADO junto com os votos.
@@ -155,7 +164,7 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
         if (fatoParamRef.current !== param || geracaoRef.current !== minha) return;
         setSeal(novoSeal);
         setDataset(ds);
-        seloRef.current = JSON.stringify({ ds, seal: novoSeal });
+        seloRef.current = JSON.stringify({ ds, seal: novoSeal, censo: novoCenso });
         setFato(f);
         setCenso(censoOk ? parseCensoMapa(rawCenso) : null);
       } finally {

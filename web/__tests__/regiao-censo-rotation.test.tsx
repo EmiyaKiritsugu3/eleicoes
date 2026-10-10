@@ -158,8 +158,21 @@ describe("/regiao: rotação de manifest refetcha o Censo (sem pop stale)", () =
     expect(perfil(div.innerHTML)).not.toContain("12.345");
   });
 
-  it("Censo lento não esconde o fato atrás do loader (carga independente)", async () => {
-    let liberaCenso: (() => void) | null = null;
+  it("rotação que remove SÓ a entry do Censo (fato+selo idênticos) suprime a pop stale", async () => {
+    instalarFetchMutavel();
+    const div = await montar();
+    expect(perfil(div.innerHTML)).toContain("12.345");
+    // Fato + selo inalterados; só a entry `artifacts` do Censo some.
+    manifestAtual = { ingestions: MANIFEST_A.ingestions, artifacts: [] };
+    await focar();
+    const linha = (perfil(div.innerHTML).split("População (Censo 2022)")[1] ?? "").split("</li>")[0];
+    expect(linha).toContain(SEM_DADO);
+    expect(perfil(div.innerHTML)).not.toContain("12.345");
+    // Votos seguem (fato intacto) — só a pop cai, sem número sem prova.
+    expect(div.innerHTML).toContain("Cand A");
+  });
+
+  it("Censo lento não esconde o fato atrás do loader (carga independente)", async () => {    let liberaCenso: (() => void) | null = null;
     const censoLento = new Promise<unknown>((res) => {
       liberaCenso = () => res({ ok: true, json: async () => CENSO_A });
     });

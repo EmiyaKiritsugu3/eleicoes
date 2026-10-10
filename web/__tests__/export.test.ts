@@ -65,6 +65,19 @@ describe("csv header escape (T4)", () => {
   });
 });
 
+describe("csv formula+quote (CodeRabbit minor)", () => {
+  it("header fórmula com vírgula fica um campo só: apóstrofo dentro das aspas", () => {
+    const csv = buildCsvExport([{ "=a,b": 1 }], AUDIT);
+    const header = csv.split("\n")[0];
+    expect(header).toContain("\"'=a,b\"");
+    expect(header).not.toContain("'\"=a,b\"");
+  });
+  it("valor fórmula com vírgula fica um campo só", () => {
+    const csv = buildCsvExport([{ c: "=a,b" }], AUDIT);
+    expect(csv.split("\n")[1]).toContain("\"'=a,b\"");
+  });
+});
+
 describe("share hash trim (F5)", () => {
   it("hash só-espaços não entra na URL", () => {
     expect(buildShareUrl({ ano: "2022" }, "   ")).not.toContain("hash=");
