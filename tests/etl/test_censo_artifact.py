@@ -148,3 +148,43 @@ def test_build_marts_registra_censo_servido(tmp_path):
     assert {a["arquivo"] for a in doc["artifacts"]} >= {
         "resumo.json", "por_uf.json", "por_candidato.json",
         "censo_municipios.json"}
+
+
+def test_artifact_bytes_layout_congelado(tmp_path):
+    """Pin de byte-identidade (S8707 fix): a serialização canônica não muda.
+
+    `sort_keys=True` + `indent=2` faz parte do hash servido — trocar pelo
+    `json.dump(..., indent=2)` do helper compartilhado mudaria os bytes e
+    invalidaria hashes já atestados. Qualquer drift falha alto aqui.
+    """
+    import pandas as pd
+
+    from etl.censo import write_censo_artifact
+
+    df = pd.DataFrame({
+        "ibge7": pd.array(["3550308", "3304557"], dtype="string"),
+        "pop": pd.array([10000, 12000], dtype="Int64"),
+    })
+    gravado = write_censo_artifact(df, tmp_path / "censo_municipios.json")
+    assert gravado["raw"] == (
+        b'{\n  "3304557": 12000,\n  "3550308": 10000\n}'
+    )
+
+
+def test_artifact_out_path_com_dotdot_levanta_sem_criar(tmp_path):
+    """S8707: `out_path` com `..` levanta `ValueError` antes de qualquer
+    mutação (guarda antes do `mkdir`, precedente `_write_json_atomico`)."""
+    import pandas as pd
+    import pytest
+
+    from etl.censo import write_censo_artifact
+
+    df = pd.DataFrame({
+        "ibge7": pd.array(["3550308"], dtype="string"),
+        "pop": pd.array([10000], dtype="Int64"),
+    })
+    with pytest.raises(ValueError, match=r"\.\."):
+        write_censo_artifact(df, tmp_path / "sub" / ".." / "evil.json")
+    assert not (tmp_path / "evil.json").exists()
+    assert not (tmp_path / "sub").exists()
+    assert [p for p in tmp_path.rglob("*.tmp")] == []

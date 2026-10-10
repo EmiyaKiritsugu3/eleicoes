@@ -334,19 +334,53 @@ def build_censo_artifact_entry(raw: bytes, arquivo=CENSO_ARTIFACT_FILENAME,
     return entry
 
 
+def _dentro_de(path, root) -> Path:
+    """Resolve `path` e exige continência ESTRITA sob `root` (fail-closed).
+
+    Espelha `etl/build_marts.py::_dentro_de` (guarda S8707) por cópia
+    deliberada, NÃO por import: `etl.build_marts` importa deste módulo
+    (`CENSO_ARTIFACT_FILENAME`, `build_censo_artifact_entry`) e importar
+    de volta fecharia um ciclo `build_marts ↔ censo`. Mesma semântica:
+    `..` lexical, absoluto fora da raiz ou escape via symlink levantam
+    `ValueError` ANTES de qualquer mutação no fs. Devolve o caminho
+    resolvido.
+    """
+    bruto = os.fspath(path)
+    raiz = os.fspath(root)
+    if ".." in Path(bruto).parts or ".." in Path(raiz).parts:
+        raise ValueError(
+            "censo: caminho com '..' bloqueado "
+            f"(path={bruto!r}, raiz={raiz!r})"
+        )
+    p = Path(bruto).resolve()
+    r = Path(raiz).resolve()
+    if r not in p.parents:
+        raise ValueError(
+            "censo: caminho fora da raiz esperada "
+            f"(path={bruto!r}, raiz={raiz!r})"
+        )
+    return p
+
+
 def write_censo_artifact(df: pd.DataFrame, out_path) -> dict:
     """Escreve `{ibge7: pop}` canônico em `out_path` (escrita atômica).
 
-    Serialização determinística (`indent=2`, chaves ordenadas — mesmo
-    padrão legível dos agregados de `build_marts`); devolve dict com
-    `path`, `raw`, `sha256`, `size_bytes` e `rows`.
+    Serialização determinística (`indent=2`, chaves ordenadas — o
+    `sort_keys=True` faz parte do hash servido e NÃO pode ser trocado
+    pelo `json.dump(..., indent=2)` sem sort de `_write_json_atomico`:
+    além dos bytes mudarem, importar o helper de `etl.build_marts`
+    fecharia um ciclo `build_marts ↔ censo`). Guarda S8707 espelhada
+    (ver `_dentro_de`): o `.tmp` precisa resolver sob o parent
+    declarado — `..`/escape levanta `ValueError` antes do `mkdir`.
+    Devolve dict com `path`, `raw`, `sha256`, `size_bytes` e `rows`.
     """
     mapa = build_censo_artifact_map(df)
     raw = json.dumps(mapa, ensure_ascii=False, indent=2,
                      sort_keys=True).encode("utf-8")
     dest = Path(out_path)
-    dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = Path(f"{dest}.tmp")
+    _dentro_de(tmp, dest.parent)  # fail-closed antes de qualquer mutação
+    dest.parent.mkdir(parents=True, exist_ok=True)
     with open(tmp, "wb") as f:
         f.write(raw)
     os.replace(tmp, dest)
@@ -401,6 +435,7 @@ def register_censo_artifact(manifest_path, artifact_path, dataset=None,
                          and a.get("arquivo") == entry["arquivo"])] + [entry]
     doc["artifacts"] = artifacts
     tmp = Path(f"{manifest_file}.tmp")
+    _dentro_de(tmp, manifest_file.parent)  # S8707, mesma guarda do artefato
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(doc, f, ensure_ascii=False, indent=2)
     os.replace(tmp, manifest_file)
