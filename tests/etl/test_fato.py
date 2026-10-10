@@ -37,9 +37,22 @@ _DEMO_FIELDS = [
 ]
 
 
+def _dv(base: str) -> str:
+    # Dígito verificador IBGE mod-10 (espelha a regra de etl/normalize.py e
+    # etl/censo.py: pesos 1,2,1,2,1,2 esq->dir, DV=(10-soma%10)%10).
+    # Replicado aqui (não importado) porque o helper de produção é privado
+    # e produção está fora de escopo desta correção de fixtures.
+    total = sum(
+        (int(d) * w) // 10 + (int(d) * w) % 10
+        for d, w in zip(base, (1, 2, 1, 2, 1, 2))
+    )
+    return str((10 - total % 10) % 10)
+
+
 def _ibge(i: int) -> str:
-    """Código IBGE7 sintético válido (7 dígitos, nunca 0000000)."""
-    return f"{3500000 + i:07d}"
+    """Código IBGE7 sintético válido (7 dígitos, DV mod-10 correto, nunca 0000000)."""
+    base = f"{350000 + i:06d}"
+    return base + _dv(base)
 
 
 def _censo_raw(ibges, pop_base=10000):
