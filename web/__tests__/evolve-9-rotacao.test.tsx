@@ -7,6 +7,9 @@
 // (fail-closed). (b) paridade de rotação: Explorar/Verificar/Analisar re-lêem
 // o manifest em focus/visibilitychange (padrão Home/regiao: guard de geração,
 // sem-duplicado, cleanup) e só refazem o fetch pesado com selo mudado.
+// (R5) As 3 matrizes por página viraram UMA matriz table-driven (dedupe
+// Sonar): um runner por cenário sobre `PAGINAS` — mesmas assertions,
+// harness partilhado, zero mudança de comportamento.
 import React from "react";
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { act } from "react-dom/test-utils";
@@ -24,7 +27,7 @@ import {
   contaChamadas,
   focarRotacao,
   montarRotacao,
-  flushRotacao,
+  voltarVisivelRotacao,
 } from "./helpers";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -112,18 +115,7 @@ function instalarRotacao() {
 
 const conta = (sufixo: string): number => contaChamadas(chamadas, sufixo);
 
-// visibilitychange com aba visível (o handler só reage a visible).
-async function voltarVisivel(): Promise<void> {
-  Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
-  try {
-    await act(async () => {
-      document.dispatchEvent(new Event("visibilitychange"));
-    });
-    await flushRotacao();
-  } finally {
-    Object.defineProperty(document, "visibilityState", { value: "prerender", configurable: true });
-  }
-}
+const voltarVisivel = (): Promise<void> => voltarVisivelRotacao();
 
 let el: HTMLDivElement | null = null;
 let root: Root | null = null;
@@ -165,256 +157,141 @@ describe("PainelRegiao sem self-fetch (EVOLVE-9 Task 3a)", () => {
   });
 });
 
-describe("/explorar: rotação de manifest (EVOLVE-9 Task 3b)", () => {
-  it("manifest trocado + foco → selo novo (sem stale)", async () => {
-    instalarRotacao();
-    const div = await montar(<ExplorarPage />);
-    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
-    manifestAtual = MANIFEST_B;
-    await focarRotacao();
-    expect(div.innerHTML).toContain(`sha256: ${HASH_B}`);
-    expect(div.innerHTML).not.toContain(`sha256: ${HASH_A}`);
-  });
+// Matriz table-driven da rotação (R5): UM runner por cenário sobre PAGINAS.
+// Parâmetros por página — `pesados` (fetches estáveis em 1 sem rotação),
+// `pesadoMantido` (fetch que não re-dispara nos casos manter),
+// `manifestSomente` (rota sem pesado: tudo buscado é manifest), `numero`
+// (marcador de números: presente nos manter, ausente só na supressão).
+interface PaginaMatriz {
+  rota: string;
+  nodo: () => React.ReactElement;
+  pesados: string[];
+  pesadoMantido: string | null;
+  manifestSomente: boolean;
+  numero: string | null;
+}
 
-  it("foco sem rotação: só o manifest barato é relido (sem fetch duplicado)", async () => {
-    instalarRotacao();
-    const div = await montar(<ExplorarPage />);
-    void div;
-    expect(conta("/data/manifest.json")).toBe(1);
-    expect(conta(`/data/${DS}.json`)).toBe(1);
-    await focarRotacao();
-    expect(conta("/data/manifest.json")).toBe(2);
-    expect(conta(`/data/${DS}.json`)).toBe(1);
-  });
+const PAGINAS: PaginaMatriz[] = [
+  {
+    rota: "/explorar",
+    nodo: () => <ExplorarPage />,
+    pesados: [`/data/${DS}.json`],
+    pesadoMantido: `/data/${DS}.json`,
+    manifestSomente: false,
+    numero: null,
+  },
+  {
+    rota: "/verificar",
+    nodo: () => <VerificarPage />,
+    pesados: [],
+    pesadoMantido: null,
+    manifestSomente: true,
+    numero: null,
+  },
+  {
+    rota: "/analisar",
+    nodo: () => <AnalisarPage />,
+    pesados: ["/data/resumo.json", "/data/por_uf.json"],
+    pesadoMantido: "/data/resumo.json",
+    manifestSomente: false,
+    numero: "Total de votos no filtro: 3.000",
+  },
+];
 
-  it("visibilitychange visível com manifest trocado → selo novo", async () => {
-    instalarRotacao();
-    const div = await montar(<ExplorarPage />);
-    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
-    manifestAtual = MANIFEST_B;
-    await voltarVisivel();
-    expect(div.innerHTML).toContain(`sha256: ${HASH_B}`);
-  });
+type Perturbacao = "blip" | "nulo" | "vazio";
 
-  it("blip no manifest (fetch rejeita) → dado válido mantido, sem supressão", async () => {
-    instalarRotacao();
-    const div = await montar(<ExplorarPage />);
-    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
-    falharManifest = true;
-    await focarRotacao();
-    // Stale-while-revalidate: falha ≠ rotação — selo e fato intactos.
-    expect(conta("/data/manifest.json")).toBe(2); // foco retentou a leitura
-    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
-    expect(div.innerHTML).not.toContain("dado não auditado");
-    expect(conta(`/data/${DS}.json`)).toBe(1);
-  });
-
-  it("manifest 200 com corpo null → dado válido mantido, sem supressão", async () => {
-    instalarRotacao();
-    const div = await montar(<ExplorarPage />);
-    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
-    manifestNulo = true;
-    await focarRotacao();
-    // null não é manifest: mantém o último selo validado (sem wipe).
-    expect(conta("/data/manifest.json")).toBe(2); // foco retentou a leitura
-    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
-    expect(div.innerHTML).not.toContain("dado não auditado");
-    expect(conta(`/data/${DS}.json`)).toBe(1);
-  });
-
-  it("manifest 200 `{}` → dado válido mantido (sem ingestions não é manifest)", async () => {
-    instalarRotacao();
-    const div = await montar(<ExplorarPage />);
-    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
+function perturbar(tipo: Perturbacao): void {
+  if (tipo === "blip") falharManifest = true;
+  else if (tipo === "nulo") manifestNulo = true;
+  else {
     corpoForjado = {};
     forjarCorpo = true;
-    await focarRotacao();
-    expect(conta("/data/manifest.json")).toBe(2); // foco retentou a leitura
-    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
-    expect(div.innerHTML).not.toContain("dado não auditado");
-    expect(conta(`/data/${DS}.json`)).toBe(1);
-  });
+  }
+}
 
-  it("manifest 200 `{ingestions:[]}` → suprime (vazio atesta nada, fail-closed)", async () => {
-    instalarRotacao();
-    const div = await montar(<ExplorarPage />);
-    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
-    corpoForjado = { ingestions: [] };
-    forjarCorpo = true;
-    await focarRotacao();
-    // Estruturalmente válido: rotação prossegue e o selo vazio suprime.
-    expect(div.innerHTML).not.toContain(`sha256: ${HASH_A}`);
-    expect(div.innerHTML).toContain("dado não auditado");
-  });
-});
+// Abertura comum: monta com MANIFEST_A e pin o selo válido antes de perturbar.
+async function montarComSelo(p: PaginaMatriz): Promise<HTMLDivElement> {
+  instalarRotacao();
+  const div = await montar(p.nodo());
+  expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
+  return div;
+}
 
-describe("/verificar: rotação de manifest (EVOLVE-9 Task 3b)", () => {
-  it("manifest trocado + foco → selo novo (sem stale)", async () => {
-    instalarRotacao();
-    const div = await montar(<VerificarPage />);
-    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
-    manifestAtual = MANIFEST_B;
-    await focarRotacao();
-    expect(div.innerHTML).toContain(`sha256: ${HASH_B}`);
-    expect(div.innerHTML).not.toContain(`sha256: ${HASH_A}`);
-  });
+// Marcador de números: só páginas com `numero` afirmam (presente/ausente).
+function afirmaNumero(div: HTMLDivElement, p: PaginaMatriz, negado = false): void {
+  if (p.numero === null) return;
+  if (negado) expect(div.innerHTML).not.toContain(p.numero);
+  else expect(div.innerHTML).toContain(p.numero);
+}
 
-  it("foco sem rotação: só o manifest barato é relido", async () => {
-    instalarRotacao();
-    const div = await montar(<VerificarPage />);
-    void div;
-    expect(conta("/data/manifest.json")).toBe(1);
-    await focarRotacao();
-    expect(conta("/data/manifest.json")).toBe(2);
+async function matrizTroca(p: PaginaMatriz): Promise<void> {
+  const div = await montarComSelo(p);
+  manifestAtual = MANIFEST_B;
+  await focarRotacao();
+  expect(div.innerHTML).toContain(`sha256: ${HASH_B}`);
+  expect(div.innerHTML).not.toContain(`sha256: ${HASH_A}`);
+}
+
+async function matrizSemRotacao(p: PaginaMatriz): Promise<void> {
+  instalarRotacao();
+  await montar(p.nodo());
+  expect(conta("/data/manifest.json")).toBe(1);
+  for (const s of p.pesados) expect(conta(s)).toBe(1);
+  await focarRotacao();
+  expect(conta("/data/manifest.json")).toBe(2);
+  for (const s of p.pesados) expect(conta(s)).toBe(1);
+  if (p.manifestSomente) {
     // Sem fetch pesado nesta rota: tudo o que foi buscado foi manifest.
     expect(chamadas.every((u) => u.endsWith("/data/manifest.json"))).toBe(true);
-  });
+  }
+}
 
-  it("visibilitychange visível com manifest trocado → selo novo", async () => {
-    instalarRotacao();
-    const div = await montar(<VerificarPage />);
-    manifestAtual = MANIFEST_B;
-    await voltarVisivel();
-    expect(div.innerHTML).toContain(`sha256: ${HASH_B}`);
-  });
+async function matrizVisivel(p: PaginaMatriz): Promise<void> {
+  const div = await montarComSelo(p);
+  manifestAtual = MANIFEST_B;
+  await voltarVisivel();
+  expect(div.innerHTML).toContain(`sha256: ${HASH_B}`);
+}
 
-  it("blip no manifest (fetch rejeita) → selo válido mantido, sem supressão", async () => {
-    instalarRotacao();
-    const div = await montar(<VerificarPage />);
-    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
-    falharManifest = true;
-    await focarRotacao();
-    // Stale-while-revalidate: falha ≠ rotação — selo intacto.
-    expect(conta("/data/manifest.json")).toBe(2); // foco retentou a leitura
-    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
-    expect(div.innerHTML).not.toContain("dado não auditado");
-  });
+async function matrizMantido(p: PaginaMatriz, tipo: Perturbacao): Promise<void> {
+  const div = await montarComSelo(p);
+  afirmaNumero(div, p);
+  perturbar(tipo);
+  await focarRotacao();
+  // Stale-while-revalidate: ilegível ≠ rotação — válido mantido, foco
+  // retentou a leitura, sem pesado sobre dado válido.
+  expect(conta("/data/manifest.json")).toBe(2);
+  expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
+  afirmaNumero(div, p);
+  expect(div.innerHTML).not.toContain("dado não auditado");
+  if (p.pesadoMantido !== null) expect(conta(p.pesadoMantido)).toBe(1);
+}
 
-  it("manifest 200 com corpo null → selo válido mantido, sem supressão", async () => {
-    instalarRotacao();
-    const div = await montar(<VerificarPage />);
-    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
-    manifestNulo = true;
-    await focarRotacao();
-    // null não é manifest: mantém o último selo validado (sem wipe).
-    expect(conta("/data/manifest.json")).toBe(2); // foco retentou a leitura
-    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
-    expect(div.innerHTML).not.toContain("dado não auditado");
-  });
+async function matrizSuprimido(p: PaginaMatriz): Promise<void> {
+  const div = await montarComSelo(p);
+  afirmaNumero(div, p);
+  corpoForjado = { ingestions: [] };
+  forjarCorpo = true;
+  await focarRotacao();
+  // Estruturalmente válido: rotação prossegue e o selo vazio suprime.
+  expect(div.innerHTML).not.toContain(`sha256: ${HASH_A}`);
+  afirmaNumero(div, p, true);
+  expect(div.innerHTML).toContain("dado não auditado");
+}
 
-  it("manifest 200 `{}` → selo válido mantido (sem ingestions não é manifest)", async () => {
-    instalarRotacao();
-    const div = await montar(<VerificarPage />);
-    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
-    corpoForjado = {};
-    forjarCorpo = true;
-    await focarRotacao();
-    expect(conta("/data/manifest.json")).toBe(2); // foco retentou a leitura
-    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
-    expect(div.innerHTML).not.toContain("dado não auditado");
+for (const p of PAGINAS) {
+  describe(`${p.rota}: rotação de manifest (matriz Task 3b/R2/R3)`, () => {
+    it("manifest trocado + foco → selo novo (sem stale)", () => matrizTroca(p));
+    it("foco sem rotação: só o manifest barato é relido (sem fetch duplicado)", () =>
+      matrizSemRotacao(p));
+    it("visibilitychange visível com manifest trocado → selo novo", () => matrizVisivel(p));
+    it("blip no manifest (fetch rejeita) → válido mantido, sem supressão", () =>
+      matrizMantido(p, "blip"));
+    it("manifest 200 com corpo null → válido mantido, sem supressão", () =>
+      matrizMantido(p, "nulo"));
+    it("manifest 200 `{}` → válido mantido (sem ingestions não é manifest)", () =>
+      matrizMantido(p, "vazio"));
+    it("manifest 200 `{ingestions:[]}` → suprime (vazio atesta nada, fail-closed)", () =>
+      matrizSuprimido(p));
   });
-
-  it("manifest 200 `{ingestions:[]}` → suprime (vazio atesta nada, fail-closed)", async () => {
-    instalarRotacao();
-    const div = await montar(<VerificarPage />);
-    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
-    corpoForjado = { ingestions: [] };
-    forjarCorpo = true;
-    await focarRotacao();
-    // Estruturalmente válido: rotação prossegue e o selo vazio suprime.
-    expect(div.innerHTML).not.toContain(`sha256: ${HASH_A}`);
-    expect(div.innerHTML).toContain("dado não auditado");
-  });
-});
-
-describe("/analisar: rotação de manifest (EVOLVE-9 Task 3b)", () => {
-  it("manifest trocado + foco → selo novo (sem stale)", async () => {
-    instalarRotacao();
-    const div = await montar(<AnalisarPage />);
-    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
-    manifestAtual = MANIFEST_B;
-    await focarRotacao();
-    expect(div.innerHTML).toContain(`sha256: ${HASH_B}`);
-    expect(div.innerHTML).not.toContain(`sha256: ${HASH_A}`);
-  });
-
-  it("foco sem rotação: só o manifest barato é relido (sem fetch duplicado)", async () => {
-    instalarRotacao();
-    const div = await montar(<AnalisarPage />);
-    void div;
-    expect(conta("/data/manifest.json")).toBe(1);
-    expect(conta("/data/resumo.json")).toBe(1);
-    await focarRotacao();
-    expect(conta("/data/manifest.json")).toBe(2);
-    expect(conta("/data/resumo.json")).toBe(1);
-    expect(conta("/data/por_uf.json")).toBe(1);
-  });
-
-  it("visibilitychange visível com manifest trocado → selo novo", async () => {
-    instalarRotacao();
-    const div = await montar(<AnalisarPage />);
-    manifestAtual = MANIFEST_B;
-    await voltarVisivel();
-    expect(div.innerHTML).toContain(`sha256: ${HASH_B}`);
-  });
-
-  it("blip no manifest (fetch rejeita) → números mantidos, sem supressão", async () => {
-    instalarRotacao();
-    const div = await montar(<AnalisarPage />);
-    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
-    expect(div.innerHTML).toContain("Total de votos no filtro: 3.000");
-    falharManifest = true;
-    await focarRotacao();
-    // Stale-while-revalidate: falha ≠ rotação — selo e números intactos,
-    // sem refetch pesado sobre dado válido.
-    expect(conta("/data/manifest.json")).toBe(2); // foco retentou a leitura
-    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
-    expect(div.innerHTML).toContain("Total de votos no filtro: 3.000");
-    expect(div.innerHTML).not.toContain("dado não auditado");
-    expect(conta("/data/resumo.json")).toBe(1);
-  });
-
-  it("manifest 200 com corpo null → números mantidos, sem supressão", async () => {
-    instalarRotacao();
-    const div = await montar(<AnalisarPage />);
-    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
-    expect(div.innerHTML).toContain("Total de votos no filtro: 3.000");
-    manifestNulo = true;
-    await focarRotacao();
-    // null não é manifest: mantém selo e números (sem wipe, sem pesado).
-    expect(conta("/data/manifest.json")).toBe(2); // foco retentou a leitura
-    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
-    expect(div.innerHTML).toContain("Total de votos no filtro: 3.000");
-    expect(div.innerHTML).not.toContain("dado não auditado");
-    expect(conta("/data/resumo.json")).toBe(1);
-  });
-
-  it("manifest 200 `{}` → números mantidos (sem ingestions não é manifest)", async () => {
-    instalarRotacao();
-    const div = await montar(<AnalisarPage />);
-    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
-    expect(div.innerHTML).toContain("Total de votos no filtro: 3.000");
-    corpoForjado = {};
-    forjarCorpo = true;
-    await focarRotacao();
-    expect(conta("/data/manifest.json")).toBe(2); // foco retentou a leitura
-    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
-    expect(div.innerHTML).toContain("Total de votos no filtro: 3.000");
-    expect(div.innerHTML).not.toContain("dado não auditado");
-    expect(conta("/data/resumo.json")).toBe(1);
-  });
-
-  it("manifest 200 `{ingestions:[]}` → suprime (vazio atesta nada, fail-closed)", async () => {
-    instalarRotacao();
-    const div = await montar(<AnalisarPage />);
-    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
-    expect(div.innerHTML).toContain("Total de votos no filtro: 3.000");
-    corpoForjado = { ingestions: [] };
-    forjarCorpo = true;
-    await focarRotacao();
-    // Estruturalmente válido: rotação prossegue e o selo vazio suprime.
-    expect(div.innerHTML).not.toContain(`sha256: ${HASH_A}`);
-    expect(div.innerHTML).not.toContain("Total de votos no filtro: 3.000");
-    expect(div.innerHTML).toContain("dado não auditado");
-  });
-});
+}
