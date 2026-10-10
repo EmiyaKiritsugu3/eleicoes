@@ -23,6 +23,7 @@ import {
   type SealState,
 } from "../lib/data";
 import { vereditoTemProva } from "../lib/regiao";
+import { fetchJson } from "../lib/fetchJson";
 import { MOTIVO_SEM_HASH, SEM_DADO } from "../lib/textos";
 
 /** Seleção do mapa → sigla UF p/ focar o filtro (fail-closed: EXTERIOR e
@@ -35,16 +36,6 @@ export function ufDeSelecaoMapa(sel: string): string | null {
   const m = /^(\d{2})\d{5}$/.exec(s);
   if (m) return UF_POR_PREFIXO_IBGE[m[1]] ?? null;
   return null;
-}
-
-async function fetchJson<T>(path: string): Promise<T | null> {
-  try {
-    const res = await fetch(path, { cache: "no-store" });
-    if (!res.ok) return null;
-    return (await res.json()) as T;
-  } catch {
-    return null;
-  }
 }
 
 function Bar({ value, max }: { value: number; max: number }) {
@@ -86,10 +77,10 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   // cada chamador aplica o seu epílogo (mount: `setManifestChecked(true)`;
   // rotação: só entra aqui com selo mudado). Sem mudança de comportamento.
   const carregarPesados = useCallback(async () => {
-    setResumo(await fetchJson<ResumoJson>("/data/resumo.json"));
-    setPorUf((await fetchJson<PorUfRow[]>("/data/por_uf.json")) ?? []);
-    setPorCand((await fetchJson<PorCandidatoRow[]>("/data/por_candidato.json")) ?? []);
-    return getSealState(await fetchJson("/data/manifest.json"));
+    setResumo((await fetchJson<ResumoJson>("/data/resumo.json")).data);
+    setPorUf((await fetchJson<PorUfRow[]>("/data/por_uf.json")).data ?? []);
+    setPorCand((await fetchJson<PorCandidatoRow[]>("/data/por_candidato.json")).data ?? []);
+    return getSealState((await fetchJson("/data/manifest.json")).data);
   }, []);
 
   const carregarDados = useCallback(async () => {
@@ -120,7 +111,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
       if (ocupadoRef.current) return;
       ocupadoRef.current = true;
       try {
-        const novoSeal = getSealState(await fetchJson("/data/manifest.json"));
+        const novoSeal = getSealState((await fetchJson("/data/manifest.json")).data);
         if (JSON.stringify(novoSeal) === JSON.stringify(sealRef.current)) return;
         sealRef.current = await carregarPesados();
         setSeal(sealRef.current);

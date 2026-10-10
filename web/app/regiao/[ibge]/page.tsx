@@ -21,16 +21,7 @@ import PainelRegiao, {
 } from "../../../components/PainelRegiao";
 import type { SealState } from "../../../lib/data";
 import { censoTemProva, fatoDatasetDe, getSealParaDataset } from "../../../lib/regiao";
-
-async function fetchJson<T>(path: string): Promise<T | null> {
-  try {
-    const res = await fetch(path, { cache: "no-store" });
-    if (!res.ok) return null;
-    return (await res.json()) as T;
-  } catch {
-    return null;
-  }
-}
+import { fetchJson } from "../../../lib/fetchJson";
 
 function ConteudoRegiao({ ibge }: { ibge: string }) {
   const search = useSearchParams();
@@ -73,15 +64,15 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
   // (EVOLVE-8 Task 1: sem entry auditada, o mapa é null — JSON forjado no
   // path servido nunca vira número, paridade com o gate do fato).
   const buscarFato = useCallback(async (param: string) => {
-    const manifest = await fetchJson("/data/manifest.json");
+    const manifest = (await fetchJson("/data/manifest.json")).data;
     const ds = fatoDatasetDe(manifest, param);
     const novoSeal = getSealParaDataset(manifest, ds);
-    const f = ds ? await fetchJson<FatoRegiao>(`/data/${ds}.json`) : null;
+    const f = ds ? (await fetchJson<FatoRegiao>(`/data/${ds}.json`)).data : null;
     return { ds, novoSeal, f, manifest };
   }, []);
   const buscarCenso = useCallback(
     async (manifest: unknown) =>
-      censoTemProva(manifest) ? parseCensoMapa(await fetchJson<unknown>(CENSO_URL)) : null,
+      censoTemProva(manifest) ? parseCensoMapa((await fetchJson<unknown>(CENSO_URL)).data) : null,
     [],
   );
 
@@ -144,7 +135,7 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
       const minha = ++geracaoRef.current;
       try {
         const param = fatoParamRef.current;
-        const manifest = await fetchJson("/data/manifest.json");
+        const manifest = (await fetchJson("/data/manifest.json")).data;
         const ds = fatoDatasetDe(manifest, param);
         const novoSeal = getSealParaDataset(manifest, ds);
         if (JSON.stringify({ ds, seal: novoSeal }) === seloRef.current) return;
@@ -152,10 +143,12 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
         // artefato nem é buscado (custo zero no caso forjado) e a pop cai
         // p/ SEM_DADO junto com os votos.
         const censoOk = censoTemProva(manifest);
-        const [f, rawCenso] = await Promise.all([
+        const [rf, rc] = await Promise.all([
           ds ? fetchJson<FatoRegiao>(`/data/${ds}.json`) : Promise.resolve(null),
           censoOk ? fetchJson<unknown>(CENSO_URL) : Promise.resolve(null),
         ]);
+        const f = rf?.data ?? null;
+        const rawCenso = rc?.data ?? null;
         // ?fato= trocou no meio do load: o effect do novo param recarrega;
         // este run stale não escreve (nunca número antigo sob selo novo).
         // Geração idem: run superado por outro load não publica nem limpa.

@@ -16,17 +16,8 @@ import {
   type AuditInfo,
   type Manifest,
 } from "../../lib/data";
+import { fetchJson } from "../../lib/fetchJson";
 import { SEM_DADO } from "../../lib/textos";
-
-async function fetchJson<T>(path: string): Promise<T | null> {
-  try {
-    const res = await fetch(path, { cache: "no-store" });
-    if (!res.ok) return null;
-    return (await res.json()) as T;
-  } catch {
-    return null;
-  }
-}
 
 /** Selo de amostra sintética compartilhado (components/FixtureBadge):
  *  tratamento de aviso, NUNCA o selo oficial — mesmo com hash presente.
@@ -59,7 +50,7 @@ export default function Auditoria() {
 
   useEffect(() => {
     (async () => {
-      const m = await fetchJson<Manifest>("/data/manifest.json");
+      const m = (await fetchJson<Manifest>("/data/manifest.json")).data;
       setManifest(m);
       setOfficial(getOfficialAuditInfo(m));
       setChecked(true);
