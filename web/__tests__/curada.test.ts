@@ -6,57 +6,17 @@ import { CuradaConteudo, resolverCandidato } from "../app/perguntas/Curada";
 import { ECO_SEAL } from "../components/PainelRegiao";
 import type { SealState } from "../lib/data";
 import { VAR_DEMO, type MunRow } from "../lib/motor";
+import {
+  CANDIDATOS_EXEMPLO as CANDIDATOS,
+  demoCurada as demo,
+  linhas40Municipio as linhas40,
+  type FatoSintetico,
+} from "./helpers";
 
 // Fato sintético: 40 municípios, A vence todos; share de A cresce com
 // esc_sup (correlação forte, n = 40 ≥ piso 30). Nenhum arquivo de fato
 // real é lido aqui (pure functions sobre MunRow sintéticas).
-const CANDIDATOS = [
-  { id: "cand-a", nome: "Candidata Exemplo A", partido: "PA" },
-  { id: "cand-b", nome: "Candidato Exemplo B", partido: "PB" },
-];
-
-type FatoSintetico = {
-  candidatos: typeof CANDIDATOS;
-  municipios: MunRow[];
-} | null;
-
-function demo(over: Partial<Record<string, number>> = {}) {
-  return {
-    esc_sup: 10,
-    esc_med: 30,
-    esc_fund: 50,
-    renda_media: 2000,
-    pobres_pct: 20,
-    idade_mediana: 35,
-    urbanizacao: 80,
-    pop: 10000,
-    eleitores: 1000,
-    ...over,
-  };
-}
-
-function linhas40(): MunRow[] {
-  const rows: MunRow[] = [];
-  for (let i = 0; i < 40; i++) {
-    const a = 500 + i * 10;
-    rows.push({
-      ibge: `355030${i}`,
-      uf: "SP",
-      nome: `Município ${i}`,
-      votos: [a, 1000 - a],
-      total: 1000,
-      abst: 50,
-      demo: demo({
-        esc_sup: 5 + i * 0.5,
-        renda_media: 1500 + i * 50,
-        pobres_pct: 30 - i * 0.4,
-        idade_mediana: 30 + i * 0.2,
-        urbanizacao: 60 + i * 0.8,
-      }),
-    });
-  }
-  return rows;
-}
+// (CANDIDATOS/demo/linhas40/FatoSintetico em ./helpers — fonte única.)
 
 // 5 municípios (abaixo do piso n ≥ 30): correlação suprimida, nunca zerada.
 function linhas5(): MunRow[] {

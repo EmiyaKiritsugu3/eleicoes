@@ -148,6 +148,7 @@ describe("auditoria artifacts (EVOLVE-2 Task 1)", () => {
       />,
     );
     expect(html).not.toContain(HASH_REAL);
+    expect(html).not.toContain(HASH_REAL.slice(0, 12));
     expect(html).toContain("dado não auditado");
   });
 });

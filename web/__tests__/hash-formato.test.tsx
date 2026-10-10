@@ -6,7 +6,10 @@ import { vereditoTemProva } from "../lib/regiao";
 import { ExplorarConteudo } from "../components/Explorar";
 import { CuradaConteudo } from "../app/perguntas/Curada";
 import perguntas from "../data/perguntas.json";
-import type { MunRow } from "../lib/motor";
+import {
+  CANDIDATOS_EXEMPLO as CANDIDATOS,
+  linhas40Municipio as linhas40,
+} from "./helpers";
 
 // EVOLVE-3 Task 1: hash de formato lixo (não 64-hex) nega selo e número.
 // O manifest abaixo imita ingestão com sha256 fora do formato que o ETL
@@ -24,42 +27,6 @@ const MANIFEST_REAL = {
     { source_url: "https://cdn.tse.jus.br/x.zip", sha256: HASH_REAL, date: "2026-01-01" },
   ],
 };
-
-function demo(i: number) {
-  return {
-    esc_sup: 5 + i * 0.5,
-    esc_med: 30,
-    esc_fund: 50,
-    renda_media: 1500 + i * 50,
-    pobres_pct: 30 - i * 0.4,
-    idade_mediana: 30 + i * 0.2,
-    urbanizacao: 60 + i * 0.8,
-    pop: 10000,
-    eleitores: 1000,
-  };
-}
-
-function linhas40(): MunRow[] {
-  const rows: MunRow[] = [];
-  for (let i = 0; i < 40; i++) {
-    const a = 500 + i * 10;
-    rows.push({
-      ibge: `355030${i}`,
-      uf: "SP",
-      nome: `Município ${i}`,
-      votos: [a, 1000 - a],
-      total: 1000,
-      abst: 50,
-      demo: demo(i),
-    });
-  }
-  return rows;
-}
-
-const CANDIDATOS = [
-  { id: "cand-a", nome: "Candidata Exemplo A", partido: "PA" },
-  { id: "cand-b", nome: "Candidato Exemplo B", partido: "PB" },
-];
 
 describe("hash-formato (EVOLVE-3 Task 1: sha256 lixo nega selo)", () => {
   it('manifest com sha256:"abc123" -> sem selo oficial (fail-closed)', () => {
