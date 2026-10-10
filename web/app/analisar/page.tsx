@@ -25,6 +25,7 @@ import {
   parseAnalisarSearchParams,
   semCoberturaTurnoZona,
 } from "../../lib/export";
+import { vereditoTemProva } from "../../lib/regiao";
 
 const SEM_DADO = "sem dado oficial";
 const SEM_COBERTURA_AGG =
@@ -136,6 +137,13 @@ export default function Analisar() {
     () => semCoberturaTurnoZona(porUf, porCand, f),
     [porUf, porCand, f],
   );
+  // Ruling EVOLVE-3 Task 4 (opção a): /analisar suprime como
+  // Explorar/Curada — sem prova no selo (nem oficial nem fixture com
+  // hash, cf. `vereditoTemProva` em lib/regiao — fonte única do gate),
+  // ufs/ev/cands/dispersão esvaziam e as seções caem nos ramos SEM_DADO
+  // existentes (fail-closed, paridade com Explorar). Só display é gated;
+  // agregação, share e export não mudam (export já bloqueia sem oficial).
+  const semProva = manifestChecked && !vereditoTemProva(seal);
 
   // Partido aplica-se uniformemente: onde o agregado carrega a coluna, filtra;
   // onde não carrega (por_uf no V1), as seções exibem nota de divulgação.
@@ -161,15 +169,15 @@ export default function Analisar() {
   );
 
   const ufs = useMemo(
-    () => (semCob ? [] : rankingUf(porUfFiltrado, baseFiltros)),
-    [porUfFiltrado, baseFiltros, semCob],
+    () => (semCob || semProva ? [] : rankingUf(porUfFiltrado, baseFiltros)),
+    [porUfFiltrado, baseFiltros, semCob, semProva],
   );
   const ev = useMemo(
-    () => (semCob ? [] : evolucaoAnual(porUfFiltrado, baseFiltros)),
-    [porUfFiltrado, baseFiltros, semCob],
+    () => (semCob || semProva ? [] : evolucaoAnual(porUfFiltrado, baseFiltros)),
+    [porUfFiltrado, baseFiltros, semCob, semProva],
   );
   const cands = useMemo(() => {
-    if (semCob) return [];
+    if (semCob || semProva) return [];
     const porPartido = filtrarPorPartido(porCand, f.partido);
     if (!f.candidato || f.candidato.trim() === "") {
       return [...porPartido].sort(
@@ -184,7 +192,7 @@ export default function Analisar() {
           String(r.partido ?? "").toLowerCase().includes(q),
       )
       .sort((a, b) => (Number(b.votos) || 0) - (Number(a.votos) || 0));
-  }, [porCand, f.partido, f.candidato, semCob]);
+  }, [porCand, f.partido, f.candidato, semCob, semProva]);
 
   const pivoRows: { chave: string; votos: number }[] = useMemo(() => {
     if (pivo === "uf") return ufs.map((r) => ({ chave: r.uf, votos: r.votos }));
@@ -206,6 +214,7 @@ export default function Analisar() {
     );
 
   const dispersao = useMemo(() => {
+    if (semProva) return [];
     const rows = porCand as (PorCandidatoRow & {
       financiamento?: unknown;
       valor_financiamento?: unknown;
@@ -221,7 +230,7 @@ export default function Analisar() {
         votos: Number(r.votos) || 0,
         financiamento: Number(r.financiamento ?? r.valor_financiamento) || 0,
       }));
-  }, [porCand]);
+  }, [porCand, semProva]);
 
   const res = useMemo(
     () => getResumo(porUfFiltrado, baseFiltros),
@@ -351,7 +360,7 @@ export default function Analisar() {
         {partidoIgnoradoUF && !semCob && <p role="note">{NOTA_PARTIDO}</p>}
         {carregando ? (
           <p role="status">a carregar…</p>
-        ) : !resumo || res.vazio || semCob ? (
+        ) : !resumo || res.vazio || semCob || semProva ? (
           <p>{SEM_DADO}</p>
         ) : (
           <p>Total de votos no filtro: {formatVotes(res.totalVotos)}</p>

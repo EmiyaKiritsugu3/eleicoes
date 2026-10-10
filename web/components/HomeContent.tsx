@@ -19,6 +19,7 @@ import {
   type ResumoJson,
   type SealState,
 } from "../lib/data";
+import { vereditoTemProva } from "../lib/regiao";
 
 const SEM_DADO = "sem dado oficial";
 
@@ -81,6 +82,13 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   // role="status" nas seções de dados; SEM_DADO só após resolve.
   // Seções estáticas (biblioteca, abstenção) não dependem de fetch.
   const carregando = !manifestChecked;
+  // Ruling EVOLVE-3 Task 4 (opção a): Home suprime como Explorar/Curada —
+  // sem prova no selo (nem oficial nem fixture com hash, cf.
+  // `vereditoTemProva` em lib/regiao — fonte única do gate), as seções de
+  // dados mostram "sem dado oficial" em vez de números, mesmo com dados
+  // carregados e com o banner "dado não auditado" acima. Só display é
+  // gated; fetch e agregação (getResumo/rankingUf/...) não mudam.
+  const semProva = manifestChecked && !vereditoTemProva(seal);
   const badge = <SealSlot seal={seal} />;
   const candidatoAtivo = (f.candidato ?? "").trim() !== "";
   // Alerta honesto sem depender de CSS externo (M4-web): fundo/borda inline.
@@ -136,7 +144,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         {candidatoAtivo && <p role="note">{NOTA_CANDIDATO_GLOBAL}</p>}
         {carregando ? (
           <p role="status">a carregar…</p>
-        ) : semDados ? (
+        ) : semDados || semProva ? (
           <p>{SEM_DADO}</p>
         ) : (
           <ul>
@@ -158,7 +166,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         {badge}
         {carregando ? (
           <p role="status">a carregar…</p>
-        ) : ufs.length === 0 ? (
+        ) : semProva || ufs.length === 0 ? (
           <p>{SEM_DADO}</p>
         ) : (
           <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Votos por UF">
@@ -185,7 +193,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         {badge}
         {carregando ? (
           <p role="status">a carregar…</p>
-        ) : cands.length === 0 ? (
+        ) : semProva || cands.length === 0 ? (
           <p>{SEM_DADO}</p>
         ) : (
           <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Ranking de candidatos por votos">
@@ -211,7 +219,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         {badge}
         {carregando ? (
           <p role="status">a carregar…</p>
-        ) : ev.length === 0 ? (
+        ) : semProva || ev.length === 0 ? (
           <p>{SEM_DADO}</p>
         ) : (
           <>
