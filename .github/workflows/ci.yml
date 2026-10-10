@@ -67,6 +67,19 @@ jobs:
           EOF
           python scripts/malha.py --input /tmp/malha_fixture.geojson --output web/public/data/malha_municipios.topojson --quantize 100 --tolerancia 0
           ls -la web/public/data/malha_municipios.topojson
+          # Checagem de conteúdo (fail-closed): existência não basta — uma
+          # regressão no gerador que esvaziasse as geometrias passaria no
+          # test -f mas quebraria o mapa. Decodifica e exige ≥1 geometria
+          # com propriedade ibge7 (mesmo contrato de `loadMalha` no front).
+          python - <<'EOF'
+          import json
+          topo = json.load(open("web/public/data/malha_municipios.topojson", encoding="utf-8"))
+          geoms = [g for o in topo.get("objects", {}).values()
+                   if isinstance(o, dict) for g in o.get("geometries", [])]
+          com_ibge = [g for g in geoms if (g.get("properties") or {}).get("ibge7")]
+          assert com_ibge, "malha sem geometrias com ibge7 (regressão no gerador?)"
+          print(f"OK: {len(com_ibge)} geometrias com ibge7")
+          EOF
 
       - name: Assert motor fixtures (Censo + fato before web tests)
         run: |

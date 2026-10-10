@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import MapaBrasil from "./MapaBrasil";
-import { MALHA_MUNICIPIOS_URL, UFS } from "../lib/malha";
+import { loadMalha, MALHA_MUNICIPIOS_URL, UFS, type MalhaFeature } from "../lib/malha";
 import SourceBadge from "./SourceBadge";
 import SealSlot from "./SealSlot";
 import perguntasJson from "../data/perguntas.json";
@@ -80,7 +80,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   const [porCand, setPorCand] = useState<PorCandidatoRow[]>([]);
   const [seal, setSeal] = useState<SealState>({ official: null, hasFixture: false, fixtureHash: "" });
   const [manifestChecked, setManifestChecked] = useState(false);
-  const [malhaOk, setMalhaOk] = useState(false);
+  const [malhaFeatures, setMalhaFeatures] = useState<MalhaFeature[] | null>(null);
   const [f, setF] = useState<Filtros>(initialFiltros ?? {});
 
   useEffect(() => {
@@ -93,18 +93,20 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
     })();
   }, []);
 
-  // Sonda HEAD da malha municipal (artefato gitignored, gerado por
-  // `scripts/malha.py` no CI): com artefato a seção mostra o mapa clicável;
-  // sem artefato, o fallback honesto na lista v1. Qualquer erro → false
-  // (fail-closed, nunca canvas quebrado).
+  // Resolução única da malha municipal (artefato gitignored, gerado por
+  // `scripts/malha.py` no CI): a Home resolve via `loadMalha` e passa as
+  // features prontas ao `MapaBrasil` (sem refetch). Com malha válida, mapa
+  // clicável; sem malha (ausente OU vazia/inválida — HTTP 200 não basta), o
+  // fallback único e honesto na lista v1. Qualquer erro → null (fail-closed,
+  // nunca canvas quebrado; gate de hash intacto abaixo).
   useEffect(() => {
     let vivo = true;
-    (async () => {
+    void (async () => {
       try {
-        const res = await fetch(MALHA_MUNICIPIOS_URL, { method: "HEAD", cache: "no-store" });
-        if (vivo) setMalhaOk(res.ok);
+        const features = await loadMalha(MALHA_MUNICIPIOS_URL);
+        if (vivo) setMalhaFeatures(features);
       } catch {
-        if (vivo) setMalhaOk(false);
+        if (vivo) setMalhaFeatures(null);
       }
     })();
     return () => {
@@ -211,10 +213,12 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
           <p role="status">a carregar…</p>
         ) : semProva || ufs.length === 0 ? (
           <p>{SEM_DADO}</p>
-        ) : malhaOk ? (
+        ) : malhaFeatures ? (
           <MapaBrasil
             malhaUrl={MALHA_MUNICIPIOS_URL}
             nivel="uf"
+            features={malhaFeatures}
+            ocultarExterior
             onSelectIbge={(sel) => {
               const uf = ufDeSelecaoMapa(sel);
               if (uf) setF((prev) => ({ ...prev, uf }));

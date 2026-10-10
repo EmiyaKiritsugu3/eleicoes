@@ -19,6 +19,12 @@ interface MapaBrasilProps {
   cores?: Record<string, string>;
   /** UF em foco p/ zoom UF→município (bounding box). */
   ufSelecionada?: string;
+  /** Features já resolvidas pelo chamador (resolução única via `loadMalha`):
+   *  quando presentes, o fetch interno é pulado. Ausente → busca via
+   *  `malhaUrl` (comportamento padrão, cf. Explorar). */
+  features?: MalhaFeature[];
+  /** Oculta o botão Exterior (Home: o filtro é por UF, EXTERIOR não foca). */
+  ocultarExterior?: boolean;
 }
 
 const TSE_RESULTADOS_URL = "https://resultados.tse.jus.br/";
@@ -40,9 +46,11 @@ function devicePixelRatioSeguro(): number {
 export function MapaFallback({
   onSelectIbge,
   motivo,
+  ocultarExterior,
 }: {
   onSelectIbge: (selecao: MapaSelecao) => void;
   motivo?: string;
+  ocultarExterior?: boolean;
 }) {
   return (
     <div>
@@ -57,9 +65,11 @@ export function MapaFallback({
           </li>
         ))}
       </ul>
-      <button type="button" onClick={() => onSelectIbge(EXTERIOR)}>
-        Exterior
-      </button>
+      {!ocultarExterior && (
+        <button type="button" onClick={() => onSelectIbge(EXTERIOR)}>
+          Exterior
+        </button>
+      )}
       <p>
         <a href={TSE_RESULTADOS_URL} target="_blank" rel="noreferrer">
           Resultados oficiais no TSE
@@ -81,14 +91,18 @@ export default function MapaBrasil({
   onSelectIbge,
   cores,
   ufSelecionada,
+  features: featuresProp,
+  ocultarExterior,
 }: MapaBrasilProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [features, setFeatures] = useState<MalhaFeature[]>([]);
+  const [features, setFeatures] = useState<MalhaFeature[]>(featuresProp ?? []);
   const [erroMalha, setErroMalha] = useState<string | null>(null);
   const featsRef = useRef<MalhaFeature[]>([]);
   featsRef.current = features;
 
   useEffect(() => {
+    // Resolução única: chamador que já resolveu (features) não refaz fetch.
+    if (featuresProp !== undefined) return;
     let vivo = true;
     loadMalha(malhaUrl).then(
       (f) => {
@@ -101,7 +115,7 @@ export default function MapaBrasil({
     return () => {
       vivo = false;
     };
-  }, [malhaUrl]);
+  }, [malhaUrl, featuresProp]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -157,7 +171,7 @@ export default function MapaBrasil({
   }, [features, nivel, ufSelecionada, cores]);
 
   if (precisaFallback(hasCanvas(), erroMalha)) {
-    return <MapaFallback onSelectIbge={onSelectIbge} motivo={erroMalha ?? undefined} />;
+    return <MapaFallback onSelectIbge={onSelectIbge} motivo={erroMalha ?? undefined} ocultarExterior={ocultarExterior} />;
   }
 
   const aoClicar = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -229,9 +243,11 @@ export default function MapaBrasil({
           </select>
         </label>
       )}
-      <button type="button" onClick={() => onSelectIbge(EXTERIOR)}>
-        Exterior
-      </button>
+      {!ocultarExterior && (
+        <button type="button" onClick={() => onSelectIbge(EXTERIOR)}>
+          Exterior
+        </button>
+      )}
     </div>
   );
 }
