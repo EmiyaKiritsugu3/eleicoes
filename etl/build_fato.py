@@ -52,7 +52,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -61,7 +60,8 @@ import pandas as pd
 
 from etl import ETL_VERSION
 from etl.build_marts import register_served_artifacts
-from etl.build_marts import _prune_fato_sem_proveniencia
+from etl.build_marts import _dentro_de, _prune_fato_sem_proveniencia
+from etl.build_marts import _write_json_atomico
 from etl.censo import check_censo_sum
 from etl.manifest import write_manifest
 from etl.sources import CENSO_DATASETS, V1_DATASETS
@@ -128,8 +128,17 @@ def _atualizar_manifest_servido(out_dir, ingestion: dict, v1_entry: dict) -> Non
     reutilizado por import — precedente: `_validate_entry`/`_artifact_entries_for`
     cruzam módulos `etl`): triple que não casa com as fontes atestadas
     nunca é servido hashless; só fato_*.json é tocado, nunca não-fato.
+    Guarda S8707 (precedente `etl/build_marts.py::_dentro_de` +
+    `_write_json_atomico`, reutilizados por import — sem fork): o
+    manifest do mirror precisa resolver estritamente sob o out_dir
+    declarado (`..`/escape levanta `ValueError` pt-BR antes de qualquer
+    mutação no fs); a escrita é atômica via o helper compartilhado, que
+    protege o `.tmp` do mesmo modo. A leitura inicial (`read_text`) é
+    read-only e dispensa guarda própria — o `..` é barrado pelo guarda
+    de entrada antes dela.
     """
     served_path = Path(out_dir) / "manifest.json"
+    _dentro_de(served_path, Path(out_dir))  # fail-closed antes de tudo
     try:
         served = json.loads(served_path.read_text(encoding="utf-8"))
         if not isinstance(served, dict):
@@ -149,10 +158,7 @@ def _atualizar_manifest_servido(out_dir, ingestion: dict, v1_entry: dict) -> Non
         if not (isinstance(e, dict) and _ingestion_dedupe_key(e) == key)
     ] + [ingestion]
     served["ingestions"] = ingestions
-    tmp_path = Path(f"{served_path}.tmp")
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(served, f, ensure_ascii=False, indent=2)
-    os.replace(tmp_path, served_path)
+    _write_json_atomico(served_path, served)  # guarda S8707 inclusa
     sources = [_served_source_shape(v1_entry)]
     seen = {(v1_entry["ano"], str(v1_entry["cargo"]).upper(), v1_entry["url"])}
     for e in ingestions:

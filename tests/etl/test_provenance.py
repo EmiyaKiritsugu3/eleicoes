@@ -359,3 +359,27 @@ def test_standalone_poda_fato_sem_proveniencia(tmp_path):
     assert nota.read_text(encoding="utf-8") == "humano"  # não-fato intacto
     assert (out_dir / "fato_2022_1_presidente.json").is_file()
     assert verify_manifest(str(out_dir / "manifest.json")) is True
+
+
+def test_standalone_mirror_traversal_bloqueado(tmp_path):
+    """S8707: out_dir com `..` levanta ValueError antes de qualquer mutação."""
+    from etl.build_fato import _atualizar_manifest_servido
+    from etl.sources import V1_DATASETS
+
+    v1 = next(e for e in V1_DATASETS
+              if e["ano"] == 2022 and str(e["cargo"]).upper() == "PRESIDENTE")
+    ingestion = {
+        "source_url": v1["url"],
+        "sha256": "ab" * 32,
+        "dataset": "fato_2022_1_presidente",
+        "ano": 2022,
+        "turno": 1,
+        "cargo": "presidente",
+    }
+    with pytest.raises(ValueError, match=r"\.\."):
+        _atualizar_manifest_servido(tmp_path / "a" / ".." / "evil",
+                                    ingestion, v1)
+    assert not (tmp_path / "evil").exists()
+    assert not (tmp_path / "a").exists()
+    assert [p for p in tmp_path.rglob("*.tmp")] == []
+    assert [p for p in tmp_path.rglob("*.corrupt.*")] == []
