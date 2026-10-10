@@ -31,9 +31,9 @@ export const ECO_SEAL = "dado de município, não de pessoa";
 /** Caminho canônico do artefato do Censo servido (EVOLVE-7 Task 2): mesmo
  *  prefixo `/data/` de resumo/por_uf/fato (arquivo
  *  `web/public/data/censo_municipios.json`, gitignore como os demais
- *  servidos). Promoção: o operador/pipeline copia o artefato emitido por
- *  `etl.censo.ingerir_censo` (irmão do manifest) para `web/public/data/`;
- *  `build_all` o preserva no staging e `register_served_artifacts` atesta
+ *  servidos). Emissão: `etl.censo.ingerir_censo` escreve direto no served
+ *  dir (sad-etl + seed); `build_all` o preserva no staging e
+ *  `register_served_artifacts` atesta
  *  os bytes com entry de fonte do Censo (nunca fan-out TSE) — a
  *  proveniência da pop vive nessa entry `artifacts`, não no gate do fato.
  *  ASSUNÇÃO DE CONFIANÇA (build-time): o runtime NÃO revalida a entry —
