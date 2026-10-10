@@ -366,6 +366,21 @@ describe("curada (gate de hash: fato sem hash não sustenta número)", () => {
     expect(resultado).not.toMatch(/r \(Pearson\) = -?\d/);
     expect(resultado).not.toMatch(/share médio[^%]*%/);
   });
+  it("selo com hash + fato null → Método SEM_DADO (sem n=0, sem veredito)", () => {
+    const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
+    const html = htmlDe(p, null, SEAL_OK);
+    const metodo = html.split('aria-label="Método"')[1].split("<section")[0];
+    expect(metodo).toContain("sem dado oficial");
+    expect(metodo).not.toMatch(/n = 0/);
+    expect(metodo).not.toContain("veredito:");
+  });
+  it("Método com fato+hash segue exibindo n e veredito (sem regressão)", () => {
+    const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
+    const html = htmlDe(p, fato40(), SEAL_OK);
+    const metodo = html.split('aria-label="Método"')[1].split("<section")[0];
+    expect(metodo).toMatch(/n = 40 municípios/);
+    expect(metodo).toContain("veredito:");
+  });
 });
 
 describe("curada (decimais pt-BR: vírgula, nunca ponto)", () => {

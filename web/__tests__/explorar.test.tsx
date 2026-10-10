@@ -9,6 +9,7 @@ import {
   type ExplorarSelecao,
 } from "../components/Explorar";
 import type { MunRow } from "../lib/motor";
+import type { SealState } from "../lib/data";
 
 const CANDIDATOS = [
   { id: "lula", nome: "Lula", partido: "PT" },
@@ -347,7 +348,7 @@ const SEAL_SEM_HASH = { official: null, hasFixture: false, fixtureHash: "" };
 const SEAL_HASH_VAZIO = { official: { hash: "", url: "", date: "" }, hasFixture: false, fixtureHash: "" };
 const SEAL_FIXTURE = { official: null, hasFixture: true, fixtureHash: "c".repeat(64) };
 
-function htmlExplorar(fato: { candidatos: typeof CANDIDATOS; municipios: MunRow[] }, seal: typeof SEAL_OK) {
+function htmlExplorar(fato: { candidatos: typeof CANDIDATOS; municipios: MunRow[] }, seal: SealState) {
   return renderToStaticMarkup(
     <ExplorarConteudo fato={fato} seal={seal} initial={SEL_VALIDA} />,
   );
@@ -377,6 +378,30 @@ describe("explorar (gate de hash: fato sem hash não sustenta número)", () => {
     const html = htmlExplorar({ candidatos: CANDIDATOS, municipios: linhasValidas() }, SEAL_HASH_VAZIO);
     expect(secaoResultado(html)).toContain("sem dado oficial");
     expect(secaoResultado(html)).not.toMatch(/r \(Pearson\) = -?\d/);
+  });
+  it("mapa sem hash → SEM_DADO, sem canvas nem fallback (vencedores suprimidos)", () => {
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo
+        fato={{ candidatos: CANDIDATOS, municipios: linhasValidas() }}
+        seal={SEAL_SEM_HASH}
+        initial={{ ...SEL_VALIDA, ver: ["mapa"] }}
+      />,
+    );
+    const mapa = html.split('aria-label="Mapa"')[1].split("<section")[0];
+    expect(mapa).toContain("sem dado oficial");
+    expect(mapa).not.toContain("<canvas");
+    expect(mapa).not.toContain("Mapa indisponível neste navegador");
+  });
+  it("mapa com hash segue renderizando (sem regressão)", () => {
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo
+        fato={{ candidatos: CANDIDATOS, municipios: linhasValidas() }}
+        seal={SEAL_OK}
+        initial={{ ...SEL_VALIDA, ver: ["mapa"] }}
+      />,
+    );
+    const mapa = html.split('aria-label="Mapa"')[1].split("<section")[0];
+    expect(mapa).not.toContain("sem dado oficial");
   });
 });
 

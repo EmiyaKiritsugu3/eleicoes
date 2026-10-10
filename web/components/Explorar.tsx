@@ -363,6 +363,9 @@ export function ExplorarConteudo({
 
   const cores = useMemo(() => {
     const out: Record<string, string> = {};
+    // Fail-closed por hash: sem fato hash-verificado o mapa não colore
+    // vencedores (resultado eleitoral nunca sem hash); vazio, sem cores.
+    if (!hashAuditado) return out;
     for (const r of linhas) {
       const w = indiceVencedor(r?.votos ?? []);
       if (w >= 0 && w < ordem.length) {
@@ -371,7 +374,7 @@ export function ExplorarConteudo({
     }
     if (sel.foco && sel.foco.trim() !== "") out[sel.foco.trim()] = "#f59e0b";
     return out;
-  }, [linhas, ordem.length, idxQuem, sel.foco]);
+  }, [hashAuditado, linhas, ordem.length, idxQuem, sel.foco]);
 
   const focoRow = useMemo(() => {
     const f = (sel.foco ?? "").trim();
@@ -755,8 +758,8 @@ export function ExplorarConteudo({
         <section aria-label="Mapa">
           <h2>Mapa — vencedor por município</h2>
           {badge}
-          {!fato ? (
-            <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}</p>
+          {!fato || !hashAuditado ? (
+            <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}{!fato ? "" : " — sem hash auditado no manifest; números exigem fato hash-verificado"}</p>
           ) : (
             <MapaBrasil
               malhaUrl={MALHA_MUNICIPIOS_URL}

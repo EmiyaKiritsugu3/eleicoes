@@ -537,8 +537,8 @@ export function CuradaConteudo({
         <p>{pergunta.texto_metodo}</p>
         <p>
           Números desta resposta:{" "}
-          {!hashAuditado ? (
-            <>{SEM_DADO} — sem hash auditado no manifest; números exigem fato hash-verificado</>
+          {!hashAuditado || !fato || !cand ? (
+            <>{SEM_DADO}{hashAuditado ? "" : " — sem hash auditado no manifest; números exigem fato hash-verificado"}</>
           ) : (
             <>n = {filtradas.length} municípios
             {corrP ? ` · r (Pearson) = ${fmtR(corrP.r)}` : ""}
