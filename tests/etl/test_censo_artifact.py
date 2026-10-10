@@ -213,3 +213,31 @@ def test_artifact_path_fora_do_dir_do_manifest_levanta(tmp_path, monkeypatch):
     assert not manifest.exists()
     assert not fora.exists()
     assert not (tmp_path / "outro").exists()
+
+
+def test_register_artifact_dotdot_levanta_antes_de_qualquer_fs(tmp_path):
+    """S8707 (PR#9): `..` em `manifest_path` ou `artifact_path` barra na
+    entrada de `register_censo_artifact` — antes do read, do rename
+    `.corrupt` e de qualquer escrita (precedente
+    `_atualizar_manifest_servido`: guarda primeiro, fs depois)."""
+    import pytest
+
+    from etl.censo import register_censo_artifact
+
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({"ingestions": [{
+        "source_url": "https://ftp.ibge.gov.br/x.zip",
+        "sha256": "ab" * 32}]}), encoding="utf-8")
+    antes = manifest.read_bytes()
+    artefato = tmp_path / "censo_municipios.json"
+    artefato.write_bytes(b'{"3550308": 10000}')
+    with pytest.raises(ValueError, match=r"\.\."):
+        register_censo_artifact(
+            str(tmp_path / "sub" / ".." / "manifest.json"), str(artefato))
+    with pytest.raises(ValueError, match=r"\.\."):
+        register_censo_artifact(
+            str(manifest), str(tmp_path / "sub" / ".." / "censo_municipios.json"))
+    assert manifest.read_bytes() == antes  # sem rename .corrupt, sem rewrite
+    assert [p for p in tmp_path.rglob("*.corrupt.*")] == []
+    assert [p for p in tmp_path.rglob("*.tmp")] == []
+    assert not (tmp_path / "sub").exists()

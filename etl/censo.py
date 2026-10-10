@@ -402,9 +402,17 @@ def register_censo_artifact(manifest_path, artifact_path, dataset=None,
     manifest ausente levanta `FileNotFoundError` (nunca artefato sem
     ingestão — `verify_manifest` exige ingestões não-vazias) e
     corrompido é preservado como `<path>.corrupt.<UTC-ts>` antes de
-    levantar `ValueError`; nada é escrito nesses casos.
+    levantar `ValueError`; nada é escrito nesses casos. Guardas S8707
+    de entrada (precedente `_atualizar_manifest_servido` em
+    `etl.build_fato`: guarda primeiro, fs depois): o manifest precisa
+    resolver sob o próprio parent e o artefato como irmão do manifest
+    (o verify resolve irmãos) — `..`/escape levantam `ValueError` pt-BR
+    ANTES de qualquer read/rename/escrita.
     """
     manifest_file = Path(manifest_path)
+    artefato = Path(artifact_path)
+    _dentro_de(manifest_file, manifest_file.parent)
+    _dentro_de(artefato, manifest_file.parent)
     try:
         doc = json.loads(manifest_file.read_text(encoding="utf-8"))
     except FileNotFoundError:
