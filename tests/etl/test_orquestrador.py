@@ -104,3 +104,21 @@ def test_totais_ilegivel_exit_2(tmp_path):
 
     argv, _webdata = _argv_base(tmp_path)
     assert main([*argv, "--totais-oficiais", str(tmp_path / "ausente.json")]) == 2
+
+
+def test_censo_total_divergente_exit_1(tmp_path):
+    """Gate de soma do Censo opt-in: total divergente barra antes do fato."""
+    from etl.__main__ import main
+
+    argv, webdata = _argv_base(tmp_path)
+    # Fixture: pop 10000 + 12000 = 22000; 1 diverge fail-closed.
+    assert main([*argv, "--censo-total-esperado", "1"]) == 1
+    assert not (webdata / "fato_2022_1_presidente.json").exists()
+
+
+def test_censo_total_correto_exit_0(tmp_path):
+    from etl.__main__ import main
+
+    argv, webdata = _argv_base(tmp_path)
+    assert main([*argv, "--censo-total-esperado", "22000"]) == 0
+    assert (webdata / "fato_2022_1_presidente.json").is_file()

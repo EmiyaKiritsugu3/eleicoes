@@ -50,7 +50,10 @@ def _parse_args(argv=None):
                         default=_REPO_ROOT / "data" / "sad.duckdb",
                         help="DuckDB de saída (padrão: data/sad.duckdb)")
     parser.add_argument("--manifest", type=Path, default=None,
-                        help="manifest canônico (padrão: <dir do --db>/manifest.json)")
+                        help="manifest canônico de proveniência/histórico "
+                             "(padrão: <dir do --db>/manifest.json); "
+                             "os gates validam o mirror servido "
+                             "(<web-data-dir>/manifest.json), não este arquivo")
     parser.add_argument("--web-data-dir", type=Path,
                         default=_REPO_ROOT / "web" / "public" / "data",
                         help="dir dos JSONs servidos (padrão: web/public/data)")
@@ -59,7 +62,13 @@ def _parse_args(argv=None):
                              "(com rede; sem a flag o run é offline)")
     parser.add_argument("--censo-csv", type=Path, default=None,
                         help="CSV bruto do Censo (header estilo IBGE/SIDRA, "
-                             "`;`-separado) p/ materializar dim_municipio")
+                             "`;`-separado) p/ materializar dim_municipio "
+                             "(sem --censo-total-esperado, pula o gate de soma)")
+    parser.add_argument("--censo-total-esperado", type=int, default=None,
+                        help="total oficial esperado p/ a soma de pop do Censo "
+                             "(gate fail-closed via check_censo_sum ANTES de "
+                             "gravar dim_municipio; diverge → saída 1; "
+                             "a ingestão via URL — ingerir_censo — sempre aplica)")
     parser.add_argument("--ano", type=int, default=2022,
                         help="ano do triple do fato (padrão: 2022)")
     parser.add_argument("--turno", type=int, default=1,
@@ -93,8 +102,14 @@ def _passo_fetch() -> dict:
     return shas
 
 
-def _passo_censo(censo_csv: Path, db: Path, manifest: Path) -> None:
-    """Normaliza o CSV do Censo, grava dim_municipio e registra a ingestão."""
+def _passo_censo(censo_csv: Path, db: Path, manifest: Path,
+                 total_esperado=None) -> list[str]:
+    """Normaliza o CSV do Censo, grava dim_municipio e registra a ingestão.
+
+    Com `total_esperado`, aplica `check_censo_sum` fail-closed ANTES de
+    qualquer escrita e devolve os erros (contrato `-> list[str]`, como
+    `run_gates`); sem ele, só a integridade de schema do `normalize_censo`.
+    """
     import duckdb
     import pandas as pd
 
@@ -113,6 +128,12 @@ def _passo_censo(censo_csv: Path, db: Path, manifest: Path) -> None:
     if df is None:  # pragma: no cover — só com CSV ilegível nos 3 encodings
         raise ValueError(f"censo: CSV ilegível em {censo_csv} (sem dado oficial)")
     normalizado = normalize_censo(df)  # lógica toda no módulo, sem fork
+    if total_esperado is not None:
+        from etl.censo import check_censo_sum
+
+        erros = check_censo_sum(normalizado, total_esperado)
+        if erros:
+            return erros  # dim/manifest intocados, sem fato adiante
     con = duckdb.connect(str(db))
     try:
         con.register("censo_df", normalizado)
@@ -122,6 +143,7 @@ def _passo_censo(censo_csv: Path, db: Path, manifest: Path) -> None:
     entry = register_censo_ingest(str(manifest), rows=len(normalizado), sha256=sha)
     print(f"censo: dim_municipio ok ({len(normalizado)} linhas, "
           f"sha256={str(entry.get('sha256', ''))[:12]}…)")
+    return []
 
 
 def _carregar_totais(path) -> dict | None:
@@ -149,7 +171,11 @@ def main(argv=None) -> int:
                   web_data_dir=args.web_data_dir, source_shas=source_shas)
         print("build: marts ok")
         if args.censo_csv is not None:
-            _passo_censo(args.censo_csv, Path(args.db), manifest)
+            erros_censo = _passo_censo(args.censo_csv, Path(args.db), manifest,
+                                       args.censo_total_esperado)
+            if erros_censo:
+                print(f"{_SAIDA_GATES}: {'; '.join(erros_censo)}", file=sys.stderr)
+                return 1
         fato_path = None
         if not args.sem_fato:
             from etl.build_fato import build_fato
