@@ -45,12 +45,16 @@ por IBGE7 a partir da malha.
 
 Ordem crash-safe (EVOLVE-3 Task 2, write-fato-then-verify-before-serve):
 fato (escrita atômica, sem rasgo) → upsert do manifest do `<db dir>` →
-mirror servido. Manifest-first foi rejeitado: atestaria bytes ainda não
-servidos (verde com arquivo ausente). Qualquer crash entre passos deixa
+porta `verificar_fato_manifest` → mirror servido. Manifest-first foi
+rejeitado: atestaria bytes ainda não servidos (verde com arquivo ausente).
+A porta roda ANTES do mirror (CodeRabbit PR#5 F2): db malformado ou
+inconsistente levanta com o mirror intocado — nunca publica artefato
+"válido" com proveniência quebrada. Qualquer crash entre passos deixa
 ou o par antigo intacto ou fato novo + manifest velho — e esse estado
 REPROVA o predicado `verificar_fato_manifest` (sha da entry vs bytes do
 fato), nunca dá verde falso; o rerun seguinte repara ao reescrever fato
-+ upsert. `verify_manifest` sozinho continua só-forma no `<db dir>`
++ upsert (após a remoção de eventual lixo legado, que o upsert preserva
+sem apagar e a porta reprova). `verify_manifest` sozinho continua só-forma no `<db dir>`
 (contrato legado) e NÃO basta para atestar bytes — portas/gates devem
 usar `verificar_fato_manifest` antes de servir.
 
@@ -171,6 +175,11 @@ def verificar_fato_manifest(db_manifest_path, fato_path) -> bool:
     atuais do arquivo. Fato novo + manifest velho (crash após o fato,
     antes do manifest) REPROVA; ausência, corrupção ou divergência
     qualquer também reprova (fail-closed, nunca verde falso).
+    Estrito (CodeRabbit PR#5 F1): a lista inteira precisa ser válida —
+    item não-dict ou entry malformada reprova mesmo com match válido
+    adiante. O writer preserva o legado sem apagar; o VERIFICADOR nunca
+    dá verde no malformado (coerente com `verify_manifest`, que também
+    reprova ali).
     """
     try:
         raw = Path(fato_path).read_bytes()
@@ -186,6 +195,11 @@ def verificar_fato_manifest(db_manifest_path, fato_path) -> bool:
     ingestions = manifest.get("ingestions")
     if not isinstance(ingestions, list):
         return False
+    for e in ingestions:
+        try:
+            _validate_entry(e)  # não-dict e malformada reprovam aqui
+        except ValueError:
+            return False
     stem = Path(fato_path).stem
     match = None
     for e in ingestions:
@@ -474,7 +488,8 @@ def build_fato(duckdb_path, out_dir, ano, turno, cargo,
     # fato primeiro (escrita atômica via helper compartilhado — mesma
     # serialização `json.dump(..., ensure_ascii=False, indent=2)`, bytes
     # idênticos aos do `write_text` anterior; sem janela de rasgo), depois
-    # upsert do manifest do <db dir>, por fim o mirror servido.
+    # upsert do manifest do <db dir>, porta de consistência e SÓ ENTÃO o
+    # mirror servido (porta reprovada levanta com o mirror intocado).
     _write_json_atomico(out_path, payload)
     sha = hashlib.sha256(out_path.read_bytes()).hexdigest()
     ingestion = {
@@ -493,15 +508,17 @@ def build_fato(duckdb_path, out_dir, ano, turno, cargo,
     }
     db_manifest_path = db_path.parent / "manifest.json"
     _atualizar_manifest_db(db_manifest_path, ingestion)
-    # Mirror servido (Task 2): o manifest irmão das saídas recalcula
-    # `artifacts` sobre os bytes do fato.
-    _atualizar_manifest_servido(out_dir_p, ingestion, v1_entry)
-    # Fail-closed: nunca retorna verde com fato≠manifest (crash entre os
-    # passos acima deixa o par inconsistente — o rerun repara; o retorno
-    # aqui só é verde com o par conferindo).
+    # Porta fail-closed ANTES de publicar o mirror (CodeRabbit PR#5 F2):
+    # db malformado/inconsistente levanta aqui com o mirror intocado —
+    # nunca publica artefato "válido" com proveniência quebrada. O rerun
+    # após a remoção do lixo repara (reescreve fato + upsert).
     if not verificar_fato_manifest(db_manifest_path, out_path):
         raise ValueError(
-            "build_fato: inconsistência fato×manifest após a escrita "
-            f"(fato={out_path}, manifest={db_manifest_path})"
+            "build_fato: porta fato×manifest reprovada antes de publicar "
+            f"o mirror (fato={out_path}, manifest={db_manifest_path})"
         )
+    # Mirror servido (Task 2): o manifest irmão das saídas recalcula
+    # `artifacts` sobre os bytes do fato; só executa com a porta acima
+    # verde, então o retorno nunca é verde com fato≠manifest.
+    _atualizar_manifest_servido(out_dir_p, ingestion, v1_entry)
     return str(out_path)

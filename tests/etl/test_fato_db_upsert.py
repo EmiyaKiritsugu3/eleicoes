@@ -167,3 +167,50 @@ def test_crash_entre_passos_detecta_e_repara(tmp_path):
     assert len(ings) == 1
     assert ings[0]["sha256"] == _sha(fato)
     assert verify_manifest(str(out_dir / "manifest.json")) is True
+
+
+def test_verificador_rejeita_ingestions_malformadas(tmp_path):
+    """Verificador estrito (CodeRabbit PR#5 F1): [None + ingestion válida
+    e atual] → False. O writer preserva o lixo legado sem apagar; o
+    VERIFICADOR nunca dá verde no malformado (`verify_manifest` também
+    reprova a mesma lista — vereditos coerentes)."""
+    db = tmp_path / "t.duckdb"
+    _seed_db(db)
+    out_dir = tmp_path / "out"
+    fato = out_dir / "fato_2022_1_presidente.json"
+    db_manifest = tmp_path / "manifest.json"
+
+    build_fato(str(db), str(out_dir), 2022, 1, "PRESIDENTE")
+    assert verificar_fato_manifest(str(db_manifest), str(fato)) is True
+
+    doc = json.loads(db_manifest.read_text(encoding="utf-8"))
+    doc["ingestions"].insert(0, None)  # lixo que o writer preserva
+    db_manifest.write_text(
+        json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+    assert verify_manifest(str(db_manifest)) is False
+    assert verificar_fato_manifest(str(db_manifest), str(fato)) is False
+
+
+def test_falha_db_nao_publica_mirror(tmp_path):
+    """Porta db antes do mirror (CodeRabbit PR#5 F2): db malformado →
+    raise com o mirror intocado (nada publicado com proveniência quebrada)."""
+    db = tmp_path / "t.duckdb"
+    _seed_db(db)
+    out_dir = tmp_path / "out"
+    mirror = out_dir / "manifest.json"
+
+    build_fato(str(db), str(out_dir), 2022, 1, "PRESIDENTE")
+    assert mirror.is_file()
+    mirror.unlink()  # republicação seria observável; a porta deve impedir
+
+    doc = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    doc["ingestions"].insert(0, None)  # upsert preserva; porta deve barrar
+    (tmp_path / "manifest.json").write_text(
+        json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="antes de publicar"):
+        build_fato(str(db), str(out_dir), 2022, 1, "PRESIDENTE")
+    assert not mirror.exists()  # mirror intocado: nada foi publicado
