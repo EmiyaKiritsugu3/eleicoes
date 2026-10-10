@@ -210,6 +210,17 @@ def test_censo_real_zip_para_fato_verificavel(tmp_path, monkeypatch):
     pops = [int(r[1]) for r in linhas]
     assert all(len(b) == 7 for b in ibges)
 
+    # --- artefato EVOLVE-7 Task 1: `{ibge7: pop}` com os 5570 municípios ---
+    # Trava contra truncamento silencioso em `build_censo_artifact_map`
+    # (skip de ibge vazio/pop nulo): o verify abaixo prova os bytes, mas
+    # bytes truncados também verificam — só a contagem fecha o buraco.
+    from pathlib import Path
+
+    assert info["artifact_rows"] == 5570
+    artefato = json.loads(Path(info["artifact_path"]).read_bytes().decode("utf-8"))
+    assert len(artefato) == 5570
+    assert sum(artefato.values()) == TOTAL_CENSO_2022
+
     # --- votos sintéticos mínimos sobre municípios REAIS → fato + gates ---
     import pandas as pd
 
