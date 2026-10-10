@@ -142,7 +142,11 @@ def _artifacts_ok(manifest: dict, path) -> bool:
 
 
 def verify_manifest(path) -> bool:
-    """Return True iff manifest is valid JSON with ingestions carrying source_url+sha256.
+    """Return True iff manifest is valid JSON with strict ingestions.
+
+    Cada ingestão passa por `_validate_entry` (`source_url` truthy +
+    `sha256` 64-hex — paridade com `isAudited` do front); sha frouxo
+    (`"abc123"`) reprova mesmo sem a chave `artifacts`.
 
     Com chave `artifacts` presente, cada entry precisa provar os bytes
     servidos (arquivo irmão do manifest com sha256+tamanho conferindo);
@@ -158,9 +162,8 @@ def verify_manifest(path) -> bool:
     if not isinstance(ingestions, list) or not ingestions:
         return False
     for entry in ingestions:
-        if not isinstance(entry, dict):
+        try:
+            _validate_entry(entry)
+        except ValueError:
             return False
-        for key in REQUIRED_KEYS:
-            if not entry.get(key):
-                return False
     return _artifacts_ok(manifest, path)
