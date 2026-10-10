@@ -113,7 +113,7 @@ export default function Auditoria() {
         ) : ingestions.length === 0 ? (
           <p>{SEM_DADO} — nenhuma ingestão registrada no manifest</p>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Ingestões do manifest com fonte, hash, linhas e data">
           <table>
             <caption>Ingestões do manifest com fonte, hash, linhas e data</caption>
             <thead>

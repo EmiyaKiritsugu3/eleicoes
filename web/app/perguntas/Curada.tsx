@@ -331,7 +331,7 @@ export function CuradaConteudo({
               n = {perfil.nMun} municípios · {perfil.nEleitores} eleitores (peso:{" "}
               {perfil.pesoFonte})
             </p>
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Médias ponderadas vs Brasil">
             <table>
               <caption>Médias ponderadas vs Brasil</caption>
               <thead>
@@ -389,7 +389,7 @@ export function CuradaConteudo({
             <p>
               r (Pearson) = {fmtR(corrP.r)} · r (Spearman) = {fmtR(corrS.r)} (n = {corrP.n})
             </p>
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label={`Share médio por quintil de ${pergunta.blocos.cruzar}`}>
             <table>
               <caption>Share médio por quintil de {pergunta.blocos.cruzar}</caption>
               <thead>
@@ -432,7 +432,7 @@ export function CuradaConteudo({
             <p>
               Veredito em linguagem leiga: <strong>{VEREDITO_PT[veredito]}</strong>
             </p>
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Correlação por região">
             <table>
               <caption>Correlação por região</caption>
               <thead>
@@ -459,7 +459,7 @@ export function CuradaConteudo({
               </tbody>
             </table>
             </div>
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Correlação por faixa de renda">
             <table>
               <caption>Correlação por faixa de renda</caption>
               <thead>
@@ -500,7 +500,7 @@ export function CuradaConteudo({
             {escopo ? ` — ${escopo}` : " — sem cobertura neste recorte"}
           </p>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Top municípios por share">
           <table>
             <caption>Top municípios por share</caption>
             <thead>

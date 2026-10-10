@@ -11,7 +11,7 @@ import React, { useEffect, useRef, useState } from "react";
  * Clipboard API quando disponível; sem ela (ou com falha) exibe input
  * readonly selecionável (fallback select) + `role="status"` honesto.
  */
-export default function CopyShare({ url }: { url: string }) {
+export default function CopyShare({ url }: { readonly url: string }) {
   const [estado, setEstado] = useState<"ocioso" | "copiado" | "manual">("ocioso");
   // URL exibida/copiada: SSR renderiza `url` como veio (sem window no
   // servidor); no cliente, o efeito abaixo absolutiza contra o origin.

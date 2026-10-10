@@ -22,7 +22,7 @@ export function ArtifactsTable({ artifacts }: { artifacts: ManifestArtifact[] })
     return <p>{SEM_DADO} — manifest sem hashes de arquivos servidos</p>;
   }
   return (
-    <div style={{ overflowX: "auto" }}>
+    <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Arquivos servidos com hash sha256, tamanho e data">
     <table>
       <caption>Arquivos servidos com hash sha256, tamanho e data</caption>
       <thead>

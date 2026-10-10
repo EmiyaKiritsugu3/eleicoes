@@ -115,6 +115,41 @@ function contaOverflow(hay: string): number {
   return (hay.match(/overflow-x:\s*auto/g) ?? []).length;
 }
 
+// ---------- a11y T4: helpers ----------
+
+// Wrappers de scroll em markup SSR: todo div com overflow-x:auto precisa ser
+// focável com nome (tabindex=0 + role=region + aria-label não-vazio).
+function wrappersSemNomeSSR(html: string): string[] {
+  const ruins: string[] = [];
+  const re = /<div[^>]*style="[^"]*overflow-x:\s*auto[^"]*"[^>]*>/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const tag = m[0];
+    const ok =
+      /tabindex="0"/i.test(tag) &&
+      /role="region"/i.test(tag) &&
+      /aria-label="[^"]*\S[^"]*"/.test(tag);
+    if (!ok) ruins.push(tag.slice(0, 200));
+  }
+  return ruins;
+}
+
+// Mesmo contrato em DOM jsdom (páginas com fetch: Home/analisar/auditoria).
+function wrappersSemNomeDom(container: HTMLElement): string[] {
+  const ruins: string[] = [];
+  container.querySelectorAll("div").forEach((d) => {
+    const el = d as HTMLDivElement;
+    if (el.style.overflowX !== "auto") return;
+    const tab = el.getAttribute("tabindex");
+    const role = el.getAttribute("role");
+    const label = (el.getAttribute("aria-label") ?? "").trim();
+    if (tab !== "0" || role !== "region" || label === "") {
+      ruins.push(el.outerHTML.slice(0, 200));
+    }
+  });
+  return ruins;
+}
+
 // ---------- fixtures de fetch ----------
 
 const RESUMO = { total_votos: 3000, total_linhas: 3, anos: [2022], tabelas: [] };
@@ -465,5 +500,93 @@ describe("ux CopyShare copia + fallback", () => {
       <PainelRegiao ibge="SP" fato={fatoCheio} seal={SEAL_OK} manifestChecked />,
     );
     expect(htmlR).toContain("Copiar link");
+  });
+});
+
+describe("ux a11y T4 nav com quebra em viewport estreita", () => {
+  it("nav usa flex-wrap para não estourar em telemóvel", () => {
+    const html = renderToStaticMarkup(
+      <RootLayout>
+        <p>filho</p>
+      </RootLayout>,
+    );
+    expect(html).toMatch(/flex-wrap:\s*wrap/);
+  });
+});
+
+describe("ux a11y T4 wrappers de scroll focáveis com nome", () => {
+  it("explorar (quintis/ranking/perfil): todo wrapper é region focável com nome", () => {
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo
+        fato={{ candidatos: CANDIDATOS, municipios: linhasValidas() }}
+        seal={SEAL_OK}
+        initial={SEL_VALIDA}
+      />,
+    );
+    expect(wrappersSemNomeSSR(html)).toEqual([]);
+    expect(conta(html, 'role="region"')).toBeGreaterThanOrEqual(conta(html, "<table"));
+  });
+  it("curada (perfil/quintis/estratos/ranking): todo wrapper é region focável com nome", () => {
+    const html = renderToStaticMarkup(
+      <CuradaConteudo
+        pergunta={PERGUNTA}
+        fato={{ candidatos: CANDIDATOS, municipios: linhasValidas() }}
+        seal={SEAL_OK}
+        manifestChecked
+      />,
+    );
+    expect(wrappersSemNomeSSR(html)).toEqual([]);
+    expect(conta(html, 'role="region"')).toBeGreaterThanOrEqual(conta(html, "<table"));
+  });
+  it("/ (HomeContent): todo wrapper é region focável com nome", async () => {
+    mockFetchOk();
+    const div = await renderJsdom(<HomeContent />);
+    expect(wrappersSemNomeDom(div)).toEqual([]);
+    expect(div.querySelectorAll('[role="region"]').length).toBeGreaterThanOrEqual(
+      conta(div.innerHTML, "<table"),
+    );
+  });
+  it("/analisar: todo wrapper é region focável com nome", async () => {
+    mockFetchOk();
+    const div = await renderJsdom(<Analisar />);
+    expect(wrappersSemNomeDom(div)).toEqual([]);
+    expect(div.querySelectorAll('[role="region"]').length).toBeGreaterThanOrEqual(
+      conta(div.innerHTML, "<table"),
+    );
+  });
+  it("/auditoria (ingestões + artifacts): todo wrapper é region focável com nome", async () => {
+    mockFetchOk();
+    const div = await renderJsdom(<Auditoria />);
+    expect(wrappersSemNomeDom(div)).toEqual([]);
+    expect(div.querySelectorAll('[role="region"]').length).toBeGreaterThanOrEqual(
+      conta(div.innerHTML, "<table"),
+    );
+  });
+});
+
+describe("ux a11y T4 regiões de estado anunciadas", () => {
+  it("loading usa live region (role=status ou output)", async () => {
+    mockFetchPendente();
+    const div = await renderJsdom(<HomeContent />);
+    expect(div.querySelector('[role="status"], output')).not.toBeNull();
+  });
+  it("CopyShare confirma com live region (role=status ou output)", async () => {
+    const { default: CopyShare } = await import("../components/CopyShare");
+    const writeText = vi.fn(async (_s: string) => {});
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    try {
+      const div = await renderJsdom(<CopyShare url="/analisar?hash=abc" />);
+      await act(async () => {
+        div.querySelector("button")!.click();
+      });
+      const live = div.querySelector('[role="status"], output');
+      expect(live).not.toBeNull();
+      expect(live!.textContent).toMatch(/copiad/i);
+    } finally {
+      Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    }
   });
 });

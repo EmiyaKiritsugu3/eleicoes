@@ -629,7 +629,7 @@ export function ExplorarConteudo({
                   </svg>
                 </figure>
               )}
-              <div style={{ overflowX: "auto" }}>
+              <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label={`Share médio por quintil de ${sel.cruzar}`}>
               <table>
                 <caption>Share médio por quintil de {sel.cruzar}</caption>
                 <thead>
@@ -662,7 +662,7 @@ export function ExplorarConteudo({
           {!coberto || ranking.length === 0 ? (
             <p role="alert" style={ALERTA_STYLE}>{SEM_DADO} — sem cobertura neste recorte</p>
           ) : (
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Top municípios por share">
             <table>
               <caption>Top municípios por share</caption>
               <thead>
@@ -711,7 +711,7 @@ export function ExplorarConteudo({
                 n = {perfil.nMun} municípios · {perfil.nEleitores} eleitores (peso:{" "}
                 {perfil.pesoFonte})
               </p>
-              <div style={{ overflowX: "auto" }}>
+              <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Médias ponderadas vs Brasil">
               <table>
                 <caption>Médias ponderadas vs Brasil</caption>
                 <thead>
