@@ -103,15 +103,19 @@ export function getSealParaDataset(manifest: unknown, dataset: string | null): S
   return vazio;
 }
 
-/** Há prova para veredito com este selo: hash oficial não-vazio ou hash
- *  de fixture (transparência, sem selo oficial) — fonte única da verdade
- *  do gate de hash de Verificar/Explorar/Curada (fail-closed: hash vazio
- *  ou só-espaços nunca sustenta número). Sem nenhum dos dois, nenhum fato
+/** Há prova para veredito com este selo: hash oficial 64-hex ou hash
+ *  de fixture 64-hex (transparência, sem selo oficial) — fonte única da
+ *  verdade do gate de hash de Verificar/Explorar/Curada, delegando a
+ *  `isAudited` de `lib/data.ts` (mesmo 64-hex que o ETL exige na escrita).
+ *  Selo hand-built com hash fora do formato (ex. `"abc"`, vazio ou
+ *  só-espaços) nega prova (fail-closed). Selos legítimos passam
+ *  inalterados: os produtores (`getSealState`/`getSealParaDataset`) só
+ *  armazenam hashes já auditados. Sem nenhum dos dois, nenhum fato
  *  alimenta veredito.
  */
 export function vereditoTemProva(seal: SealState): boolean {
-  if (seal.official !== null && seal.official.hash.trim().length > 0) return true;
-  return seal.hasFixture && seal.fixtureHash.trim().length > 0;
+  if (seal.official !== null && isAudited({ sha256: seal.official.hash })) return true;
+  return seal.hasFixture && isAudited({ sha256: seal.fixtureHash });
 }
 
 /** Divergência entre o hash da URL compartilhada e o hash oficial atual.

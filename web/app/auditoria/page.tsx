@@ -127,7 +127,7 @@ export default function Auditoria() {
             </thead>
             <tbody>
               {ingestions.map((e, i) => {
-                const hash = String(e.sha256 ?? e.hash ?? "");
+                const hash = String(e.sha256 ?? "");
                 const rawUrl = typeof e.source_url === "string" ? e.source_url : "";
                 // Link só com esquema http(s) (M10): safeUrl barra javascript:/data:/relativo.
                 const url = safeUrl(rawUrl);

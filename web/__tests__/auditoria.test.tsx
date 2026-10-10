@@ -137,4 +137,17 @@ describe("auditoria artifacts (EVOLVE-2 Task 1)", () => {
     expect(html).not.toContain("<table");
     expect(html).toContain("sem dado oficial");
   });
+  it("artifact só-`hash` (sem `sha256`) nunca exibe valor — display fail-closed", async () => {
+    const { getArtifacts } = await import("../lib/data");
+    const { ArtifactsTable } = await import("../components/ArtifactsTable");
+    const HASH_REAL = "ab".repeat(32);
+    expect(getArtifacts({ artifacts: [{ arquivo: "x.json", hash: HASH_REAL, size_bytes: 10 }] })).toEqual([]);
+    const html = renderToStaticMarkup(
+      <ArtifactsTable
+        artifacts={[{ arquivo: "x.json", hash: HASH_REAL, size_bytes: 10 } as unknown as import("../lib/data").ManifestArtifact]}
+      />,
+    );
+    expect(html).not.toContain(HASH_REAL);
+    expect(html).toContain("dado não auditado");
+  });
 });

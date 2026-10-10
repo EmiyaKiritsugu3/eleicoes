@@ -35,7 +35,7 @@ export function ArtifactsTable({ artifacts }: { artifacts: ManifestArtifact[] })
       </thead>
       <tbody>
         {artifacts.map((a, i) => {
-          const hash = String(a.sha256 ?? a.hash ?? "");
+          const hash = String(a.sha256 ?? "");
           const arquivo =
             typeof a.arquivo === "string" && a.arquivo ? a.arquivo : SEM_DADO;
           const tamanho =
