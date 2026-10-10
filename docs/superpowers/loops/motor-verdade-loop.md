@@ -94,3 +94,6 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 ## EVOLVE-3 mergeado (2026-10-10 ~17:05 UTC)
 - Merge PR #5 (merge commit 39c2258): tudo verde — CI ×2, GitGuardian, CodeRabbit, cubic, Sonar (pós won't-fix justificado). Branch evolve-3 deletada.
 - Total: 6 tasks + T0 a11y + R1 (5 CodeRabbit) + R2 (10 cubic) com re-reviews limpos. Suítes finais: pytest 149 + vitest 338 + tsc clean + build.
+
+## EVOLVE-4 completo (final review: Merge Yes)
+- 6/6 tasks + revisão final limpa; nenhum MUST-FIX; minors → EVOLVE-5 backlog.
