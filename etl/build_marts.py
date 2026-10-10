@@ -659,30 +659,35 @@ def _discard_staging(paths) -> None:
         _remove_path(p, Path(p).parent)
 
 
-def _votos_particoes_publicadas(curated_dir) -> int | None:
-    """Soma de `votos` nas partições publicadas (`ano=/.../data.parquet').
+def _soma_particoes_publicadas(curated_dir) -> tuple | None:
+    """`(total_votos, {uf: votos})` das partições publicadas, ou None.
 
     Devolve None quando não há partição legível (dir ausente, só-fontes ou
     nenhuma partição íntegra): sem geração publicada, nada a comparar.
     Partição ilegível isolada é ignorada aqui (o build a partir das fontes
     cura o dano); a comparação de geração usa só partições íntegras.
+    Chaves UF nulas são puladas (nunca viram falso positivo).
     """
     curated = Path(curated_dir)
     if not curated.is_dir():
         return None
-    total, linhas = 0, 0
-    for part in sorted(curated.rglob("ano=*")):
-        if not (part.is_file() and part.suffix.lower() == ".parquet"
-                and _is_generated(part)):
+    total, por_uf, arquivos = 0, {}, 0
+    for part in sorted(p for p in curated.rglob("*") if p.is_file()):
+        if part.suffix.lower() != ".parquet" or not _is_generated(part):
             continue
         try:
-            df = pd.read_parquet(part, columns=["votos"])
+            df = pd.read_parquet(part, columns=["uf", "votos"])
         except Exception:
             continue
-        linhas += 1
-        if not df.empty and df["votos"].notna().any():
-            total += int(df["votos"].fillna(0).sum())
-    return total if linhas else None
+        arquivos += 1
+        if df.empty:
+            continue
+        total += int(df["votos"].fillna(0).sum())
+        for uf, votos in df.groupby("uf", dropna=True)["votos"].sum().items():
+            if pd.isna(uf):
+                continue
+            por_uf[str(uf)] = por_uf.get(str(uf), 0) + int(votos)
+    return (total, por_uf) if arquivos else None
 
 
 def _resumo_publicado(web_dir) -> tuple | None:
@@ -702,8 +707,29 @@ def _resumo_publicado(web_dir) -> tuple | None:
     return (votos, linhas)
 
 
+def _por_uf_publicado(web_dir) -> dict | None:
+    """`{uf: votos}` do `por_uf.json` público, ou None (ausente/ilegível)."""
+    try:
+        payload = json.loads(
+            (Path(web_dir) / "por_uf.json").read_bytes().decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, list):
+        return None
+    por_uf: dict = {}
+    for entry in payload:
+        if not isinstance(entry, dict):
+            return None
+        uf, votos = entry.get("uf"), entry.get("votos")
+        if (not isinstance(uf, str) or isinstance(votos, bool)
+                or not isinstance(votos, int)):
+            return None
+        por_uf[uf] = por_uf.get(uf, 0) + votos
+    return por_uf
+
+
 def _fato_publicado(db_file) -> tuple | None:
-    """`(SUM(votos), COUNT(*))` do `fato_voto` público, ou None.
+    """`(SUM(votos), COUNT(*), {uf: votos})` do `fato_voto` público, ou None.
 
     Leitura `read_only` (nunca muta o público); DB ausente/ilegível/sem a
     tabela é None — os gates do build reprovam o que for dano real, aqui só
@@ -716,11 +742,18 @@ def _fato_publicado(db_file) -> tuple | None:
         try:
             n = con.execute("SELECT COUNT(*) FROM fato_voto").fetchone()[0]
             s = con.execute("SELECT SUM(votos) FROM fato_voto").fetchone()[0]
+            por_uf = {
+                str(r[0]): int(r[1]) if r[1] is not None else 0
+                for r in con.execute(
+                    "SELECT uf, SUM(votos) FROM fato_voto "
+                    "WHERE uf IS NOT NULL GROUP BY uf"
+                ).fetchall()
+            }
         finally:
             con.close()
     except Exception:
         return None
-    return (int(s) if s is not None else 0, int(n))
+    return (int(s) if s is not None else 0, int(n), por_uf)
 
 
 def _linhas_tse_publicadas(manifest_file) -> int | None:
@@ -770,20 +803,29 @@ def _verificar_geracao_integra(curated, db_file, manifest_file, web_dir) -> None
 
     Sinais (todos de conteúdo, custo zero, sem arquivos novos):
     - totais de votos: partições publicadas x `fato_voto` x `resumo.json`;
-    - contagem de linhas: `fato_voto` x `resumo.json` x ingestões TSE.
+    - contagem de linhas: `fato_voto` x `resumo.json` x ingestões TSE;
+    - distribuição por UF: partições x `fato_voto` x `por_uf.json` (fecha o
+      buraco dos agregados globais iguais com conteúdo distinto — ex.
+      retificação que desloca votos entre UFs).
     Alvo ausente/ilegível não conta (primeiro build, seed, E5 vazio seguem
-    intactos); mistura integral-equivalente (mesmos totais, ex. rebuild
-    idêntico interrompido) não é mix publicado — o rebuild cura.
+    intactos); mistura integral-equivalente (mesmos totais e mesma
+    distribuição, ex. rebuild idêntico interrompido) não é mix publicado —
+    o rebuild cura.
 
-    Residual documentado: crash exatamente entre o promote do DB e o do
-    manifest canônico, com gerações de mesma contagem de linhas, não é
-    detectado — mas a superfície servida (JSONs + espelho + DB) está
-    consistente nesse estado e o próximo build cura o canônico via dedupe.
+    Residual documentado: redistribuição equilibrada DENTRO da mesma UF
+    (por-UF, totais e contagens iguais) + crash após o promote do web_dir
+    não é detectada — fechar isso exigiria digest por registro ou ids de
+    geração no protocolo (fora do escopo); o modelo de ameaça exige rebuild
+    com totais idênticos E crash na janela do half-swap. Crash exatamente
+    entre o promote do DB e o do manifest canônico, com gerações de mesma
+    contagem, também não é detectado — mas a superfície servida (JSONs +
+    espelho + DB) está consistente nesse estado e o próximo build cura o
+    canônico via dedupe.
     """
     votos: dict = {}
-    parcial = _votos_particoes_publicadas(curated)
+    parcial = _soma_particoes_publicadas(curated)
     if parcial is not None:
-        votos[f"curated ({curated})"] = parcial
+        votos[f"curated ({curated})"] = parcial[0]
     fato = _fato_publicado(db_file)
     if fato is not None:
         votos[f"duckdb ({db_file})"] = fato[0]
@@ -798,6 +840,14 @@ def _verificar_geracao_integra(curated, db_file, manifest_file, web_dir) -> None
     tse = _linhas_tse_publicadas(manifest_file)
     if tse is not None:
         linhas[f"manifest ({manifest_file})"] = tse
+    por_uf: dict = {}
+    if parcial is not None:
+        por_uf[f"curated ({curated})"] = parcial[1]
+    if fato is not None:
+        por_uf[f"duckdb ({db_file})"] = fato[2]
+    dist = _por_uf_publicado(web_dir)
+    if dist is not None:
+        por_uf[f"por_uf.json ({web_dir})"] = dist
     divergentes = []
     if len(set(votos.values())) > 1:
         divergentes.append(
@@ -808,6 +858,11 @@ def _verificar_geracao_integra(curated, db_file, manifest_file, web_dir) -> None
         divergentes.append(
             "contagens de linhas distintas entre alvos públicos: "
             + ", ".join(f"{k}={v}" for k, v in sorted(linhas.items()))
+        )
+    if len({tuple(sorted(v.items())) for v in por_uf.values()}) > 1:
+        divergentes.append(
+            "distribuição de votos por UF distinta entre alvos públicos: "
+            + "; ".join(f"{k}={v}" for k, v in sorted(por_uf.items()))
         )
     if not divergentes:
         return

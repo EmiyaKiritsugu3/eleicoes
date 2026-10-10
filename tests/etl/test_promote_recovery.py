@@ -33,6 +33,15 @@ _GEN2_CSV = (
 )
 
 
+# Mesmos totais e contagem da gen1 (15 votos/2 linhas), distribuição por UF
+# distinta (SP 10→8, RJ 5→7): agregados globais iguais, conteúdo distinto.
+_GEN3_CSV = (
+    "ANO_ELEICAO;DS_CARGO;SG_UF;CD_MUNICIPIO;NM_URNA;QT_VOTOS\n"
+    "2022;PRESIDENTE;SP;3550308;X;8\n"
+    "2022;PRESIDENTE;RJ;3304557;Y;7\n"
+)
+
+
 def _novo_caso(tmp_path):
     curated = tmp_path / "curated"
     curated.mkdir()
@@ -135,3 +144,60 @@ def test_crash_com_mesmos_dados_recupera_sem_falso_positivo(tmp_path):
     assert json.loads((webdata / "resumo.json").read_text(encoding="utf-8"))[
         "total_votos"] == 15
     assert [p for p in tmp_path.rglob("*.tmp")] == []
+
+
+def test_crash_apos_primeiro_promote_detecta_via_curated(tmp_path):
+    """Crash após 1 promote (só curated nova) -> próximo build falha.
+
+    A perna curated do cross-check precisa enxergar os `data.parquet`
+    publicados: sem ela, db+web+manifest (todos da geração antiga,
+    consistentes entre si) passam silenciosamente e o mix é publicado.
+    """
+    curated, db, manifest, webdata = _novo_caso(tmp_path)
+    build_all(curated, db, manifest, web_data_dir=webdata)
+    assert _total_votos(db) == 15
+
+    (curated / "raw.csv").write_text(_GEN2_CSV, encoding="utf-8")
+    original = _crash_entre_promotes(n_ok=1)
+    try:
+        with pytest.raises(RuntimeError, match="crash simulado"):
+            build_all(curated, db, manifest, web_data_dir=webdata)
+    finally:
+        bm._promote = original
+    # Estado do crash: só o curated promoveu (db+web seguem antigos).
+    assert _total_votos(db) == 15
+    assert json.loads((webdata / "resumo.json").read_text(encoding="utf-8"))[
+        "total_votos"] == 15
+
+    snap = _snapshot_public(curated, db, manifest, webdata)
+    with pytest.raises(RuntimeError, match="meio-promovida"):
+        build_all(curated, db, manifest, web_data_dir=webdata)
+    assert _snapshot_public(curated, db, manifest, webdata) == snap
+
+
+def test_mesmos_totais_distribuicao_distinta_falha(tmp_path):
+    """Mix com agregados globais iguais mas distribuição por UF distinta falha.
+
+    Totais e contagens iguais não provam mesma geração (ex. retificação que
+    desloca votos entre UFs): o cross-check por UF precisa acusar o mix.
+    """
+    curated, db, manifest, webdata = _novo_caso(tmp_path)
+    build_all(curated, db, manifest, web_data_dir=webdata)
+    assert _total_votos(db) == 15
+
+    (curated / "raw.csv").write_text(_GEN3_CSV, encoding="utf-8")
+    original = _crash_entre_promotes(n_ok=2)
+    try:
+        with pytest.raises(RuntimeError, match="crash simulado"):
+            build_all(curated, db, manifest, web_data_dir=webdata)
+    finally:
+        bm._promote = original
+    # Agregados globais idênticos entre gerações (15 votos/2 linhas).
+    assert json.loads((webdata / "resumo.json").read_text(encoding="utf-8"))[
+        "total_votos"] == 15
+    assert _total_votos(db) == 15
+
+    snap = _snapshot_public(curated, db, manifest, webdata)
+    with pytest.raises(RuntimeError, match="meio-promovida"):
+        build_all(curated, db, manifest, web_data_dir=webdata)
+    assert _snapshot_public(curated, db, manifest, webdata) == snap
