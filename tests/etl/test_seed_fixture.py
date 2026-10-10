@@ -89,3 +89,36 @@ def test_seed_com_falha_restaura_jsons_publicos(tmp_path, monkeypatch):
         assert (webdata / nome).read_text(encoding="utf-8") == conteudo
     assert not manifest_path.exists()
     assert not (tmp_path / "webdata.bak").exists()
+
+
+def test_seed_remove_fato_obsoleto_antes_do_register(tmp_path):
+    """#22: fato_*.json não-fixture pré-existente não é registrado nem
+    marcado fixture:true — só artefatos gerados pelo seed levam a flag."""
+    module = _load_seed()
+
+    manifest_path = tmp_path / "manifest.json"
+    webdata = tmp_path / "webdata"
+    webdata.mkdir()
+    (webdata / "fato_2018_2_governador.json").write_text(
+        '{"obsoleto": true}', encoding="utf-8")
+    module.seed(manifest_path, webdata)
+
+    assert not (webdata / "fato_2018_2_governador.json").exists()
+    assert (webdata / "fato_2022_1_presidente.json").exists()
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    arquivos = {a.get("arquivo") for a in manifest.get("artifacts", [])}
+    assert "fato_2018_2_governador.json" not in arquivos
+    assert "fato_2022_1_presidente.json" in arquivos
+
+
+def test_remover_fatos_nao_fixture_unidade(tmp_path):
+    """Filtro do seed em isolamento: mantém só o fato do triple fixture."""
+    module = _load_seed()
+
+    webdata = tmp_path / "webdata"
+    webdata.mkdir()
+    (webdata / "fato_2018_2_governador.json").write_text("{}", encoding="utf-8")
+    (webdata / "fato_2022_1_presidente.json").write_text("{}", encoding="utf-8")
+    module._remover_fatos_nao_fixture(webdata, "fato_2022_1_presidente.json")
+    assert not (webdata / "fato_2018_2_governador.json").exists()
+    assert (webdata / "fato_2022_1_presidente.json").exists()

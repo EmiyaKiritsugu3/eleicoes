@@ -360,14 +360,16 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
   // em `checksParaRegiao`; IBGE7 nunca casa lá).
   const ufLinha = String(row?.uf ?? "").trim().toUpperCase();
   const regiaoQ = encodeURIComponent(/^[A-Z]{2}$/.test(ufLinha) ? ufLinha : String(ibge));
-  // H1 legível (Task 5): nome do município + UF; IBGE em <small>.
-  // Sem nome no fato, mantém o rótulo legado com o código.
+  // H1 legível (Task 5): nome do município + UF quando houver; IBGE em
+  // <small>. Sem nome no fato, menção única ao IBGE (sem duplicar o código).
   const nomeMun = String(row?.nome ?? "").trim();
   const ufMun = String(row?.uf ?? "").trim().toUpperCase();
 
   return (
     <>
-      <h1>{nomeMun ? `${nomeMun} (${ufMun})` : `Painel da região — ${ibge}`} <small>IBGE {ibge}</small></h1>
+      {/* Sem nome no fato (build_fato sempre escreve "nome": ""): rótulo
+          com menção única ao IBGE. */}
+      <h1>{nomeMun ? `${nomeMun} (${ufMun})` : "Painel da região"} <small>IBGE {ibge}</small></h1>
       {topo}
       <section aria-label="Resultado">
         <h2>Resultado — {res.vencedorNome} ({res.vencedorPartido})</h2>

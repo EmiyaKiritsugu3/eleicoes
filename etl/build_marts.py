@@ -444,6 +444,25 @@ def _artifact_entries_for(web_data_dir: Path, sources: list[dict],
     return entries
 
 
+def _prune_fato_sem_proveniencia(web_staging, sources: list[dict]) -> list[str]:
+    """Remove do staging fato_*.json sem match de proveniência (fail-closed).
+
+    O staging copia o web_dir inteiro (incl. fato_* de builds/pleitos
+    anteriores); triple que não casa com `(ano, cargo)` das fontes deste
+    build não gera entry de hash em `_artifact_entries_for` — promovido
+    assim, seria servido sem hash. Podar do staging impede a promoção
+    hashless. Devolve os nomes removidos.
+    """
+    pares = {(s["ano"], str(s["cargo"]).upper()) for s in sources}
+    removidos = []
+    for path in sorted(Path(web_staging).glob("fato_*.json")):
+        triple = _fato_triple_from_name(path.name)
+        if triple is None or (triple[0], triple[2]) not in pares:
+            path.unlink()
+            removidos.append(path.name)
+    return removidos
+
+
 def register_served_artifacts(manifest_path, web_data_dir,
                               sources: list[dict]) -> list[dict]:
     """(Re)escreve a chave `artifacts` do manifest a partir dos bytes servidos.
@@ -682,7 +701,7 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
     # Staging obsoleto de build anterior crashado: descarta (nunca promove).
     _discard_staging(stagings)
     df = _load_canonical(curated)
-    _matched_entries(df)  # pré-checagem fail-closed: antes de qualquer escrita
+    fontes = _matched_entries(df)  # pré-checagem fail-closed: antes de qualquer escrita
     # Põ props públicos no staging: fontes (CSVs) + fato_* + histórico.
     # Curated/web por cópia (prune/overwrite operam no staging); manifest
     # por cópia (dedupe lê o histórico); DB reescrito por inteiro.
@@ -698,6 +717,9 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
     _stage_file(manifest_file, manifest_st)
     db_st.parent.mkdir(parents=True, exist_ok=True)
     try:
+        # Fato staged sem proveniência nunca promove hashless: poda antes
+        # de qualquer escrita no staging (fail-closed).
+        _prune_fato_sem_proveniencia(web_st, fontes)
         # Ordem Tasks 4–7 preservada, toda dentro do staging.
         _write_partitioned_parquet(df, curated_st)
         _write_duckdb(df, db_st)
@@ -711,8 +733,7 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
             # Hashes dos bytes servidos (trio + fato_* presentes): o espelho
             # abaixo os inclui para /auditoria provar igualdade (display é
             # follow-up). Vazio segue sem proveniência (contrato E5).
-            register_served_artifacts(manifest_st, web_st,
-                                      _matched_entries(df))
+            register_served_artifacts(manifest_st, web_st, fontes)
         # Espelho idêntico ao canônico — ainda dentro do staging (swap conjunto).
         web_st.mkdir(parents=True, exist_ok=True)
         (web_st / "manifest.json").write_bytes(manifest_st.read_bytes())

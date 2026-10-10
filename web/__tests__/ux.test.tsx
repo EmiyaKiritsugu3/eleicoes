@@ -191,6 +191,14 @@ async function renderJsdom(node: React.ReactElement): Promise<HTMLDivElement> {
   return el!;
 }
 
+async function rerenderJsdom(node: React.ReactElement): Promise<HTMLDivElement> {
+  await act(async () => {
+    root!.render(node);
+  });
+  await act(async () => {});
+  return el!;
+}
+
 // ---------- testes ----------
 
 describe("ux nav", () => {
@@ -220,10 +228,12 @@ describe("ux H1 legível", () => {
 });
 
 describe("ux loading honesto (fetch pendente)", () => {
-  it("/ (HomeContent): fetch pendente -> a carregar com role=status, não SEM_DADO", () => {
-    const html = renderToStaticMarkup(<HomeContent />);
-    expect(html).toContain('role="status"');
+  it("/ (HomeContent): fetch pendente -> a carregar com role=status, não SEM_DADO", async () => {
+    mockFetchPendente();
+    const div = await renderJsdom(<HomeContent />);
+    const html = div.innerHTML;
     expect(html).toMatch(/a carregar/i);
+    expect(div.querySelector('[role="status"]')).not.toBeNull();
     for (const s of ["Resumo", "Mapa por UF", "Ranking de candidatos", "Evolução"]) {
       const corpo = secao(html, s);
       expect(corpo).not.toBe("");
@@ -231,11 +241,14 @@ describe("ux loading honesto (fetch pendente)", () => {
       expect(corpo).not.toContain(SEM_DADO);
     }
   });
-  it("/analisar: fetch pendente -> a carregar, não SEM_DADO", () => {
-    const html = renderToStaticMarkup(<Analisar />);
-    expect(html).toContain('role="status"');
-    expect(html).toMatch(/a carregar/i);
-    expect(html).not.toContain(SEM_DADO);
+  it("/analisar: fetch pendente -> a carregar, não SEM_DADO, sem share", async () => {
+    mockFetchPendente();
+    const div = await renderJsdom(<Analisar />);
+    expect(div.innerHTML).toMatch(/a carregar/i);
+    expect(div.querySelector('[role="status"]')).not.toBeNull();
+    expect(div.innerHTML).not.toContain(SEM_DADO);
+    // #6: share só após o manifest resolver (hash vazio não ancora ?hash=).
+    expect(div.innerHTML).not.toContain("Copiar link");
   });
   it("/explorar: fetch pendente -> a carregar, não SEM_DADO", async () => {
     mockFetchPendente();
@@ -333,7 +346,7 @@ describe("ux tabelas com wrapper scroll (mobile sem estouro)", () => {
 });
 
 describe("ux CopyShare copia + fallback", () => {
-  it("copiar usa clipboard e confirma com role=status", async () => {
+  it("copiar usa clipboard (URL absoluta) e confirma com role=status", async () => {
     const { default: CopyShare } = await import("../components/CopyShare");
     const writeText = vi.fn(async (_s: string) => {});
     Object.defineProperty(navigator, "clipboard", {
@@ -347,7 +360,10 @@ describe("ux CopyShare copia + fallback", () => {
       await act(async () => {
         btn!.click();
       });
-      expect(writeText).toHaveBeenCalledWith("/analisar?hash=abc");
+      // #5: caminho relativo resolve contra o origin antes de copiar.
+      const abs = `${window.location.origin}/analisar?hash=abc`;
+      expect(writeText).toHaveBeenCalledWith(abs);
+      expect(div.innerHTML).toContain(abs);
       const status = div.querySelector('[role="status"]');
       expect(status).not.toBeNull();
       expect(status!.textContent).toMatch(/copiad/i);
@@ -355,7 +371,7 @@ describe("ux CopyShare copia + fallback", () => {
       Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
     }
   });
-  it("sem clipboard: fallback com input selecionável + role=status", async () => {
+  it("sem clipboard: fallback com input selecionável (URL absoluta) + role=status", async () => {
     const { default: CopyShare } = await import("../components/CopyShare");
     Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
     const div = await renderJsdom(<CopyShare url="/explorar?q=xyz" />);
@@ -364,9 +380,31 @@ describe("ux CopyShare copia + fallback", () => {
     await act(async () => {
       btn!.click();
     });
-    const input = div.querySelector('input[value="/explorar?q=xyz"]') as HTMLInputElement | null;
+    const abs = `${window.location.origin}/explorar?q=xyz`;
+    const input = div.querySelector("input") as HTMLInputElement | null;
     expect(input).not.toBeNull();
+    expect(input!.value).toBe(abs);
     expect(div.querySelector('[role="status"]')).not.toBeNull();
+  });
+  it("url nova reseta estado copiado (#4)", async () => {
+    const { default: CopyShare } = await import("../components/CopyShare");
+    const writeText = vi.fn(async (_s: string) => {});
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    try {
+      const div = await renderJsdom(<CopyShare url="/analisar?hash=aaa" />);
+      await act(async () => {
+        div.querySelector("button")!.click();
+      });
+      expect(div.querySelector('[role="status"]')).not.toBeNull();
+      await rerenderJsdom(<CopyShare url="/analisar?hash=bbb" />);
+      expect(div.querySelector('[role="status"]')).toBeNull();
+      expect(div.innerHTML).toContain(`${window.location.origin}/analisar?hash=bbb`);
+    } finally {
+      Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    }
   });
   it("share spots usam CopyShare (analisar/explorar/regiao)", async () => {
     mockFetchOk();
@@ -377,6 +415,22 @@ describe("ux CopyShare copia + fallback", () => {
     });
     root = null;
     el?.remove();
+    el = null;
+    // #3: ExplorarConteudo com selo oficial expõe o botão de copiar.
+    const divE = await renderJsdom(
+      <ExplorarConteudo
+        fato={{ candidatos: CANDIDATOS, municipios: linhasValidas() }}
+        seal={SEAL_OK}
+        initial={SEL_VALIDA}
+      />,
+    );
+    expect(divE.innerHTML).toContain("Copiar link");
+    await act(async () => {
+      root?.unmount();
+    });
+    root = null;
+    el?.remove();
+    el = null;
     const fatoCheio = { candidatos: CANDIDATOS, municipios: linhasValidas() };
     const htmlR = renderToStaticMarkup(
       <PainelRegiao ibge="SP" fato={fatoCheio} seal={SEAL_OK} manifestChecked />,

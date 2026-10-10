@@ -73,6 +73,22 @@ _FIXTURE_CENSO_DATA = "2022-01-01"
 _FATO_TRIPLE = (2022, 1, "presidente")
 
 
+def _remover_fatos_nao_fixture(web_data_dir: Path, esperado: str) -> list[str]:
+    """Remove fato_*.json que não seja o do triple fixture (fail-closed).
+
+    Fato obsoleto sobrevivendo no web_data_dir seria registrado pelo
+    `register_served_artifacts` e marcado `fixture: true` abaixo junto com
+    os artefatos reais do seed — só o fato gerado pelo seed leva a flag.
+    Devolve os nomes removidos.
+    """
+    removidos = []
+    for path in sorted(Path(web_data_dir).glob("fato_*.json")):
+        if path.name != esperado and path.is_file():
+            path.unlink()
+            removidos.append(path.name)
+    return removidos
+
+
 def _has_official_entries(manifest_path: Path) -> bool:
     """True se o manifest existente contém ingestões não-fixture (oficiais).
 
@@ -187,6 +203,11 @@ def seed(manifest_path: Path, web_data_dir: Path, force: bool = False) -> dict:
             # build_fato): recalculados aqui porque o fato só existe após o
             # build_fato. Substituição integral — o trio sai idêntico.
             ano, turno, cargo = _FATO_TRIPLE
+            # Fato obsoleto (não-fixture) nunca é registrado nem marcado
+            # fixture:true — só artefatos gerados por este seed levam a flag.
+            _remover_fatos_nao_fixture(
+                web_data_dir,
+                f"fato_{ano}_{turno}_{str(cargo).strip().lower()}.json")
             fixture_sources = [
                 e for e in V1_DATASETS
                 if e["ano"] == ano and str(e["cargo"]).upper() == cargo.upper()

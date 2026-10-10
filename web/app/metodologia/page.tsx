@@ -105,7 +105,9 @@ export default function Metodologia() {
             <code>fato_ano_turno_cargo.json</code> (junção TSE + ingestões{" "}
             <code>censo_ibge_2022</code> do IBGE), consumido pelas seções de
             perfil e correlação. Sem Censo auditado, essas seções exibem “sem
-            dado oficial”.
+            dado oficial”. Note que o fato integrado TSE×Censo exige{" "}
+            <code>build_fato</code> separado sobre Censo auditado — passo
+            ainda não automatizado no fluxo normal acima.
           </li>
         </ul>
       </section>

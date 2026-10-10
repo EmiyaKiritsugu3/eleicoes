@@ -541,9 +541,15 @@ export default function Analisar() {
       <section aria-label="Export reproduzível">
         <h2>Export reproduzível</h2>
         {badge}
-        <p>
-          <CopyShare url={shareUrl} />
-        </p>
+        {/* Share só após o manifest resolver: com hash="" o ?hash= não
+            ancora proveniência nenhuma. */}
+        {!carregando ? (
+          <p>
+            <CopyShare url={shareUrl} />
+          </p>
+        ) : (
+          <p role="status">a carregar…</p>
+        )}
         <p>
           <button
             type="button"

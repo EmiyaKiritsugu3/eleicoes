@@ -375,3 +375,39 @@ def test_build_all_com_dotdot_no_curated_levanta_sem_efeito(tmp_path):
     assert [p for p in tmp_path.rglob("*.tmp")] == []
     assert [p for p in tmp_path.rglob("*.prev")] == []
     assert canario.read_text(encoding="utf-8") == "intacto"
+
+
+# --- #13: fato staged sem proveniência nunca promove hashless (fail-closed) ---
+
+def test_fato_sem_proveniencia_nao_promove(tmp_path):
+    """fato_*.json obsoleto no web_dir não aparece no webdata promovido.
+
+    O staging copia o web_dir inteiro (incl. fato_*); triple sem match
+    nas fontes do build não gera entry de hash — o arquivo precisa ser
+    podado do staging, não promovido sem hash.
+    """
+    curated, db, manifest, webdata = _novo_caso(tmp_path)
+    webdata.mkdir()
+    (webdata / "fato_1999_1_presidente.json").write_text(
+        '{"obsoleto": true}', encoding="utf-8")
+    build_all(curated, db, manifest, web_data_dir=webdata)
+    assert not (webdata / "fato_1999_1_presidente.json").exists()
+    assert (webdata / "resumo.json").exists()
+    entries = json.loads(Path(manifest).read_text(encoding="utf-8")).get(
+        "artifacts", [])
+    arquivos = {e.get("arquivo") for e in entries}
+    assert "fato_1999_1_presidente.json" not in arquivos
+
+
+def test_fato_com_proveniencia_promove_com_hash(tmp_path):
+    """fato_*.json com triple casando as fontes promove e ganha entry."""
+    curated, db, manifest, webdata = _novo_caso(tmp_path)
+    webdata.mkdir()
+    (webdata / "fato_2022_1_presidente.json").write_text(
+        '{"candidatos": [], "municipios": []}', encoding="utf-8")
+    build_all(curated, db, manifest, web_data_dir=webdata)
+    assert (webdata / "fato_2022_1_presidente.json").exists()
+    entries = json.loads(Path(manifest).read_text(encoding="utf-8")).get(
+        "artifacts", [])
+    arquivos = {e.get("arquivo") for e in entries}
+    assert "fato_2022_1_presidente.json" in arquivos
