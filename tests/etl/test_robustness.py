@@ -178,6 +178,45 @@ def test_quarantine_case_insensitive_and_unique_names(tmp_path):  # .CSV move; c
         quarantine_invalid_csvs(raw, quarantine_dir=raw)
 
 
+def test_dv_rejects_short_and_padded():  # DV mod-10 do 7º dígito (EVOLVE-1 T3)
+    import warnings
+
+    import pandas as pd
+    import pytest
+
+    from etl.censo import normalize_censo
+    from etl.normalize import normalize_resultados
+
+    # "3550308" (São Paulo, DV válido) com os 2 primeiros dígitos
+    # transpostos -> "5350308": DV da base "535030" é 1, não 8 -> inválido.
+    # ("0123456": DV da base "012345" é 5, não 6 -> inválido; "123" cai no
+    # shape check anterior ao DV.)
+    bad_codes = ["123", "0123456", "5350308"]
+    tse_df = pd.DataFrame([
+        {"ANO_ELEICAO": 2022, "QT_VOTOS": 10, "CD_MUNICIPIO": c}
+        for c in bad_codes
+    ])
+    with pytest.warns(UserWarning, match="IBGE"):
+        tse_out = normalize_resultados(tse_df)
+    assert tse_out["municipio_ibge"].tolist() == ["", "", ""]
+    with pytest.warns(UserWarning, match="IBGE"):
+        censo_out = normalize_censo(pd.DataFrame({"CD_MUN": bad_codes}))
+    assert censo_out["ibge7"].tolist() == ["", "", ""]
+
+    # Válidos passam sem warn (São Paulo + Rio de Janeiro, DVs reais).
+    good_df = pd.DataFrame([
+        {"ANO_ELEICAO": 2022, "QT_VOTOS": 10, "CD_MUNICIPIO": "3550308"},
+        {"ANO_ELEICAO": 2022, "QT_VOTOS": 5, "CD_MUNICIPIO": "3304557"},
+    ])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        good_out = normalize_resultados(good_df)
+        good_censo = normalize_censo(
+            pd.DataFrame({"CD_MUN": ["3550308", "3304557"]}))
+    assert good_out["municipio_ibge"].tolist() == ["3550308", "3304557"]
+    assert good_censo["ibge7"].tolist() == ["3550308", "3304557"]
+
+
 def test_orphan_boundary_integer_math():  # exatos 0,1% passa sem float (M8, via DB construído)
     import inspect
     import tempfile

@@ -5,9 +5,11 @@ Schema canônico (ordem exata):
 
 - Aceita variações de nome de coluna do TSE entre anos (case-insensitive).
 - Repara mojibake latin1/utf-8 em colunas de texto.
-- `municipio_ibge` é string de 7 dígitos (zero-padded); municípios sem IBGE
-  oficial (ex.: código fictício 9999999) são MANTIDOS na linha — a camada do
-  mapa deriva a flag `sem_ibge` por join (exibe "sem dado oficial").
+- `municipio_ibge` é string de 7 dígitos (zero-padded) com dígito
+  verificador mod-10 válido no 7º dígito; inválido (shape ou DV) vira
+  `""` + `UserWarning` com contagem. O sentinela fictício "9999999"
+  (DV inválido) é rejeitado como os demais — a camada do mapa deriva
+  a flag `sem_ibge` por join (exibe "sem dado oficial").
 """
 
 from __future__ import annotations
@@ -85,7 +87,8 @@ def normalize_resultados(df: pd.DataFrame) -> pd.DataFrame:
     Votos não-numéricos viram nulos (`Int64` anulável), nunca 0 (E3);
     os quality gates reprovam nulos em vez de somar lixo.
     `turno` ausente/não-numérico vira 1 (M7).
-    Linhas de município sem IBGE oficial são mantidas (ver módulo docstring).
+    Códigos IBGE com shape ou DV inválido viram `""` + `UserWarning`
+    com contagem (ver módulo docstring).
     """
     if not isinstance(df, pd.DataFrame):
         raise TypeError(f"df must be a pandas DataFrame, got {type(df).__name__}")
@@ -121,8 +124,22 @@ def normalize_resultados(df: pd.DataFrame) -> pd.DataFrame:
     digits = ibge_raw.map(_fix_text).str.strip().str.replace(r"\D", "", regex=True)
     # M1: só 7 dígitos é IBGE válido; valida os dígitos crus (antes do
     # zfill, que mascararia "123" como "0000123") e descarta o resto p/ "".
-    bad = ~digits.str.fullmatch(r"\d{7}").fillna(False)
-    n_bad = int(bad.sum())
+    # DV (EVOLVE-1 T3): o 7º dígito é verificador mod-10 da base (6
+    # primeiros): pesos 1,2,1,2,1,2 esq->dir, soma os dígitos dos produtos,
+    # DV=(10-soma%10)%10. Ex.: "3550308" DV 8 ok; transposto "5350308"
+    # (DV 1≠8) rejeitado. (Regra duplicada em etl/censo.py — sem módulo
+    # geo comum; contra abstração prematura.)
+    def _dv_ok(code) -> bool:
+        if not isinstance(code, str) or len(code) != 7 or not code.isdigit():
+            return False
+        total = sum(
+            (int(d) * w) // 10 + (int(d) * w) % 10
+            for d, w in zip(code[:6], (1, 2, 1, 2, 1, 2))
+        )
+        return (10 - total % 10) % 10 == int(code[6])
+
+    bad_shape = ~digits.str.fullmatch(r"\d{7}").fillna(False)
+    n_bad = int(bad_shape.sum())
     if n_bad:
         warnings.warn(
             f"normalize_resultados: {n_bad} codigo(s) IBGE fora do padrao "
@@ -130,6 +147,16 @@ def normalize_resultados(df: pd.DataFrame) -> pd.DataFrame:
             UserWarning,
             stacklevel=2,
         )
+    dv_bad = ~bad_shape & ~digits.map(_dv_ok)
+    n_dv = int(dv_bad.sum())
+    if n_dv:
+        warnings.warn(
+            f"normalize_resultados: {n_dv} codigo(s) IBGE com digito "
+            "verificador invalido descartados (vazio)",
+            UserWarning,
+            stacklevel=2,
+        )
+    bad = bad_shape | dv_bad
     ibge = digits.where(~bad, "").str.zfill(7)
     out["municipio_ibge"] = ibge.replace("0000000", "")
 
