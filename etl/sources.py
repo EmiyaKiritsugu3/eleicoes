@@ -48,8 +48,11 @@ real é calculado por `etl.fetch.download_dataset` e registrado via
 # Agregados_por_Setores_Censitarios/Agregados_por_Municipio_csv/ com
 # Agregados_por_municipios_basico_BR_20260520.zip (HTTP 200, 326327 bytes,
 # 5570 municípios; CSV sep=";" encoding latin1, CD_MUN + v0001=pop).
+# 5101837 (Boa Esperança do Norte/MT, emancipado pós-Censo) existe na API
+# de localidades mas não no CSV do Censo: join sem par vira demo None
+# ("sem dado oficial"), dentro da tolerância de órfãos de build_fato.
 # `normalize_censo` consome sem adaptação (V0001→pop; soma pop =
-# 203080756, total oficial). Escolaridade vive em
+# TOTAL_CENSO_2022). Escolaridade vive em
 # Agregados_por_municipios_alfabetizacao_BR.zip (V-codes sem mapeamento
 # p/ esc_* — esc_* seguem nulos fail-closed, "sem dado oficial").
 """
@@ -59,6 +62,10 @@ _CENSO_CATALOG = (
     "https://www.ibge.gov.br/estatisticas/sociais/populacao/"
     "22827-censo-demografico-2022.html"
 )
+
+# População residente total do Censo 2022 (soma de v0001 do CSV confirmado,
+# verificada contra o arquivo real em 2026-10-10 — nunca editar sem reverificar).
+TOTAL_CENSO_2022 = 203080756
 
 CENSO_DATASETS: list[dict] = [
     {

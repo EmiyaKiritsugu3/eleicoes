@@ -202,16 +202,15 @@ def register_censo_ingest(manifest_path, rows=None, sha256=None, dataset=None) -
     `dataset` default = primeira entrada de `CENSO_DATASETS` (Censo 2022).
     `sha256` deve ser o hash de 64-hex (calculado por
     `etl.fetch.download_dataset`); a validação fail-closed acontece em
-    `write_manifest` (Task 6). URL pendente (None/vazia, i.e. path real
-    ainda não confirmado no FTP) levanta `ValueError` — nunca se registra
-    proveniência sem fonte baixável.
+    `write_manifest` (Task 6). URL ausente (None/vazia) levanta `ValueError`
+    — nunca se registra proveniência sem fonte baixável.
     """
     entry_meta = dataset if isinstance(dataset, dict) else CENSO_DATASETS[0]
     url = entry_meta.get("url")
     if not url:
         raise ValueError(
-            "censo dataset sem url confirmada (PENDING: confirmar path real "
-            "no FTP do IBGE); ingestão bloqueada — sem dado oficial"
+            "censo dataset sem url (None/vazia); ingestão bloqueada — "
+            "sem dado oficial"
         )
     entry = {
         "source_url": url,

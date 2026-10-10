@@ -138,7 +138,7 @@ def test_censo_datasets_allowlisted_and_shaped():
         assert url.endswith(".zip")
 
 
-def test_censo_pending_url_never_downloads_or_registers(tmp_path):
+def test_censo_url_guard_bloqueia_pendente_e_registra_confirmada(tmp_path):
     from etl.censo import register_censo_ingest
     from etl.fetch import download_dataset
     from etl.sources import CENSO_DATASETS
@@ -155,6 +155,24 @@ def test_censo_pending_url_never_downloads_or_registers(tmp_path):
     entry = register_censo_ingest(
         str(tmp_path / "m.json"), rows=1, sha256="ab" * 32)
     assert entry["source_url"] == CENSO_DATASETS[0]["url"]
+
+
+def test_total_censo_2022_pinado():
+    """TOTAL_CENSO_2022 = soma de v0001 do CSV real (verificado 2026-10-10).
+
+    Gate passa exatamente no total e reprova em ±1 (fail-closed).
+    """
+    from etl.censo import check_censo_sum
+    from etl.sources import TOTAL_CENSO_2022
+
+    assert TOTAL_CENSO_2022 == 203080756
+    df = pd.DataFrame(
+        {"pop": pd.array([203080755, 1], dtype="Int64")}
+    )
+    assert check_censo_sum(df, TOTAL_CENSO_2022) == []
+    for vizinho in (TOTAL_CENSO_2022 - 1, TOTAL_CENSO_2022 + 1):
+        erros = check_censo_sum(df, vizinho)
+        assert erros and any("soma" in e for e in erros), vizinho
 
 
 def test_censo_manifest_registers_date_and_version(tmp_path):
