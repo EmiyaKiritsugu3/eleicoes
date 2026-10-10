@@ -55,16 +55,15 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
   const fatoParamRef = useRef(fatoParam);
   fatoParamRef.current = fatoParam;
 
-  // Núcleo puro de leitura (sem setState): manifest → dataset+selo → fato.
-  // O Censo viaja separado (`buscarCenso`, webfix Finding 2): artefato
-  // lento não segura o painel atrás do loader — o fato assentado renderiza
-  // e a pop preenche quando chega. O gate é o mesmo de antes (helpers de
-  // lib/regiao só chamados, nunca alterados); a pop segue
-  // fato-independente com selo runtime na entry `artifacts` do Censo
+  // Núcleo puro de leitura (sem setState): dataset+selo → fato, sobre um
+  // manifest já lido. O manifest viaja UMA vez (`manifestP` no effect):
+  // fato e Censo partem do mesmo doc em paralelo — o JSON do fato (lento)
+  // nunca segura o fetch do Censo, nem vice-versa. O gate é o mesmo de
+  // antes (helpers de lib/regiao só chamados, nunca alterados); a pop
+  // segue fato-independente com selo runtime na entry `artifacts` do Censo
   // (EVOLVE-8 Task 1: sem entry auditada, o mapa é null — JSON forjado no
   // path servido nunca vira número, paridade com o gate do fato).
-  const buscarFato = useCallback(async (param: string) => {
-    const manifest = (await fetchJson("/data/manifest.json")).data;
+  const buscarFato = useCallback(async (param: string, manifest: unknown) => {
     const ds = fatoDatasetDe(manifest, param);
     const novoSeal = getSealParaDataset(manifest, ds);
     const f = ds ? (await fetchJson<FatoRegiao>(`/data/${ds}.json`)).data : null;
@@ -86,8 +85,10 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
     setManifestChecked(false);
     ocupadoRef.current = true;
     // Uma única leitura do manifest alimenta fato E Censo (sem fetch
-    // duplicado — custo zero): o selo do Censo deriva do mesmo doc.
-    const leitura = buscarFato(fatoParam);
+    // duplicado — custo zero): o selo do Censo deriva do mesmo doc, e os
+    // dois fetches pesados (fato + Censo) disparam em paralelo sobre ele.
+    const manifestP = fetchJson("/data/manifest.json");
+    const leitura = manifestP.then((m) => buscarFato(fatoParam, m.data));
     (async () => {
       try {
         const r = await leitura;
@@ -114,7 +115,7 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
     })();
     void (async () => {
       try {
-        const c = await buscarCenso((await leitura).manifest);
+        const c = await buscarCenso((await manifestP).data);
         if (vivo && geracaoRef.current === minha) setCenso(c);
       } catch {
         // fail-closed: sem mapa, a pop exibe SEM_DADO (nunca throw)

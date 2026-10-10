@@ -412,6 +412,19 @@ describe("curada (EVOLVE-8 Task 5: share→percentual + peso completo no Resulta
     expect(html).toContain("Percentual médio de votos por quintil");
     expect(html).toContain("Top municípios por percentual de votos");
   });
+  it("zero 'share' em todas as 30 (loop, não só uma página)", () => {
+    for (const p of perguntas) {
+      const html = htmlDe(p, fato40(), SEAL_OK);
+      expect(html, p.slug).not.toMatch(/share/i);
+    }
+  });
+  it("quintis em percentual ×100 + % (nunca fração crua 0-1)", () => {
+    const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
+    const html = htmlDe(p, fato40(), SEAL_OK);
+    const tabela = html.split("<caption>Percentual médio de votos por quintil")[1].split("</table>")[0];
+    expect(tabela).toMatch(/\d+,\d%/); // pt-BR + % (paridade com Resultado/Ranking)
+    expect(tabela).not.toMatch(/>0,\d+</);
+  });
   it("Resultado puro: peso completo (peso: eleitorado), sem 'share'", () => {
     const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
     const resultado = secaoResultadoCurada(htmlDe(p, fato40(), SEAL_OK));

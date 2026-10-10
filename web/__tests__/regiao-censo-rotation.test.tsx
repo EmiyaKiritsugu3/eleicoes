@@ -196,6 +196,32 @@ describe("/regiao: rotação de manifest refetcha o Censo (sem pop stale)", () =
     expect(perfil(div.innerHTML)).toContain("12.345");
   });
 
+  it("fato lento não segura o fetch do Censo (manifest compartilhado, paralelo)", async () => {
+    let liberaFato: (() => void) | null = null;
+    const fatoLento = new Promise<unknown>((res) => {
+      liberaFato = () => res({ ok: true, json: async () => FATO });
+    });
+    manifestAtual = MANIFEST_A;
+    instalarFetchRoteado(chamadas, (u) => {
+      if (u.endsWith("/data/manifest.json")) return { ok: true, json: async () => manifestAtual };
+      if (u.endsWith("/data/censo_municipios.json")) return { ok: true, json: async () => CENSO_A };
+      if (u.includes("/data/fato_")) return fatoLento;
+      return { ok: false, json: async () => null };
+    });
+    const div = await montar();
+    // Fato pendente: loader honesto, mas o Censo já foi buscado em paralelo.
+    expect(div.querySelector('[role="status"]')).not.toBeNull();
+    expect(conta("/data/censo_municipios.json")).toBe(1);
+    expect(conta("/data/manifest.json")).toBe(1); // manifest único, sem duplicado
+    await act(async () => {
+      liberaFato!();
+    });
+    await flushRotacao();
+    expect(div.innerHTML).toContain("Cand A");
+    expect(perfil(div.innerHTML)).toContain("12.345");
+    expect(conta("/data/censo_municipios.json")).toBe(1); // sem refetch
+  });
+
   it("run stale nunca publica sobre estado mais novo (token de geração)", async () => {
     const DSA = "fato_2022_1_presidente";
     const DSB = "fato_2022_2_presidente";

@@ -21,7 +21,7 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 - [x] EVOLVE-5: mergeado 140f8fa (PR #7) — primeiro dado REAL fluindo (Censo 2022 e2e).
 - [x] EVOLVE-6: mergeado 145de27 (PR #8).
 - [x] EVOLVE-7: mergeado eb96878 (PR #9) — primeiro pixel real na UI (pop Censo).
-- [ ] EVOLVE-8: em progresso na branch `evolve-8` — Tasks 1–5 completas (reviews Approved), Task 6 (processo) em execução; PR ao final.
+- [x] EVOLVE-8: completo na branch `evolve-8` — 6/6 tasks + revisão final limpa (PR #10 aberto p/ merge).
 - (Histórico original deste bloco preservado abaixo por valor de auditoria.)
 
 ## Log de ciclos

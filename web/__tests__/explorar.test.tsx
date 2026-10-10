@@ -56,11 +56,13 @@ describe("explorar (combinação válida)", () => {
 });
 
 describe("explorar (EVOLVE-8 Task 5: copy share→percentual, peso intacto)", () => {
+  // 3 visões (teto MAX_VISOES): dispersao + ranking + tabela — as 3
+  // renderizam (4 visões estouram o teto e a 4ª nunca renderiza).
   const SEL_TUDO: ExplorarSelecao = {
     quem: "lula",
     onde: "venceu",
     cruzar: "esc_sup",
-    ver: ["mapa", "dispersao", "ranking", "tabela"],
+    ver: ["dispersao", "ranking", "tabela"],
     foco: "3550300",
   };
   it("render sem 'share': termo leigo consistente em todas as seções", () => {
@@ -75,6 +77,24 @@ describe("explorar (EVOLVE-8 Task 5: copy share→percentual, peso intacto)", ()
     expect(html).toContain("Percentual médio de votos por quintil");
     expect(html).toContain("Top municípios por percentual de votos");
     expect(html).toContain("maior percentual de votos de");
+    // tabela (3ª visão, dentro do teto): perfil + peso em pt-BR, sem share.
+    expect(html).toContain("Médias ponderadas vs Brasil");
+    expect(html).toContain("eleitores (peso: eleitorado)");
+  });
+});
+
+describe("explorar (quintis em percentual, paridade com ranking/foco)", () => {
+  it("mediaY 0-1 vira percentual ×100 + % (nunca fração crua)", () => {
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo
+        fato={{ candidatos: CANDIDATOS, municipios: linhasValidas() }}
+        seal={SEAL_OK}
+        initial={{ ...SEL_VALIDA, ver: ["dispersao"] }}
+      />,
+    );
+    const tabela = html.split("<caption>Percentual médio de votos por quintil")[1].split("</table>")[0];
+    expect(tabela).toMatch(/\d+,\d%/); // pt-BR + % (ex. 60,0%)
+    expect(tabela).not.toMatch(/>0,\d+</); // fração crua 0,456 nunca
   });
 });
 

@@ -416,7 +416,7 @@ export function CuradaConteudo({
                 {faixas.map((f) => (
                   <tr key={f.faixa}>
                     <td>{f.faixa}</td>
-                    <td>{f.mediaY.toFixed(3).replace(".", ",")}</td>
+                    <td>{(f.mediaY * 100).toFixed(1).replace(".", ",")}%</td>
                     <td>{f.n}</td>
                   </tr>
                 ))}
