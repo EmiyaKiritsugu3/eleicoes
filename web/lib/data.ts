@@ -160,7 +160,12 @@ export function entryDate(e: ManifestIngestion): string {
   return Number.isNaN(Date.parse(raw)) ? "" : raw;
 }
 
-/** Exibição como oficial: hash válido E não-fixture. */
+/** Exibição como oficial: hash válido E não-fixture.
+ *  VIVA em prod (EVOLVE-9 T5: verificado — manter): `getOfficialAuditInfo`
+ *  (selo de /, /analisar e /auditoria via `getSealState`),
+ *  `web/app/auditoria/page.tsx` (coluna hash da tabela de ingestões) e
+ *  `web/components/ArtifactsTable.tsx` (coluna hash de arquivos servidos).
+ *  Fixture tem hash p/ transparência mas nunca usa o selo oficial. */
 export function isOfficialDisplay(obj: unknown): boolean {
   return isAudited(obj) && !isFixtureEntry(obj);
 }
