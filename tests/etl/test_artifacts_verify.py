@@ -122,3 +122,30 @@ def test_legado_so_ingestions_continua_valido(tmp_path):
                                "sha256": _SHA}]}
     assert "artifacts" not in payload
     assert verify_manifest(_write(tmp_path / "m.json", payload)) is True
+
+
+def test_legado_emite_aviso_sem_artifacts_mas_coberto_nao(tmp_path):
+    """Hardening (review): o True legado avisa alto (UserWarning pt-BR);
+    manifest com cobertura total de artifacts verifica em silêncio."""
+    import warnings
+
+    legado = {"ingestions": [{"source_url": "https://cdn.tse.jus.br/x.zip",
+                              "sha256": _SHA}]}
+    legado_path = _write(tmp_path / "legado.json", legado)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        assert verify_manifest(legado_path) is True
+    assert any(issubclass(w.category, UserWarning) and "artifacts" in str(w.message)
+               for w in caught), [str(w.message) for w in caught]
+
+    raw = _served(tmp_path)
+    coberto = {
+        "ingestions": [{"source_url": "https://cdn.tse.jus.br/x.zip",
+                        "sha256": _SHA}],
+        "artifacts": [_artifact("resumo.json", raw)],
+    }
+    coberto_path = _write(tmp_path / "coberto.json", coberto)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        assert verify_manifest(coberto_path) is True
+    assert [w for w in caught if "artifacts" in str(w.message)] == []

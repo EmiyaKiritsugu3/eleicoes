@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -102,6 +103,15 @@ def _artifacts_ok(manifest: dict, path) -> bool:
     (adulteração, arquivo ausente, entry malformada) reprova.
     """
     if "artifacts" not in manifest:
+        # Hardening (review Task 1): o True legado não é silencioso —
+        # avisa alto para o chamador distinguir de manifest com cobertura
+        # total de artifacts. Contrato mantido: retorna True (test-pinned).
+        warnings.warn(
+            "manifest sem chave 'artifacts': validado só por ingestões, "
+            "sem prova dos bytes servidos",
+            UserWarning,
+            stacklevel=3,
+        )
         return True  # legado só-ingestions: ver decisão acima
     artifacts = manifest.get("artifacts")
     if not isinstance(artifacts, list) or not artifacts:
