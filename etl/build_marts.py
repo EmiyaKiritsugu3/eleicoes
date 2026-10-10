@@ -219,6 +219,9 @@ def _write_duckdb(df: pd.DataFrame, db_path: Path) -> None:
 
 
 def _write_json_aggs(df: pd.DataFrame, web_data_dir: Path = WEB_DATA_DIR) -> None:
+    # DECISÃO (EVOLVE-1 Task 2): agregados seguem `indent=2` legível — sem
+    # reforma compacta (churn sem ganho nos KBs atuais); a integridade vem
+    # do hash dos bytes servidos (`register_served_artifacts`), não do tamanho.
     web_data_dir.mkdir(parents=True, exist_ok=True)
     total_votos = int(df["votos"].sum()) if not df.empty else 0
     anos = sorted(int(a) for a in df["ano"].unique().tolist()) if not df.empty else []
@@ -374,6 +377,99 @@ def _register_sources(df: pd.DataFrame, manifest_path, source_shas=None) -> None
     os.replace(tmp_path, manifest_file)
 
 
+_SERVED_AGG_NAMES = ("resumo.json", "por_uf.json", "por_candidato.json")
+
+
+def _served_files(web_data_dir: Path) -> list[Path]:
+    """JSONs servidos presentes no dir público: trio + fato_* existentes."""
+    files = [web_data_dir / name for name in _SERVED_AGG_NAMES]
+    files += sorted(web_data_dir.glob("fato_*.json"))
+    return [p for p in files if p.is_file()]
+
+
+def _fato_triple_from_name(name: str) -> tuple | None:
+    """`(ano, turno, CARGO_MAIÚSCULO)` de `fato_<ano>_<turno>_<slug>.json`."""
+    stem = name[:-len(".json")] if name.endswith(".json") else name
+    parts = stem.split("_")
+    if len(parts) != 4 or parts[0] != "fato":
+        return None
+    try:
+        return (int(parts[1]), int(parts[2]), parts[3].upper())
+    except ValueError:
+        return None
+
+
+def _artifact_entries_for(web_data_dir: Path, sources: list[dict],
+                          today: str) -> list[dict]:
+    """1 entry `sha_origin: "artifact"` por (arquivo servido × fonte V1).
+
+    `sha256`/`size_bytes` medidos dos BYTES servidos; `source_url` é o da
+    fonte do dataset (mesma das ingestões). Fato cujo triple não casa com
+    as fontes do build é ignorado (não é artefato oficial deste build).
+    """
+    by_pair = {(s["ano"], str(s["cargo"]).upper()): s for s in sources}
+    entries = []
+    for path in _served_files(web_data_dir):
+        raw = path.read_bytes()
+        sha = hashlib.sha256(raw).hexdigest()
+        if path.name.startswith("fato_"):
+            triple = _fato_triple_from_name(path.name)
+            if triple is None:
+                continue
+            ano, turno, cargo_upper = triple
+            source = by_pair.get((ano, cargo_upper))
+            if source is None:
+                continue
+            targets, extra = [source], {"turno": turno}
+        else:
+            targets, extra = sources, {}
+        for target in targets:
+            entries.append(
+                {
+                    "source_url": target["url"],
+                    "sha256": sha,
+                    "sha_origin": "artifact",
+                    "data": today,
+                    "etl_version": ETL_VERSION,
+                    "dataset": target["dataset"],
+                    "ano": target["ano"],
+                    "cargo": target["cargo"],
+                    "tipo": target["tipo"],
+                    **extra,
+                    "arquivo": path.name,
+                    "size_bytes": len(raw),
+                }
+            )
+    return entries
+
+
+def register_served_artifacts(manifest_path, web_data_dir,
+                              sources: list[dict]) -> list[dict]:
+    """(Re)escreve a chave `artifacts` do manifest a partir dos bytes servidos.
+
+    Substituição integral (não append): o conteúdo é determinístico dos
+    arquivos presentes, então rebuilds atualizam sem duplicar. Cada entry é
+    validada por `_validate_entry` (fail-closed: `source_url` truthy + sha
+    64-hex). Vive em chave própria para não colidir com o dedupe das
+    ingestões `(ano, cargo, source_url)` nem com `verify_manifest`.
+    Devolve as entries registradas.
+    """
+    today = datetime.now(timezone.utc).date().isoformat()
+    entries = _artifact_entries_for(Path(web_data_dir), sources, today)
+    for entry in entries:
+        _validate_entry(entry)  # fail-closed antes de escrever
+    manifest_file = Path(manifest_path)
+    manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        manifest = {"ingestions": []}
+    manifest["artifacts"] = entries
+    tmp_path = f"{manifest_file}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, manifest_file)
+    return entries
+
+
 def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
               source_shas=None) -> None:
     """Pipeline completo: Parquet particionado + DuckDB + JSONs + manifest.
@@ -384,9 +480,11 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
     `<web_data_dir>/manifest.json` para a frente pública ler `/data/manifest.json`
     (mesmo conteúdo, escrita única a partir do canônico — R2).
     `source_shas` mapeia `(ano, CARGO_MAIÚSCULO)` → sha256 do ZIP de origem
-    (threading E4; Tasks 5 e 7 consomem). Pares `(ano, cargo)` fora do V1
-    levantam `ValueError` antes de qualquer escrita. Após o DuckDB e antes
-    dos JSONs/manifest, os quality gates (`run_gates`) são aplicados sobre
+    (threading E4; Tasks 5 e 7 consomem). Após as ingestões, os hashes dos
+    bytes servidos são registrados em `manifest["artifacts"]`
+    (`register_served_artifacts`, EVOLVE-1 Task 2). Pares `(ano, cargo)` fora
+    do V1 levantam `ValueError` antes de qualquer escrita. Após o DuckDB e
+    antes dos JSONs/manifest, os quality gates (`run_gates`) são aplicados sobre
     a integridade interna (soma/órfãos); qualquer erro levanta
     `RuntimeError` com as saídas públicas anteriores intactas (C2). O gate
     de manifest é excluído aqui — o manifest desta ingestão ainda não foi
@@ -405,6 +503,11 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
     web_dir = Path(web_data_dir) if web_data_dir is not None else WEB_DATA_DIR
     _write_json_aggs(df, web_dir)
     _register_sources(df, manifest_path, source_shas=source_shas)
+    if not df.empty:
+        # Hashes dos bytes servidos (trio + fato_* presentes): o espelho
+        # abaixo os inclui para /auditoria provar igualdade (display é
+        # follow-up). Vazio segue sem proveniência (contrato E5).
+        register_served_artifacts(manifest_path, web_dir, _matched_entries(df))
     # Cópia idêntica p/ a frente pública (manifest_path segue canônico).
     web_dir.mkdir(parents=True, exist_ok=True)
     (web_dir / "manifest.json").write_bytes(Path(manifest_path).read_bytes())

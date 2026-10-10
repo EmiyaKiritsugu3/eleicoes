@@ -102,10 +102,10 @@ def seed(manifest_path: Path, web_data_dir: Path, force: bool = False) -> dict:
     sys.path.insert(0, str(_REPO_ROOT))
     from etl import ETL_VERSION
     from etl.build_fato import build_fato
-    from etl.build_marts import build_all
+    from etl.build_marts import build_all, register_served_artifacts
     from etl.censo import normalize_censo
     from etl.manifest import write_manifest
-    from etl.sources import CENSO_DATASETS
+    from etl.sources import CENSO_DATASETS, V1_DATASETS
 
     manifest_path = Path(manifest_path)
     web_data_dir = Path(web_data_dir)
@@ -183,8 +183,22 @@ def seed(manifest_path: Path, web_data_dir: Path, force: bool = False) -> dict:
             for entry in tmp_manifest.get("ingestions", []):
                 if isinstance(entry, dict):
                     write_manifest(manifest_path, entry)
+            # Hashes dos bytes servidos (trio do build_all + fato do
+            # build_fato): recalculados aqui porque o fato só existe após o
+            # build_fato. Substituição integral — o trio sai idêntico.
+            ano, turno, cargo = _FATO_TRIPLE
+            fixture_sources = [
+                e for e in V1_DATASETS
+                if e["ano"] == ano and str(e["cargo"]).upper() == cargo.upper()
+            ]
+            register_served_artifacts(manifest_path, web_data_dir,
+                                      fixture_sources)
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         for entry in manifest.get("ingestions", []):
+            if isinstance(entry, dict):
+                entry["fixture"] = True
+                entry["nota"] = _FIXTURE_NOTA
+        for entry in manifest.get("artifacts", []):
             if isinstance(entry, dict):
                 entry["fixture"] = True
                 entry["nota"] = _FIXTURE_NOTA
