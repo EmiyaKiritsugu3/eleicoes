@@ -14,19 +14,28 @@ header IBGE/SIDRA por município (case-insensitive) e devolve o schema canônico
   "soma" (fail-closed: sem Censo auditado → "sem dado oficial").
 - `register_censo_ingest(...)`: registra a ingestão no manifest com URL
   IBGE + SHA + `data` (ISO yyyy-mm-dd UTC) + `etl_version` (Task 4).
+- `ingerir_censo(duckdb_path, manifest_path, ...)`: entrypoint da ingestão
+  REAL — baixa o zip confirmado via `etl.fetch.download_dataset`
+  (backoff/UA/resume/teto, sem reimplementar), extrai o CSV de municípios,
+  normaliza, aplica o gate `TOTAL_CENSO_2022` fail-closed ANTES de qualquer
+  escrita, grava `dim_municipio` no DuckDB e registra a ingestão.
 """
 
 from __future__ import annotations
 
 import re
+import zipfile
 from datetime import datetime, timezone
+from pathlib import Path
+from urllib.parse import unquote, urlparse
 
+import duckdb
 import pandas as pd
 
-from etl import ETL_VERSION
+from etl import ETL_VERSION, fetch
 from etl.ibge_dv import validar_serie_ibge
 from etl.manifest import write_manifest
-from etl.sources import CENSO_DATASETS
+from etl.sources import CENSO_DATASETS, TOTAL_CENSO_2022
 
 CANONICAL_CENSO_COLUMNS = [
     "ibge7",
@@ -225,3 +234,83 @@ def register_censo_ingest(manifest_path, rows=None, sha256=None, dataset=None) -
         entry["rows"] = int(rows)
     write_manifest(manifest_path, entry)
     return entry
+
+
+def ingerir_censo(duckdb_path, manifest_path, url=None, raw_dir=None,
+                  dataset=None) -> dict:
+    """Baixa o zip REAL do Censo IBGE e materializa `dim_municipio`.
+
+    Pipeline: `fetch.download_dataset(url)` (backoff/UA/resume/teto — sem
+    reimplementar) → extrai o CSV de municípios do zip → `normalize_censo`
+    → gate `TOTAL_CENSO_2022` fail-closed → `dim_municipio` no DuckDB →
+    `register_censo_ingest` no manifest. Devolve dict com `zip_path`,
+    `zip_bytes`, `sha256`, `rows`, `csv_name`, `duckdb` e `entry`.
+
+    `url` default = `url` da entrada (`dataset` ou `CENSO_DATASETS[0]`);
+    ausente/None/vazia levanta `ValueError` antes de qualquer IO (sem dado
+    oficial). `raw_dir` default = `fetch.RAW_ROOT` (lido na chamada, p/
+    testes redirecionarem o sandbox). Zip sem membro `.csv` levanta
+    `ValueError`; com vários, o MAIOR vence (determinístico). O CSV real é
+    `;`-separado em latin1 (formato confirmado no FTP em 2026-10-10);
+    header sem coluna de município levanta `ValueError` via
+    `normalize_censo`. O gate da soma reprova ANTES de qualquer escrita —
+    `duckdb_path`/`manifest_path` intocados (nunca dim sem total auditado).
+    Custo zero: só stdlib + deps já declaradas (requests/pandas/duckdb).
+    """
+    entry_meta = dataset if isinstance(dataset, dict) else CENSO_DATASETS[0]
+    src_url = url or entry_meta.get("url")
+    if not isinstance(src_url, str) or not src_url:
+        raise ValueError(
+            "ingerir_censo: url pendente/ausente, ingestão bloqueada "
+            "(sem dado oficial)"
+        )
+    base = Path(raw_dir) if raw_dir is not None else fetch.RAW_ROOT
+    nome_zip = (
+        unquote(urlparse(src_url).path.rsplit("/", 1)[-1])
+        or "censo_2022_municipios.zip"
+    )
+    dest = Path(base) / nome_zip
+    sha = fetch.download_dataset(src_url, dest)
+    zip_bytes = dest.stat().st_size
+    with zipfile.ZipFile(dest) as zf:
+        csvs = [
+            i for i in zf.infolist()
+            if not i.is_dir() and i.filename.lower().endswith(".csv")
+        ]
+        if not csvs:
+            raise ValueError(
+                f"ingerir_censo: zip sem CSV de municípios em {src_url} "
+                "(sem dado oficial)"
+            )
+        membro = max(csvs, key=lambda i: i.file_size)
+        with zf.open(membro.filename) as fh:
+            bruto = pd.read_csv(fh, sep=";", encoding="latin1", dtype="string")
+    df = normalize_censo(bruto)
+    erros = check_censo_sum(df, TOTAL_CENSO_2022)
+    if erros:
+        raise ValueError(
+            "ingerir_censo: gate do Censo reprovou: " + "; ".join(erros)
+        )
+    db_path = Path(duckdb_path)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    con = duckdb.connect(str(db_path))
+    try:
+        con.register("censo_df", df)
+        con.execute(
+            "CREATE OR REPLACE TABLE dim_municipio AS SELECT * FROM censo_df"
+        )
+    finally:
+        con.close()
+    manifest_p = Path(manifest_path)
+    manifest_p.parent.mkdir(parents=True, exist_ok=True)
+    entry = register_censo_ingest(
+        str(manifest_p), rows=len(df), sha256=sha, dataset=entry_meta)
+    return {
+        "zip_path": str(dest),
+        "zip_bytes": zip_bytes,
+        "sha256": sha,
+        "rows": len(df),
+        "csv_name": membro.filename.rsplit("/", 1)[-1],
+        "duckdb": str(db_path),
+        "entry": entry,
+    }
