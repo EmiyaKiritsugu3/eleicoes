@@ -823,7 +823,10 @@ def _verificar_geracao_integra(curated, db_file, manifest_file, web_dir) -> None
         "foi publicado e nada foi alterado. "
         + "; ".join(divergentes) + "." + detalhe_prevs
         + " Restaure a geração íntegra anterior a partir dos backups `.prev`,"
-        " remova restos `.tmp` do build interrompido e rode o build novamente."
+        " restaurando o `.prev` SOMENTE sobre os alvos com os valores da"
+        " geração NOVA (detalhes acima) — restaurar todos reintroduz o mix"
+        " N-1/N-2; remova restos `.tmp` do build interrompido e rode o build"
+        " novamente."
     )
 
 
@@ -849,7 +852,9 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
     tudo); os quality gates (`run_gates`) rodam contra o
     DB staged; qualquer erro deleta só o staging e levanta `RuntimeError`
     com os públicos anteriores byte-idênticos (C2). Staging obsoleto de
-    crash anterior é descartado no início (nunca promove parcial). No
+    crash anterior é descartado no início (nunca promove parcial), EXCETO no
+    caminho de falha de geração meio-promovida (Task 5) — ali os `.tmp` são
+    preservados de propósito p/ diagnóstico. No
     sucesso, cada staging troca de lugar com o público e o anterior vira
     `<alvo>.prev` (removido no sucesso seguinte). O gate de manifest é
     excluído aqui — o manifest desta ingestão ainda não foi escrito (vai
