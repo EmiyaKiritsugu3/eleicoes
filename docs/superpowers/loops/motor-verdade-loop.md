@@ -69,3 +69,7 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 - cubic 23 issues triadas: 13 corrigidas (commit 054b5da, review Approved), 10 diferidas → EVOLVE-2.
 - CodeRabbit MAJOR (9 IBGEs oficiais fora do mod-10, confirmado na API oficial: 5571 municípios, exatamente 9 falham) corrigido com allowlist + teste (commit 9ebb6fb, review Approved); final pass sem achados novos.
 - Sonar MCP instalado (sonarqube-mcp-server@1.10.21, org emiyakiritsugu3) — token no config OpenCode.
+
+## EVOLVE-1 mergeado (2026-10-10 ~14:50 UTC)
+- Merge PR #3 (merge commit 453a9da): tudo verde — CI ×2, GitGuardian, CodeRabbit, cubic, Sonar (pós won't-fix justificado). Branch evolve-1 deletada.
+- Total: 6 tasks + sonar guards + helper DV + 13 fixes cubic + allowlist 9 exceções + triagem Sonar. Suítes finais: pytest 120 + vitest 282 + build OK.
