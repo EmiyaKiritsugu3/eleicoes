@@ -244,3 +244,89 @@ def test_seed_censo_entry_date_is_pinned(tmp_path):
         mod.seed(d / "manifest.json", d / "webdata")
         dates.append(_censo_entry_date(d / "manifest.json"))
     assert dates[0] == dates[1] == "2022-01-01"
+
+
+# --- EVOLVE-1 Task 4: stage-then-promote ---
+
+def _snapshot_public(curated, db, manifest, webdata):
+    """Bytes públicos pós-build-bom: partições, DB, manifest + JSONs."""
+    snap = {}
+    snap["partitions"] = {
+        str(p.relative_to(curated)): p.read_bytes()
+        for p in sorted(curated.rglob("*.parquet"))
+    }
+    snap["db"] = Path(db).read_bytes()
+    snap["manifest"] = Path(manifest).read_bytes()
+    snap["web"] = {
+        p.name: p.read_bytes()
+        for p in sorted(Path(webdata).iterdir()) if p.is_file()
+    }
+    return snap
+
+
+def _assert_public_intact(snap, curated, db, manifest, webdata):
+    current = _snapshot_public(curated, db, manifest, webdata)
+    assert current == snap
+
+
+def _staging_paths(curated, db, manifest, webdata):
+    return [Path(f"{p}.tmp") for p in (curated, db, manifest, webdata)]
+
+
+def _assert_no_staging(curated, db, manifest, webdata):
+    leftovers = [p for p in _staging_paths(curated, db, manifest, webdata)
+                 if p.exists() or p.is_symlink()]
+    assert leftovers == []
+
+
+def test_gate_failure_keeps_previous_outputs(tmp_path):
+    """Build bom -> snapshot; build ruim -> RuntimeError + públicos intactos.
+
+    Stage-then-promote: gates rodam contra o DB staged; a falha deleta só
+    o staging — Parquet particionado, DuckDB, JSONs e manifest anteriores
+    seguem byte-idênticos.
+    """
+    curated = tmp_path / "curated"
+    curated.mkdir()
+    _seed(curated)
+    webdata = tmp_path / "webdata"
+    db = tmp_path / "t.duckdb"
+    manifest = tmp_path / "m.json"
+    build_all(curated, db, manifest, web_data_dir=webdata)
+    assert _total_votos(db) == 15
+    snap = _snapshot_public(curated, db, manifest, webdata)
+    (curated / "raw.csv").write_text(_BAD_VOTOS_CSV, encoding="utf-8")
+    with pytest.raises(RuntimeError, match="gates reprovados"):
+        build_all(curated, db, manifest, web_data_dir=webdata)
+    assert _total_votos(db) == 15
+    _assert_public_intact(snap, curated, db, manifest, webdata)
+    _assert_no_staging(curated, db, manifest, webdata)
+
+
+def test_stale_staging_cleaned(tmp_path):
+    """.tmp obsoleto pré-existente (crash anterior) nunca promove parcial.
+
+    Build bom sucede, o staging obsoleto é descartado (sem restos `.tmp`)
+    e as saídas refletem só os dados atuais.
+    """
+    curated = tmp_path / "curated"
+    curated.mkdir()
+    _seed(curated)
+    webdata = tmp_path / "webdata"
+    db = tmp_path / "t.duckdb"
+    manifest = tmp_path / "m.json"
+    for stale in _staging_paths(curated, db, manifest, webdata):
+        if stale.name.endswith(".duckdb.tmp") or stale.name.endswith(".json.tmp"):
+            stale.parent.mkdir(parents=True, exist_ok=True)
+            stale.write_bytes(b"staging-obsoleto")
+        else:
+            stale.mkdir(parents=True, exist_ok=True)
+            (stale / "junk.txt").write_text("staging-obsoleto", encoding="utf-8")
+    build_all(curated, db, manifest, web_data_dir=webdata)
+    assert _total_votos(db) == 15
+    assert json.loads((webdata / "resumo.json").read_text(encoding="utf-8"))[
+        "total_votos"] == 15
+    assert len(_ingestions(manifest)) == 1
+    _assert_no_staging(curated, db, manifest, webdata)
+    assert list(curated.rglob("junk.txt")) == []
+    assert list(webdata.rglob("junk.txt")) == []

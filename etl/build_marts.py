@@ -470,6 +470,117 @@ def register_served_artifacts(manifest_path, web_data_dir,
     return entries
 
 
+def _is_within(path, ancestor) -> bool:
+    """True se `path` == `ancestor` ou está sob ele (caminhos absolutos)."""
+    try:
+        Path(path).relative_to(ancestor)
+        return True
+    except ValueError:
+        return False
+
+
+def _abs(path) -> Path:
+    return Path(os.path.abspath(os.fspath(path)))
+
+
+def _relocated_staging(target, dir_publics) -> Path:
+    """Staging nunca aninhado dentro de outro alvo público.
+
+    Alvos podem aninhar (ex.: `build_all(tmp, tmp/t.duckdb, ...)` nos
+    testes): o staging padrão (`<alvo>.tmp`, irmão) cairia dentro do
+    `curated`/`web` público e o rename do dir externo o arrastaria,
+    orfanando o swap interno. Nesse caso o staging sobe para irmão do
+    alvo externo mais externo (mesmo parent → mesmo fs, rename atômico).
+    Sem aninhamento, é o próprio `<alvo>.tmp`.
+    """
+    target_abs = _abs(target)
+    st = Path(f"{target_abs}.tmp")
+    for _ in range(10):
+        outers = [
+            _abs(d) for d in dir_publics
+            if _abs(d) != target_abs and _is_within(st, _abs(d))
+        ]
+        if not outers:
+            return st
+        st = min(outers, key=lambda d: len(d.parts)).parent / st.name
+    raise RuntimeError(f"build_marts: aninhamento de alvos sem saída: {target}")
+
+
+def _prev_for(target) -> Path:
+    """Backup last-good de um alvo público: `<alvo>.prev` (irmão, mesmo fs)."""
+    return Path(f"{Path(target)}.prev")
+
+
+def _remove_path(path) -> None:
+    """Remove arquivo/symlink/dir; ausente é ok (limpeza de staging)."""
+    p = Path(path)
+    if p.is_symlink() or p.is_file():
+        p.unlink()
+    elif p.is_dir():
+        shutil.rmtree(p)
+
+
+def _stage_dir(public_dir, staging_dir, skip_roots=()) -> None:
+    """Copia o dir público p/ o staging (fontes + fato_* preservados).
+
+    O prune/rewrite posterior opera só no staging: partições obsoletas
+    caem no `_write_partitioned_parquet` do staging e o swap publica o
+    conjunto novo por inteiro (prune por substituição). Dir ausente vira
+    staging vazio. `skip_roots`: públicos de outros alvos aninhados aqui
+    dentro — promovidos à parte, nunca carreados (cópia velha voltaria no
+    swap). Restos `.tmp`/`.prev` também ficam de fora.
+    """
+    public_dir, staging_dir = Path(public_dir), Path(staging_dir)
+    if not public_dir.is_dir():
+        staging_dir.mkdir(parents=True, exist_ok=True)
+        return
+    skip = {_abs(s) for s in skip_roots}
+
+    def _ignore(dirpath, names):
+        ignored = []
+        for name in names:
+            if name.endswith(".tmp") or name.endswith(".prev"):
+                ignored.append(name)
+            elif _abs(Path(dirpath) / name) in skip:
+                ignored.append(name)
+        return ignored
+
+    shutil.copytree(public_dir, staging_dir, ignore=_ignore)
+
+
+def _stage_file(public_file, staging_file) -> None:
+    """Copia o arquivo público p/ o staging (histórico do manifest).
+
+    Ausente deixa o staging ausente (primeiro build / E5 vazio).
+    """
+    public_file, staging_file = Path(public_file), Path(staging_file)
+    if public_file.is_file() or public_file.is_symlink():
+        staging_file.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(public_file, staging_file)
+
+
+def _promote(staging, target) -> None:
+    """Troca o staging pelo alvo público, guardando o anterior em `.prev`.
+
+    O `.prev` da geração anterior é removido aqui — isto é, no sucesso
+    seguinte ("removido no sucesso seguinte"); falha nunca chega aqui
+    (só o staging é deletado, públicos intactos). `rename` de irmãos é
+    atômico no mesmo filesystem. Vale p/ arquivos e dirs.
+    """
+    staging, target = Path(staging), Path(target)
+    prev = _prev_for(target)
+    _remove_path(prev)
+    if target.exists() or target.is_symlink():
+        target.rename(prev)
+    staging.rename(target)
+
+
+def _discard_staging(paths) -> None:
+    """Remove todos os stagings (falha de gate: só o staging morre)."""
+    for p in paths:
+        _remove_path(p)
+
+
 def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
               source_shas=None) -> None:
     """Pipeline completo: Parquet particionado + DuckDB + JSONs + manifest.
@@ -482,32 +593,80 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
     `source_shas` mapeia `(ano, CARGO_MAIÚSCULO)` → sha256 do ZIP de origem
     (threading E4; Tasks 5 e 7 consomem). Após as ingestões, os hashes dos
     bytes servidos são registrados em `manifest["artifacts"]`
-    (`register_served_artifacts`, EVOLVE-1 Task 2). Pares `(ano, cargo)` fora
-    do V1 levantam `ValueError` antes de qualquer escrita. Após o DuckDB e
-    antes dos JSONs/manifest, os quality gates (`run_gates`) são aplicados sobre
-    a integridade interna (soma/órfãos); qualquer erro levanta
-    `RuntimeError` com as saídas públicas anteriores intactas (C2). O gate
-    de manifest é excluído aqui — o manifest desta ingestão ainda não foi
-    escrito (vai em `_register_sources`, após os JSONs) — e a ausência de
-    totais oficiais é só `UserWarning` (contrato `run_gates`), nunca erro.
+    (`register_served_artifacts`, EVOLVE-1 Task 2) — dentro do staging,
+    junto com Parquet/DB/JSONs/espelho, para o swap publicar hashes
+    calculados sobre os bytes exatos que vão ao ar. Pares `(ano, cargo)`
+    fora do V1 levantam `ValueError` antes de qualquer escrita (incl.
+    staging). Stage-then-promote (EVOLVE-1 Task 4): Parquet + DuckDB +
+    JSONs + manifest canônico + espelho são escritos em staging
+    (`<alvo>.tmp`, realocado p/ fora quando alvos aninham — staging cobre
+    tudo); os quality gates (`run_gates`) rodam contra o
+    DB staged; qualquer erro deleta só o staging e levanta `RuntimeError`
+    com os públicos anteriores byte-idênticos (C2). Staging obsoleto de
+    crash anterior é descartado no início (nunca promove parcial). No
+    sucesso, cada staging troca de lugar com o público e o anterior vira
+    `<alvo>.prev` (removido no sucesso seguinte). O gate de manifest é
+    excluído aqui — o manifest desta ingestão ainda não foi escrito (vai
+    em `_register_sources`, após os JSONs) — e a ausência de totais
+    oficiais é só `UserWarning` (contrato `run_gates`), nunca erro.
     """
     curated = Path(curated_dir)
+    db_file = Path(db_path)
+    manifest_file = Path(manifest_path)
+    web_dir = Path(web_data_dir) if web_data_dir is not None else WEB_DATA_DIR
+    dir_publics = [curated, web_dir]
+    curated_st = _relocated_staging(curated, dir_publics)
+    web_st = _relocated_staging(web_dir, dir_publics)
+    db_st = _relocated_staging(db_file, dir_publics)
+    manifest_st = _relocated_staging(manifest_file, dir_publics)
+    stagings = (curated_st, db_st, manifest_st, web_st)
+    # Staging obsoleto de build anterior crashado: descarta (nunca promove).
+    _discard_staging(stagings)
     df = _load_canonical(curated)
     _matched_entries(df)  # pré-checagem fail-closed: antes de qualquer escrita
-    _write_partitioned_parquet(df, curated)
-    _write_duckdb(df, Path(db_path))
-    gate_errors = run_gates(Path(db_path), manifest_path=None)
-    gate_errors = [e for e in gate_errors if not e.startswith("manifest")]
-    if gate_errors:
-        raise RuntimeError(f"gates reprovados: {'; '.join(gate_errors)}")
-    web_dir = Path(web_data_dir) if web_data_dir is not None else WEB_DATA_DIR
-    _write_json_aggs(df, web_dir)
-    _register_sources(df, manifest_path, source_shas=source_shas)
-    if not df.empty:
-        # Hashes dos bytes servidos (trio + fato_* presentes): o espelho
-        # abaixo os inclui para /auditoria provar igualdade (display é
-        # follow-up). Vazio segue sem proveniência (contrato E5).
-        register_served_artifacts(manifest_path, web_dir, _matched_entries(df))
-    # Cópia idêntica p/ a frente pública (manifest_path segue canônico).
-    web_dir.mkdir(parents=True, exist_ok=True)
-    (web_dir / "manifest.json").write_bytes(Path(manifest_path).read_bytes())
+    # Põ props públicos no staging: fontes (CSVs) + fato_* + histórico.
+    # Curated/web por cópia (prune/overwrite operam no staging); manifest
+    # por cópia (dedupe lê o histórico); DB reescrito por inteiro.
+    # Alvos aninhados (ex.: tudo sob tmp_path) são excluídos da cópia do
+    # externo e promovidos à parte, do mais externo ao mais interno.
+    all_publics = [curated, db_file, manifest_file, web_dir]
+    _stage_dir(curated, curated_st,
+               [p for p in all_publics
+                if p != curated and _is_within(_abs(p), _abs(curated))])
+    _stage_dir(web_dir, web_st,
+               [p for p in all_publics
+                if p != web_dir and _is_within(_abs(p), _abs(web_dir))])
+    _stage_file(manifest_file, manifest_st)
+    db_st.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        # Ordem Tasks 4–7 preservada, toda dentro do staging.
+        _write_partitioned_parquet(df, curated_st)
+        _write_duckdb(df, db_st)
+        gate_errors = run_gates(db_st, manifest_path=None)
+        gate_errors = [e for e in gate_errors if not e.startswith("manifest")]
+        if gate_errors:
+            raise RuntimeError(f"gates reprovados: {'; '.join(gate_errors)}")
+        _write_json_aggs(df, web_st)
+        _register_sources(df, manifest_st, source_shas=source_shas)
+        if not df.empty:
+            # Hashes dos bytes servidos (trio + fato_* presentes): o espelho
+            # abaixo os inclui para /auditoria provar igualdade (display é
+            # follow-up). Vazio segue sem proveniência (contrato E5).
+            register_served_artifacts(manifest_st, web_st,
+                                      _matched_entries(df))
+        # Espelho idêntico ao canônico — ainda dentro do staging (swap conjunto).
+        web_st.mkdir(parents=True, exist_ok=True)
+        (web_st / "manifest.json").write_bytes(manifest_st.read_bytes())
+    except BaseException:
+        _discard_staging(stagings)  # falha (gate ou não): só o staging morre
+        raise
+    # Promove tudo, do dir mais externo ao mais interno (aninhados saem
+    # do `.prev` do externo já com o conteúdo novo); backup last-good em
+    # `.prev`.
+    for staging, target in sorted(
+        ((curated_st, curated), (web_st, web_dir)),
+        key=lambda pair: len(_abs(pair[1]).parts),
+    ):
+        _promote(staging, target)
+    _promote(db_st, db_file)
+    _promote(manifest_st, manifest_file)
