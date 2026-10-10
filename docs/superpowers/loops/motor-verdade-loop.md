@@ -104,3 +104,6 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 
 ## EVOLVE-5 completo (final review: Merge Yes)
 - 6/6 tasks + revisão final limpa; nenhum MUST-FIX; minors → EVOLVE-6 backlog.
+
+## EVOLVE-5 round PR#7-R1 (2026-10-10 ~19:00 UTC)
+- Sonar: 2 S8707 novos (__main__ reads, read-only) won't-fix mesmo ruling.
