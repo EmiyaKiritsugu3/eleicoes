@@ -52,3 +52,10 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 ## PR-GREEN iteração 4 (2026-10-10 ~04:00 UTC)
 - 2 findings frescos do re-review CodeRabbit: (1) mismatch transitório fato/selo no ?fato= — fix setFato(null) + teste jsdom de transição (RED sem fix confirmado); (2) gate fixture da rota vs contrato do componente — julgado: sugestão procede, rota alinhada via vereditoTemProva() + testes.
 - Local: pytest 95 + vitest 262/15 + tsc + build OK.
+
+## PR-GREEN completo (2026-10-10 ~03:15 UTC)
+- Merge PR #2 (merge commit 47d6895): CI verde ×2, GitGuardian + CodeRabbit + cubic pass, zero findings pós-lote.
+- Branch motor-verdade deletada local; main atualizada.
+
+## EVOLVE-1: auditoria de melhorias (iniciada)
+- Conhecidos pendentes: mapa clicável na Home (gap spec §3); ingest real Censo (URL pendente); verificação com-fato-real; T2 dup/phantom-id; minors do ledger final.
