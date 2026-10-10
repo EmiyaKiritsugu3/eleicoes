@@ -56,7 +56,13 @@ function Bar({ value, max }: { value: number; max: number }) {
  *  extras no default export da rota, então a rota (`app/page.tsx`) é um
  *  `Home()` sem args que delega para cá. Em produção monta com `{}`.
  */
-export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
+
+// Manifest legível: objeto não-nulo (200 com corpo null/array/texto não é
+// manifest — `getSealState` derivaria selo vazio e o wipe apagaria os
+// números validados; ver guard da rotação abaixo).
+function manifestoValido(d: unknown): d is Record<string, unknown> {
+  return typeof d === "object" && d !== null && !Array.isArray(d);
+}export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   const [resumo, setResumo] = useState<ResumoJson | null>(null);
   const [porUf, setPorUf] = useState<PorUfRow[]>([]);
   const [porCand, setPorCand] = useState<PorCandidatoRow[]>([]);
@@ -111,7 +117,14 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
       if (ocupadoRef.current) return;
       ocupadoRef.current = true;
       try {
-        const novoSeal = getSealState((await fetchJson("/data/manifest.json")).data);
+        // Blip ≠ rotação: manifest ilegível (`status !== "ok"`) OU corpo
+        // sem objeto (`200` com `null`/array/texto — derivaria selo vazio)
+        // sai ANTES da comparação e mantém os números validados
+        // (stale-while-revalidate); só fetch OK com objeto e selo diferente
+        // refaz o pesado.
+        const leitura = await fetchJson("/data/manifest.json");
+        if (leitura.status !== "ok" || !manifestoValido(leitura.data)) return;
+        const novoSeal = getSealState(leitura.data);
         if (JSON.stringify(novoSeal) === JSON.stringify(sealRef.current)) return;
         sealRef.current = await carregarPesados();
         setSeal(sealRef.current);

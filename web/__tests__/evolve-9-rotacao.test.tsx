@@ -77,6 +77,9 @@ let porUfAtual: unknown = POR_UF;
 // Blip de rede: com true, o fetch do manifest REJEITA (offline) — a rotação
 // deve manter o último selo validado, nunca suprimir dado válido.
 let falharManifest = false;
+// Buraco 200+null: fetch OK mas corpo JSON null — passa no `status==="ok"`
+// e derivava selo vazio (wipe). Também deve manter o último válido.
+let manifestNulo = false;
 const chamadas: string[] = [];
 
 function instalarRotacao() {
@@ -84,9 +87,11 @@ function instalarRotacao() {
   fatoAtual = FATO;
   porUfAtual = POR_UF;
   falharManifest = false;
+  manifestNulo = false;
   instalarFetchRoteado(chamadas, (u) => {
     if (u.endsWith("/data/manifest.json")) {
       if (falharManifest) throw new TypeError("fetch failed");
+      if (manifestNulo) return { ok: true, json: async () => null };
       return { ok: true, json: async () => manifestAtual };
     }
     if (u.endsWith("/data/resumo.json")) return { ok: true, json: async () => RESUMO };
@@ -190,6 +195,20 @@ describe("/explorar: rotação de manifest (EVOLVE-9 Task 3b)", () => {
     falharManifest = true;
     await focarRotacao();
     // Stale-while-revalidate: falha ≠ rotação — selo e fato intactos.
+    expect(conta("/data/manifest.json")).toBe(2); // foco retentou a leitura
+    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
+    expect(div.innerHTML).not.toContain("dado não auditado");
+    expect(conta(`/data/${DS}.json`)).toBe(1);
+  });
+
+  it("manifest 200 com corpo null → dado válido mantido, sem supressão", async () => {
+    instalarRotacao();
+    const div = await montar(<ExplorarPage />);
+    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
+    manifestNulo = true;
+    await focarRotacao();
+    // null não é manifest: mantém o último selo validado (sem wipe).
+    expect(conta("/data/manifest.json")).toBe(2); // foco retentou a leitura
     expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
     expect(div.innerHTML).not.toContain("dado não auditado");
     expect(conta(`/data/${DS}.json`)).toBe(1);
@@ -233,6 +252,19 @@ describe("/verificar: rotação de manifest (EVOLVE-9 Task 3b)", () => {
     falharManifest = true;
     await focarRotacao();
     // Stale-while-revalidate: falha ≠ rotação — selo intacto.
+    expect(conta("/data/manifest.json")).toBe(2); // foco retentou a leitura
+    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
+    expect(div.innerHTML).not.toContain("dado não auditado");
+  });
+
+  it("manifest 200 com corpo null → selo válido mantido, sem supressão", async () => {
+    instalarRotacao();
+    const div = await montar(<VerificarPage />);
+    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
+    manifestNulo = true;
+    await focarRotacao();
+    // null não é manifest: mantém o último selo validado (sem wipe).
+    expect(conta("/data/manifest.json")).toBe(2); // foco retentou a leitura
     expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
     expect(div.innerHTML).not.toContain("dado não auditado");
   });
@@ -278,6 +310,22 @@ describe("/analisar: rotação de manifest (EVOLVE-9 Task 3b)", () => {
     await focarRotacao();
     // Stale-while-revalidate: falha ≠ rotação — selo e números intactos,
     // sem refetch pesado sobre dado válido.
+    expect(conta("/data/manifest.json")).toBe(2); // foco retentou a leitura
+    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
+    expect(div.innerHTML).toContain("Total de votos no filtro: 3.000");
+    expect(div.innerHTML).not.toContain("dado não auditado");
+    expect(conta("/data/resumo.json")).toBe(1);
+  });
+
+  it("manifest 200 com corpo null → números mantidos, sem supressão", async () => {
+    instalarRotacao();
+    const div = await montar(<AnalisarPage />);
+    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
+    expect(div.innerHTML).toContain("Total de votos no filtro: 3.000");
+    manifestNulo = true;
+    await focarRotacao();
+    // null não é manifest: mantém selo e números (sem wipe, sem pesado).
+    expect(conta("/data/manifest.json")).toBe(2); // foco retentou a leitura
     expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
     expect(div.innerHTML).toContain("Total de votos no filtro: 3.000");
     expect(div.innerHTML).not.toContain("dado não auditado");

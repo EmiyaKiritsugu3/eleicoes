@@ -55,6 +55,13 @@ function lerRegiaoDaUrl(): string {
   }
 }
 
+// Manifest legível: objeto não-nulo (200 com corpo null/array/texto não é
+// manifest — `getSealState` derivaria selo vazio e o wipe apagaria o selo
+// validado; ver guard da rotação abaixo).
+function manifestoValido(d: unknown): d is Record<string, unknown> {
+  return typeof d === "object" && d !== null && !Array.isArray(d);
+}
+
 function PaginaVerificarIndice() {
   const [regiao, setRegiao] = useState("");
   const [seal, setSeal] = useState<SealState>({ official: null, hasFixture: false, fixtureHash: "" });
@@ -67,12 +74,15 @@ function PaginaVerificarIndice() {
   const geracaoRef = useRef(0);
 
   // Núcleo único de leitura (mount + rotação partilham — sem fork):
-  // devolve `ok` (fetch do manifest com `status === "ok"`) + selo derivado.
-  // A rotação só publica com `ok` (blip ≠ rotação: falha mantém o último
-  // selo validado, nunca publica selo vazio).
+  // devolve `ok` (fetch com `status === "ok"` E corpo objeto não-nulo) +
+  // selo derivado. A rotação só publica com `ok` (blip ≠ rotação: falha ou
+  // 200+null mantém o último selo validado, nunca publica selo vazio).
   const carregarSelo = useCallback(async () => {
     const leitura = await fetchJson("/data/manifest.json");
-    return { ok: leitura.status === "ok", novoSeal: getSealState(leitura.data) };
+    return {
+      ok: leitura.status === "ok" && manifestoValido(leitura.data),
+      novoSeal: getSealState(leitura.data),
+    };
   }, []);
 
   useEffect(() => {

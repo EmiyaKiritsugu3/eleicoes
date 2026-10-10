@@ -23,6 +23,13 @@ import type { SealState } from "../../../lib/data";
 import { censoTemProva, entradaCensoAuditada, fatoDatasetDe, getSealParaDataset } from "../../../lib/regiao";
 import { fetchJson } from "../../../lib/fetchJson";
 
+// Manifest legível: objeto não-nulo (200 com corpo null/array/texto não é
+// manifest — derivaria dataset nulo + selo vazio e o wipe apagaria
+// fato+selo+Censo validados; ver guard da rotação abaixo).
+function manifestoValido(d: unknown): d is Record<string, unknown> {
+  return typeof d === "object" && d !== null && !Array.isArray(d);
+}
+
 function ConteudoRegiao({ ibge }: { ibge: string }) {
   const search = useSearchParams();
   const fatoParam = search.get("fato") ?? "";
@@ -140,7 +147,14 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
       const minha = ++geracaoRef.current;
       try {
         const param = fatoParamRef.current;
-        const manifest = (await fetchJson("/data/manifest.json")).data;
+        // Blip ≠ rotação: manifest ilegível (`status !== "ok"`) OU corpo
+        // sem objeto (`200` com `null`/array/texto — derivaria selo vazio)
+        // sai ANTES da comparação e mantém fato+selo+Censo validados
+        // (stale-while-revalidate); só fetch OK com objeto e par
+        // dataset+selo+censo diferente refaz o pesado.
+        const leitura = await fetchJson("/data/manifest.json");
+        if (leitura.status !== "ok" || !manifestoValido(leitura.data)) return;
+        const manifest = leitura.data;
         const ds = fatoDatasetDe(manifest, param);
         const novoSeal = getSealParaDataset(manifest, ds);
         // A comparação inclui a identidade da entry do Censo (sha): sem

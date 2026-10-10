@@ -66,6 +66,13 @@ function chavePartido(bruto: string): string {
   return bruto === "" ? CHAVE_SEM_PARTIDO : `partido:${bruto}`;
 }
 
+// Manifest legível: objeto não-nulo (200 com corpo null/array/texto não é
+// manifest — `getSealState` derivaria selo vazio e o wipe apagaria dado
+// validado; ver guard da rotação abaixo).
+function manifestoValido(d: unknown): d is Record<string, unknown> {
+  return typeof d === "object" && d !== null && !Array.isArray(d);
+}
+
 function downloadCsv(filename: string, csv: string) {
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -171,14 +178,15 @@ export default function Analisar() {
   // volta de visibilidade, re-lê SÓ o manifest (barato) e só refaz o fetch
   // pesado quando o selo mudou — sem fetch duplicado quando inalterado, sem
   // números stale após rotação. Blip ≠ rotação: manifest ilegível
-  // (`status !== "ok"`) sai antes da comparação e mantém o último selo
-  // validado (stale-while-revalidate). Troca silenciosa: sem "a carregar",
+  // (`status !== "ok"`) OU corpo sem objeto (`200` com `null`/array/texto)
+  // sai antes da comparação e mantém o último selo validado
+  // (stale-while-revalidate). Troca silenciosa: sem "a carregar",
   // sem tocar nos filtros — só selo + dados assentam juntos.
   useEffect(() => {
     const aoRetomar = async () => {
       await correrSobGuard(async (minha) => {
         const leitura = await fetchJson("/data/manifest.json");
-        if (leitura.status !== "ok") return;
+        if (leitura.status !== "ok" || !manifestoValido(leitura.data)) return;
         if (geracaoRef.current !== minha) return;
         const conferido = getSealState(leitura.data);
         if (JSON.stringify(conferido) === seloRef.current) return;

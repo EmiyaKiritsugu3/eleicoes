@@ -44,6 +44,13 @@ function derivarDatasetESelo(manifest: unknown): {
   return { dataset, novoSeal: getSealParaDataset(manifest, dataset) };
 }
 
+// Manifest legível: objeto não-nulo (200 com corpo null/array/texto não é
+// manifest — `getSealState`/`fatoDatasetDe` derivariam selo vazio e o
+// wipe apagaria dado validado; ver guard da rotação abaixo).
+function manifestoValido(d: unknown): d is Record<string, unknown> {
+  return typeof d === "object" && d !== null && !Array.isArray(d);
+}
+
 export default function Explorar() {
   const [fato, setFato] = useState<FatoRegiao | null>(null);
   const [seal, setSeal] = useState<SealState>({ official: null, hasFixture: false, fixtureHash: "" });
@@ -105,12 +112,13 @@ export default function Explorar() {
       const minha = ++geracaoRef.current;
       try {
         // Blip ≠ rotação (fail-closed sem supressão): manifest ilegível
-        // (offline/500/JSON inválido — `status !== "ok"`) sai ANTES da
-        // comparação e mantém o último selo validado
-        // (stale-while-revalidate); só um fetch OK com selo diferente
-        // rotaciona. Falha nunca publica selo vazio nem limpa o fato.
+        // (offline/500/JSON inválido — `status !== "ok"`) OU corpo sem
+        // objeto (`200` com `null`/array/texto — `getSealState` derivaria
+        // selo vazio) sai ANTES da comparação e mantém o último selo
+        // validado (stale-while-revalidate); só um fetch OK com objeto e
+        // selo diferente rotaciona. Falha nunca publica selo vazio.
         const leitura = await fetchJson("/data/manifest.json");
-        if (leitura.status !== "ok") return;
+        if (leitura.status !== "ok" || !manifestoValido(leitura.data)) return;
         if (geracaoRef.current !== minha) return;
         const { dataset, novoSeal } = derivarDatasetESelo(leitura.data);
         if (JSON.stringify({ ds: dataset, seal: novoSeal }) === seloRef.current) return;
