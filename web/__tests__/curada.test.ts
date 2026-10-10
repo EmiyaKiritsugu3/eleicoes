@@ -401,20 +401,13 @@ describe("curada (EVOLVE-8 Task 5: share→percentual + peso completo no Resulta
     const base = perguntas.find((q) => q.slug === "porque-estudo-voto")!;
     return { ...base, blocos: { ...base.blocos, ver: ["dispersao", "tabela", "ranking"] } };
   }
-  it("render sem 'share': termo leigo consistente nas seções de UI", () => {
-    // Método exibe pergunta.texto_metodo (perguntas.json, fora do escopo
-    // desta task) — o zero-share vale para as seções de UI deste componente.
+  it("render sem 'share' na página inteira, incluindo Método", () => {
+    // Método exibe pergunta.texto_metodo (perguntas.json alinhado ao mesmo
+    // termo nesta task) — o zero-share vale para a página inteira.
     const html = htmlDe(perguntaTudo(), fato40(), SEAL_OK);
-    for (const rotulo of [
-      "Pergunta",
-      "Resultado",
-      "Perfil de onde venceu",
-      "Correlação",
-      "Ranking",
-    ]) {
-      const secao = html.split(`aria-label="${rotulo}"`)[1].split("<section")[0];
-      expect(secao, rotulo).not.toMatch(/share/i);
-    }
+    expect(html).not.toMatch(/share/i);
+    const metodo = html.split(`aria-label="Método"`)[1].split("<section")[0];
+    expect(metodo, "Método").toContain("percentual de votos");
     expect(html).toContain("percentual médio de votos de");
     expect(html).toContain("Percentual médio de votos por quintil");
     expect(html).toContain("Top municípios por percentual de votos");
