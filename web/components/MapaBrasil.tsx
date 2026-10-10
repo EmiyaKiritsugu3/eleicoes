@@ -138,14 +138,16 @@ export default function MapaBrasil({
     canvas.dataset.transform = JSON.stringify([s, ox, oy]);
     for (const f of visiveis) {
       const path = new Path2D();
-      for (const ring of f.polygons) {
-        ring.forEach(([x, y], i) => {
-          const px = x * s + ox;
-          const py = y * s + oy;
-          if (i === 0) path.moveTo(px, py);
-          else path.lineTo(px, py);
-        });
-        path.closePath();
+      for (const poly of f.polygons) {
+        for (const ring of poly) {
+          ring.forEach(([x, y], i) => {
+            const px = x * s + ox;
+            const py = y * s + oy;
+            if (i === 0) path.moveTo(px, py);
+            else path.lineTo(px, py);
+          });
+          path.closePath();
+        }
       }
       ctx.fillStyle = cores?.[f.ibge7] ?? "#cbd5e1";
       ctx.fill(path);
@@ -165,6 +167,11 @@ export default function MapaBrasil({
     const t = canvas.dataset.transform
       ? (JSON.parse(canvas.dataset.transform) as number[])
       : null;
+    // Hit-test só no que foi desenhado (zoom UF filtra os vizinhos).
+    const lista =
+      nivel === "municipio" && ufSelecionada
+        ? featsRef.current.filter((f) => f.uf === ufSelecionada)
+        : featsRef.current;
     const ibge = resolverCliqueMapa({
       clientX: e.clientX,
       clientY: e.clientY,
@@ -172,9 +179,18 @@ export default function MapaBrasil({
       backingWidth: canvas.width,
       backingHeight: canvas.height,
       transform: t,
-      features: featsRef.current,
+      features: lista,
     });
     if (ibge) onSelectIbge(ibge);
+  };
+
+  // Operação por teclado: os mesmos destinos do clique/fallback em <select>.
+  const comZoom = nivel === "municipio" && !!ufSelecionada;
+  const municipiosTeclado = comZoom ? features.filter((f) => f.uf === ufSelecionada) : null;
+
+  const aoEscolherTeclado = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const v = e.target.value;
+    if (v) onSelectIbge(v);
   };
 
   return (
@@ -188,6 +204,31 @@ export default function MapaBrasil({
         // Responde a taps sem o atraso de double-tap; scroll da página preservado.
         style={{ width: "100%", maxWidth: CSS_W, aspectRatio: "4 / 3", touchAction: "manipulation" }}
       />
+      {municipiosTeclado ? (
+        <label>
+          Escolher município (teclado)
+          <select aria-label="Escolher município (teclado)" defaultValue="" onChange={aoEscolherTeclado}>
+            <option value="">Selecionar…</option>
+            {municipiosTeclado.map((f) => (
+              <option key={f.ibge7} value={f.ibge7}>
+                {f.nome} ({f.uf})
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <label>
+          Escolher UF (teclado)
+          <select aria-label="Escolher UF (teclado)" defaultValue="" onChange={aoEscolherTeclado}>
+            <option value="">Selecionar…</option>
+            {UFS.map((uf) => (
+              <option key={uf} value={uf}>
+                {uf}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <button type="button" onClick={() => onSelectIbge(EXTERIOR)}>
         Exterior
       </button>

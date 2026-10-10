@@ -39,10 +39,13 @@ import {
 import type { SealState } from "../../lib/data";
 import {
   VAR_DEMO,
+  PISO_CORRELACAO_N,
   conclusaoLeiga,
   correlacao,
   estratificar,
+  fontePeso,
   perfilOndeVenceu,
+  pesoEleitoral,
   quintis,
   shareCandidato,
   type MunRow,
@@ -195,19 +198,46 @@ export function CuradaConteudo({
   const verSeguro = (Array.isArray(pergunta.blocos.ver) ? pergunta.blocos.ver : []).filter(
     (v) => VER_VALIDOS.has(v),
   );
+  // As visões pedidas em blocos.ver decidem as seções: tabela → Perfil,
+  // dispersao → Correlação, ranking → Ranking. Pergunta, Resultado, Por
+  // quê, Método e Fonte sempre renderizam.
+  const mostraTabela = verSeguro.includes("tabela");
+  const mostraDispersao = verSeguro.includes("dispersao");
+  const mostraRanking = verSeguro.includes("ranking");
+  // Recorte "onde foi 2º lugar": perfil de vitória não se aplica (o recorte
+  // lista derrotas) — nota explícita em vez de sem-dado enganoso.
+  const ehSegundo = onde === "segundo";
+
+  // Share médio de quem sobre o recorte, ponderado pelo peso efetivo
+  // (eleitorado; total ou população no fallback — nunca silencioso).
+  let somaShare = 0;
+  let pesoShare = 0;
+  let pesoMistoShare = false;
+  if (idxQuem >= 0) {
+    for (const r of filtradas) {
+      const s = shareCandidato(r, idxQuem);
+      if (s === null) continue;
+      const w = pesoEleitoral(r);
+      if (!(w > 0)) continue;
+      somaShare += (s as number) * w;
+      pesoShare += w;
+      if (fontePeso(r) !== "eleitores") pesoMistoShare = true;
+    }
+  }
+  const shareMedio = pesoShare > 0 ? somaShare / pesoShare : null;
   const shareUrl =
-    cand !== null
+    cand !== null && ondeExplorador
       ? buildExplorarShareUrl(
           {
             quem: cand.id,
-            onde: ondeExplorador ? onde : "venceu",
+            onde,
             cruzar: pergunta.blocos.cruzar,
             ver: verSeguro.length > 0 ? verSeguro : ["dispersao"],
             foco: "",
           },
           seal.official?.hash ?? "",
         )
-      : "/explorar";
+      : null;
   const ondeLabel =
     (ONDE_OPCOES as readonly { value: string; label: string }[]).find((o) => o.value === onde)
       ?.label ?? onde;
@@ -252,24 +282,44 @@ export function CuradaConteudo({
           </p>
         ) : (
           <p>
-            n = {filtradas.length} municípios · share médio de {cand.nome} ponderado pelo
-            eleitorado
+            n = {filtradas.length} municípios · share médio de {cand.nome} ={" "}
+            {shareMedio !== null
+              ? `${(shareMedio * 100).toFixed(1).replace(".", ",")}%`
+              : SEM_DADO}{" "}
+            (ponderado pelo{" "}
+            {pesoMistoShare ? "peso disponível — eleitorado, total ou população" : "eleitorado"})
             {corrP ? (
               <>
                 {" "}· r (Pearson) = {fmtR(corrP.r)} (n = {corrP.n})
               </>
             ) : (
-              <> · r = {SEM_DADO} — municípios insuficientes (piso n ≥ 30)</>
+              <>
+                {" "}· r = {SEM_DADO} —{" "}
+                {filtradas.length < PISO_CORRELACAO_N
+                  ? "municípios insuficientes (piso n ≥ 30)"
+                  : "correlação indefinida (variância zero ou pares válidos abaixo do piso)"}
+              </>
             )}
           </p>
         )}
       </section>
 
-      <section aria-label="Perfil de onde venceu">
-        <h2>Perfil de onde {cand ? cand.nome : pergunta.blocos.quem} venceu</h2>
+      {mostraTabela && (
+      <section aria-label={ehSegundo ? "Perfil do recorte" : "Perfil de onde venceu"}>
+        <h2>
+          {ehSegundo
+            ? `Perfil — ${cand ? cand.nome : pergunta.blocos.quem} foi 2º lugar neste recorte`
+            : `Perfil de onde ${cand ? cand.nome : pergunta.blocos.quem} venceu`}
+        </h2>
         {badge}
         <p role="note">{ECO_SEAL} — médias de municípios, nunca de pessoas.</p>
-        {!perfil || !base || perfil.nMun === 0 ? (
+        {ehSegundo ? (
+          <p role="note">
+            {SEM_DADO} — perfil de vitória não se aplica ao recorte &ldquo;onde foi 2º
+            lugar&rdquo;: este recorte lista municípios em que o candidato perdeu, e média
+            de derrota não descreve onde venceu.
+          </p>
+        ) : !perfil || !base || perfil.nMun === 0 ? (
           <p role="alert" style={ALERTA_STYLE}>
             {SEM_DADO}
             {escopo ? ` — ${escopo}` : ""}
@@ -311,7 +361,9 @@ export function CuradaConteudo({
           </>
         )}
       </section>
+      )}
 
+      {mostraDispersao && (
       <section aria-label="Correlação">
         <h2>Correlação — {pergunta.blocos.cruzar} × share de {cand ? cand.nome : "—"}</h2>
         {badge}
@@ -357,6 +409,7 @@ export function CuradaConteudo({
           </>
         )}
       </section>
+      )}
 
       <section aria-label="Por quê">
         <h2>Por quê? — estratificação</h2>
@@ -388,7 +441,13 @@ export function CuradaConteudo({
                 {estratosRegiao.map((e) => (
                   <tr key={e.estrato}>
                     <td>{e.estrato}</td>
-                    <td>{e.r === null ? `${SEM_DADO} (piso n ≥ 30)` : fmtR(e.r)}</td>
+                    <td>
+                      {e.r === null
+                        ? e.n < PISO_CORRELACAO_N
+                          ? `${SEM_DADO} (piso n ≥ 30)`
+                          : `${SEM_DADO} (variância zero)`
+                        : fmtR(e.r)}
+                    </td>
                     <td>{e.n}</td>
                   </tr>
                 ))}
@@ -407,7 +466,13 @@ export function CuradaConteudo({
                 {estratosRenda.map((e) => (
                   <tr key={e.estrato}>
                     <td>{e.estrato}</td>
-                    <td>{e.r === null ? `${SEM_DADO} (piso n ≥ 30)` : fmtR(e.r)}</td>
+                    <td>
+                      {e.r === null
+                        ? e.n < PISO_CORRELACAO_N
+                          ? `${SEM_DADO} (piso n ≥ 30)`
+                          : `${SEM_DADO} (variância zero)`
+                        : fmtR(e.r)}
+                    </td>
                     <td>{e.n}</td>
                   </tr>
                 ))}
@@ -417,6 +482,7 @@ export function CuradaConteudo({
         )}
       </section>
 
+      {mostraRanking && (
       <section aria-label="Ranking">
         <h2>Ranking — maior share de {cand ? cand.nome : "—"}</h2>
         {badge}
@@ -447,6 +513,7 @@ export function CuradaConteudo({
           </table>
         )}
       </section>
+      )}
 
       <section aria-label="Método">
         <h2>Método</h2>
@@ -463,9 +530,17 @@ export function CuradaConteudo({
       <section aria-label="Fonte e reprodução">
         <h2>Fonte e reprodução</h2>
         {badge}
-        <p>
-          Para refazer esta análise: <code>{shareUrl}</code>
-        </p>
+        {shareUrl ? (
+          <p>
+            Para refazer esta análise: <code>{shareUrl}</code>
+          </p>
+        ) : (
+          <p role="note">
+            reprodução indisponível neste escopo — o /explorar cobre só recortes
+            municipais (onde venceu, 2º lugar, margem, participação); votos do exterior
+            e séries temporais ficam fora do fato auditado.
+          </p>
+        )}
       </section>
     </>
   );

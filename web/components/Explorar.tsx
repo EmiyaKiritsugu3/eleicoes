@@ -34,6 +34,7 @@ import type { SealState } from "../lib/data";
 import { MALHA_MUNICIPIOS_URL } from "../lib/malha";
 import {
   VAR_DEMO,
+  PISO_CORRELACAO_N,
   correlacao,
   indiceVencedor,
   perfilOndeVenceu,
@@ -121,7 +122,12 @@ export function aplicarOnde(
       if (indiceVencedor(r?.votos ?? []) !== idx) return false;
       const eleitores = r?.demo?.eleitores;
       if (!finito(eleitores) || (eleitores as number) <= 0) return false;
-      return totalLinha(r) / (eleitores as number) > 0.8;
+      const el = eleitores as number;
+      // Comparecimento auditado: (eleitorado − abstenções) ÷ eleitorado com
+      // abstenções auditadas; sem abstenções, votos nominais ÷ eleitorado
+      // (recorte conservador — soma nominal subestima o comparecimento).
+      const comp = finito(r?.abst) ? (el - (r.abst as number)) / el : totalLinha(r) / el;
+      return comp > 0.8;
     });
   }
   return [];
@@ -271,10 +277,57 @@ export function ExplorarConteudo({
     () => (coberto && filtradas.length > 0 ? correlacao(xs, ys, "pearson") : null),
     [coberto, filtradas.length, xs, ys],
   );
+  const corrS = useMemo(
+    () => (coberto && filtradas.length > 0 ? correlacao(xs, ys, "spearman") : null),
+    [coberto, filtradas.length, xs, ys],
+  );
   const faixas = useMemo(
     () => (coberto && filtradas.length > 0 ? quintis(xs, ys) : []),
     [coberto, filtradas.length, xs, ys],
   );
+  // Pontos do scatter: pares válidos com identidade (nome/IBGE/UF) p/
+  // inspeção de distribuição e outliers (spec §4: pontos por UF + reta).
+  const pontos = useMemo(() => {
+    if (!coberto || idxQuem < 0) return [];
+    const out: { x: number; y: number; nome: string; ibge: string; uf: string }[] = [];
+    for (const r of filtradas) {
+      const x = r?.demo ? (r.demo[sel.cruzar as VarDemo] as unknown as number) : null;
+      const y = shareCandidato(r, idxQuem);
+      if (finito(x) && finito(y)) {
+        out.push({
+          x: x as number,
+          y: y as number,
+          nome: String(r?.nome ?? r?.ibge ?? ""),
+          ibge: String(r?.ibge ?? ""),
+          uf: String(r?.uf ?? ""),
+        });
+      }
+    }
+    return out;
+  }, [coberto, filtradas, idxQuem, sel.cruzar]);
+  // Reta de mínimos quadrados sobre os pontos (queda p/ média horizontal
+  // quando x não varia — nunca NaN no SVG).
+  const reta = useMemo(() => {
+    const n = pontos.length;
+    if (n < 2) return null;
+    let sx = 0;
+    let sy = 0;
+    for (const p of pontos) {
+      sx += p.x;
+      sy += p.y;
+    }
+    const mx = sx / n;
+    const my = sy / n;
+    let sxy = 0;
+    let sxx = 0;
+    for (const p of pontos) {
+      sxy += (p.x - mx) * (p.y - my);
+      sxx += (p.x - mx) * (p.x - mx);
+    }
+    const b = sxx > 0 ? sxy / sxx : 0;
+    if (!finito(b)) return null;
+    return { a: my - b * mx, b };
+  }, [pontos]);
   // Perfil honra o recorte `onde` (mesmo padrão da Curada): filtradas p/
   // o perfil, fato inteiro p/ a base "Brasil".
   const perfil = useMemo(
@@ -460,12 +513,18 @@ export function ExplorarConteudo({
         ) : (
           <p>
             n = {filtradas.length} municípios
-            {corr ? (
+            {corr && corrS ? (
               <>
-                {" "}· r = {corr.r.toFixed(3)} (n = {corr.n})
+                {" "}· r (Pearson) = {corr.r.toFixed(3)} · r (Spearman) = {corrS.r.toFixed(3)}{" "}
+                (n = {corr.n})
               </>
             ) : (
-              <> · r = {SEM_DADO} — municípios insuficientes (piso n ≥ 30)</>
+              <>
+                {" "}· r = {SEM_DADO} —{" "}
+                {filtradas.length < PISO_CORRELACAO_N
+                  ? "municípios insuficientes (piso n ≥ 30)"
+                  : "correlação indefinida (variância zero ou pares válidos abaixo do piso)"}
+              </>
             )}
           </p>
         )}
@@ -498,7 +557,7 @@ export function ExplorarConteudo({
             <p role="alert" style={ALERTA_STYLE}>
               {SEM_DADO} — sem cobertura nos blocos; ajuste quem · onde · cruzar com acima
             </p>
-          ) : !corr ? (
+          ) : !corr || !corrS ? (
             <p role="alert" style={ALERTA_STYLE}>
               {SEM_DADO} — correlação suprimida (piso n ≥ 30 municípios ou variância zero)
             </p>
@@ -509,8 +568,66 @@ export function ExplorarConteudo({
           ) : (
             <>
               <p>
-                r = {corr.r.toFixed(3)} (n = {corr.n})
+                r (Pearson) = {corr.r.toFixed(3)} · r (Spearman) = {corrS.r.toFixed(3)} (n ={" "}
+                {corr.n})
               </p>
+              {reta !== null && (
+                <figure>
+                  <figcaption>
+                    Dispersão por município com reta de mínimos quadrados — cada ponto é
+                    um município; divergência entre Pearson e Spearman denuncia outlier
+                    ou relação não-linear.
+                  </figcaption>
+                  <svg
+                    viewBox="0 0 400 300"
+                    role="img"
+                    aria-label={`Dispersão de ${sel.cruzar} por share de ${quemNome}: ${pontos.length} municípios`}
+                  >
+                    {(() => {
+                      const W = 400;
+                      const H = 300;
+                      const PAD = 34;
+                      let minX = Infinity;
+                      let maxX = -Infinity;
+                      let minY = Infinity;
+                      let maxY = -Infinity;
+                      for (const p of pontos) {
+                        if (p.x < minX) minX = p.x;
+                        if (p.x > maxX) maxX = p.x;
+                        if (p.y < minY) minY = p.y;
+                        if (p.y > maxY) maxY = p.y;
+                      }
+                      const spanX = maxX - minX > 0 ? maxX - minX : 1;
+                      const spanY = maxY - minY > 0 ? maxY - minY : 1;
+                      const cx = (x: number) => PAD + ((x - minX) / spanX) * (W - 2 * PAD);
+                      const cy = (y: number) => H - PAD - ((y - minY) / spanY) * (H - 2 * PAD);
+                      const x1 = cx(minX);
+                      const y1 = cy(reta.a + reta.b * minX);
+                      const x2 = cx(maxX);
+                      const y2 = cy(reta.a + reta.b * maxX);
+                      return (
+                        <>
+                          <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#b3261e" strokeWidth={2} />
+                          {pontos.map((p) => (
+                            <circle
+                              key={p.ibge}
+                              cx={cx(p.x)}
+                              cy={cy(p.y)}
+                              r={3.5}
+                              fill="#1d4ed8"
+                              opacity={0.7}
+                            >
+                              <title>
+                                {p.nome} ({p.ibge}) — UF {p.uf}
+                              </title>
+                            </circle>
+                          ))}
+                        </>
+                      );
+                    })()}
+                  </svg>
+                </figure>
+              )}
               <table>
                 <caption>Share médio por quintil de {sel.cruzar}</caption>
                 <thead>
@@ -566,11 +683,21 @@ export function ExplorarConteudo({
       )}
 
       {verSeguro.includes("tabela") && (
-        <section aria-label="Perfil de onde venceu">
-          <h2>Perfil de onde {quemNome} venceu</h2>
+        <section aria-label={sel.onde === "segundo" ? "Perfil do recorte" : "Perfil de onde venceu"}>
+          <h2>
+            {sel.onde === "segundo"
+              ? `Perfil — ${quemNome} em 2º lugar (sem perfil de vitória)`
+              : `Perfil de onde ${quemNome} venceu`}
+          </h2>
           {badge}
           <p role="note">{ECO_SEAL} — médias de municípios, nunca de pessoas.</p>
-          {!perfil || !base || perfil.nMun === 0 ? (
+          {sel.onde === "segundo" ? (
+            <p role="note">
+              {SEM_DADO} — perfil de vitória não se aplica ao recorte &ldquo;onde foi 2º
+              lugar&rdquo;: este recorte lista municípios em que o candidato perdeu, e
+              média de derrota não descreve onde venceu.
+            </p>
+          ) : !perfil || !base || perfil.nMun === 0 ? (
             <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}</p>
           ) : (
             <>

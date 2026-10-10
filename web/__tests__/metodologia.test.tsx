@@ -38,5 +38,7 @@ describe("metodologia (motor verdade: guardrails travados)", () => {
     }
     expect(html).toContain("1%");
     expect(html).toContain("|r| ≥ 0,3");
+    expect(html).toContain("diferença relativa ≥ 5%");
+    expect(html).toContain("maioria folgada (≥ 60%)");
   });
 });

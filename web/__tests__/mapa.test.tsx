@@ -17,6 +17,7 @@ import {
 } from "../lib/malha";
 
 // Malha fixture mínima: um quadrado rotulado 3550308 (São Paulo-SP).
+// Coords de TELA (pós-flip Y): o quadrado geo (0,0)-(10,10) decodifica p/ y -10..0.
 const FIXTURE_TOPO = {
   type: "Topology",
   transform: { scale: [1, 1], translate: [0, 0] },
@@ -110,8 +111,8 @@ describe("mapa hit-test", () => {
   it('onSelectIbge retorna "3550308" ao clicar (mock de hit-test)', () => {
     const feats = decodeTopojson(FIXTURE_TOPO as never);
     expect(feats).toHaveLength(1);
-    // Ponto dentro do quadrado (0,0)-(10,10).
-    expect(hitTest(feats, 5, 5)).toBe("3550308");
+    // Ponto dentro do quadrado em tela (0..10, -10..0).
+    expect(hitTest(feats, 5, -5)).toBe("3550308");
     // Ponto fora retorna null.
     expect(hitTest(feats, 50, 50)).toBeNull();
   });
@@ -137,23 +138,23 @@ describe("mapa hit-test", () => {
 
 describe("resolverCliqueMapa (escala CSS → backing store)", () => {
   const feats = decodeTopojson(FIXTURE_TOPO as never);
-  // Projeção do desenho: s=60, ox=100, oy=0 sobre backing 800x600;
-  // ret CSS 400x300 (fator 2). Malha (5,5) -> backing (400,300) -> CSS (200,150).
+  // Projeção do desenho em tela: s=60, ox=100, oy=600 sobre backing 800x600;
+  // ret CSS 400x300 (fator 2). Malha (5,-5) -> backing (400,300) -> CSS (200,150).
   const base = {
     rect: { left: 0, top: 0, width: 400, height: 300 },
     backingWidth: 800,
     backingHeight: 600,
-    transform: [60, 100, 0],
+    transform: [60, 100, 600],
     features: feats,
   };
   it("clique escalado atinge o município certo", () => {
     expect(resolverCliqueMapa({ ...base, clientX: 200, clientY: 150 })).toBe("3550308");
   });
   it("sem a correção CSS o mesmo clique erraria (prova que a escala importa)", () => {
-    // CSS (360,150): com escala -> backing (720,300) -> malha (10.33,5): fora.
+    // CSS (360,150): com escala -> backing (720,300) -> malha (10.33,-5): fora.
     expect(resolverCliqueMapa({ ...base, clientX: 360, clientY: 150 })).toBeNull();
-    // Sem escala (fator 1) o ponto cairia em (4.33,2.5): dentro — falso positivo.
-    expect(hitTest(feats, (360 - 100) / 60, 150 / 60)).toBe("3550308");
+    // Sem escala (fator 1) o ponto cairia em (4.33,-7.5): dentro — falso positivo.
+    expect(hitTest(feats, (360 - 100) / 60, (150 - 600) / 60)).toBe("3550308");
   });
   it("ret degenerado retorna null", () => {
     expect(
@@ -276,6 +277,293 @@ describe("contrato da seleção (IBGE7 | UF | EXTERIOR)", () => {
       root.unmount();
       div.remove();
     } finally {
+      restorePath();
+    }
+  });
+});
+
+describe("orientação norte-sul (latitude × canvas)", () => {
+  // Triângulo geo assimétrico: base em y=0, ápice ao NORTE (y=10).
+  // Deltas: (0,0) → (10,0) → (5,10) → (0,0).
+  const FIXTURE_NORTE = {
+    type: "Topology",
+    transform: { scale: [1, 1], translate: [0, 0] },
+    objects: {
+      municipios: {
+        type: "GeometryCollection",
+        geometries: [
+          {
+            type: "Polygon",
+            properties: { ibge7: "1400100", uf: "RR", nome: "Boa Vista" },
+            arcs: [[0]],
+          },
+        ],
+      },
+    },
+    arcs: [
+      [
+        [0, 0],
+        [10, 0],
+        [-5, 10],
+        [-5, -10],
+      ],
+    ],
+  };
+  it("norte geográfico renderiza no topo (flip Y no decode, consistente c/ hit-test)", () => {
+    const feats = decodeTopojson(FIXTURE_NORTE as never);
+    expect(feats).toHaveLength(1);
+    const pts = feats[0].polygons.flat(2) as Array<[number, number]>;
+    const ys = pts.map((p) => p[1]);
+    // Ápice norte (y=10 geo) deve ter o MENOR y de tela (topo do canvas).
+    expect(Math.min(...ys)).toBe(-10);
+    // Hit-test consistente com o desenho: ponto norte (tela) atinge…
+    expect(hitTest(feats, 5, -9)).toBe("1400100");
+    // …e o espelho sul (orientação sem flip) erra.
+    expect(hitTest(feats, 5, 9)).toBeNull();
+  });
+});
+
+describe("furos de polígono (shell menos buracos)", () => {
+  // Quadrado (0,0)-(10,10) com furo (3,3)-(7,7); cada arco decodifica do zero.
+  const FIXTURE_FURO = {
+    type: "Topology",
+    transform: { scale: [1, 1], translate: [0, 0] },
+    objects: {
+      municipios: {
+        type: "GeometryCollection",
+        geometries: [
+          {
+            type: "Polygon",
+            properties: { ibge7: "3550308", uf: "SP", nome: "São Paulo" },
+            arcs: [[0], [1]],
+          },
+        ],
+      },
+    },
+    arcs: [
+      [
+        [0, 0],
+        [0, 10],
+        [10, 0],
+        [0, -10],
+        [-10, 0],
+      ],
+      [
+        [3, 3],
+        [0, 4],
+        [4, 0],
+        [0, -4],
+        [-4, 0],
+      ],
+    ],
+  };
+  it("clique dentro do furo não seleciona o município", () => {
+    const feats = decodeTopojson(FIXTURE_FURO as never);
+    expect(feats).toHaveLength(1);
+    // Dentro da casca, fora do furo (coords de tela, y negado).
+    expect(hitTest(feats, 1, -1)).toBe("3550308");
+    // Dentro do furo (5,-5) → fora.
+    expect(hitTest(feats, 5, -5)).toBeNull();
+  });
+});
+
+describe("decode sem transform (arcos absolutos)", () => {
+  const FIXTURE_SEM_TRANSFORM = {
+    type: "Topology",
+    objects: {
+      municipios: {
+        type: "GeometryCollection",
+        geometries: [
+          {
+            type: "Polygon",
+            properties: { ibge7: "3550308", uf: "SP", nome: "São Paulo" },
+            arcs: [[0]],
+          },
+        ],
+      },
+    },
+    arcs: [
+      [
+        [2, 3],
+        [8, 1],
+      ],
+    ],
+  };
+  it("retorna pontos absolutos com flip Y (sem acumular deltas)", () => {
+    const feats = decodeTopojson(FIXTURE_SEM_TRANSFORM as never);
+    expect(feats).toHaveLength(1);
+    expect(feats[0].polygons).toEqual([
+      [
+        [
+          [2, -3],
+          [8, -1],
+        ],
+      ],
+    ]);
+  });
+});
+
+describe("malha vazia falha fechado", () => {
+  it("loadMalha rejeita malha decodificada vazia (ativa o fallback em lista)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          type: "Topology",
+          objects: { municipios: { type: "GeometryCollection", geometries: [] } },
+          arcs: [],
+        }),
+      })),
+    );
+    await expect(loadMalha("/data/malha.topojson")).rejects.toThrow(/sem dado oficial/);
+  });
+});
+
+// Dois vizinhos: SP (0,0)-(10,10) + faixa a leste (11,0)-(12,1).
+// Com zoom em SP, a faixa cai dentro do canvas mas não é desenhada.
+const FIXTURE_2UF = {
+  type: "Topology",
+  transform: { scale: [1, 1], translate: [0, 0] },
+  objects: {
+    municipios: {
+      type: "GeometryCollection",
+      geometries: [
+        {
+          type: "Polygon",
+          properties: { ibge7: "3550308", uf: "SP", nome: "São Paulo" },
+          arcs: [[0]],
+        },
+        {
+          type: "Polygon",
+          properties: { ibge7: "3304557", uf: "RJ", nome: "Rio de Janeiro" },
+          arcs: [[1]],
+        },
+      ],
+    },
+  },
+  arcs: [
+    [
+      [0, 0],
+      [0, 10],
+      [10, 0],
+      [0, -10],
+      [-10, 0],
+    ],
+    [
+      [11, 0],
+      [0, 1],
+      [1, 0],
+      [0, -1],
+      [-1, 0],
+    ],
+  ],
+};
+
+function mockFetchTopo2() {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => ({ ok: true, json: async () => FIXTURE_2UF })),
+  );
+}
+
+describe("zoom UF filtra o hit-test (só o desenhado)", () => {
+  it("clique na área em branco (município vizinho não desenhado) não seleciona", async () => {
+    const restorePath = mockPath2D();
+    const restoreCtx = mockCanvas2d();
+    mockFetchTopo2();
+    try {
+      const onSelectIbge = vi.fn();
+      const div = document.createElement("div");
+      document.body.appendChild(div);
+      const root = createRoot(div);
+      await act(async () => {
+        root.render(
+          <MapaBrasil malhaUrl="/data/malha.topojson" nivel="municipio" ufSelecionada="SP" onSelectIbge={onSelectIbge} />,
+        );
+      });
+      const canvas = div.querySelector("canvas");
+      expect(canvas).not.toBeNull();
+      canvas!.getBoundingClientRect = () =>
+        ({ left: 0, top: 0, width: 400, height: 300, right: 400, bottom: 300, x: 0, y: 0, toJSON: () => {} }) as DOMRect;
+      // Zoom SP em tela (pós-flip Y): s=60, ox=100, oy=600
+      // (bbox SP em tela: x 0..10, y -10..0).
+      // Malha (11.5,0.5) geo = faixa RJ: sem o filtro de zoom o hit-test
+      // a alcançaria em backing (790,30) -> CSS (395,15); com o filtro, null.
+      // (Em tela pós-flip esse ponto cai em (11.5,-9.5): branco de todo jeito.)
+      await act(async () => {
+        canvas!.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 395, clientY: 15 }));
+      });
+      expect(onSelectIbge).not.toHaveBeenCalled();
+      // Sanidade: centro de SP (malha 5,-5 -> backing 400,300 -> CSS 200,150) seleciona.
+      await act(async () => {
+        canvas!.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 200, clientY: 150 }));
+      });
+      expect(onSelectIbge).toHaveBeenCalledTimes(1);
+      expect(onSelectIbge).toHaveBeenCalledWith("3550308");
+      root.unmount();
+      div.remove();
+    } finally {
+      restoreCtx();
+      restorePath();
+    }
+  });
+});
+
+describe("operável por teclado (lista junto ao mapa)", () => {
+  it("zoom UF: <select> de municípios chama onSelectIbge", async () => {
+    const restorePath = mockPath2D();
+    const restoreCtx = mockCanvas2d();
+    mockFetchTopo2();
+    try {
+      const onSelectIbge = vi.fn();
+      const div = document.createElement("div");
+      document.body.appendChild(div);
+      const root = createRoot(div);
+      await act(async () => {
+        root.render(
+          <MapaBrasil malhaUrl="/data/malha.topojson" nivel="municipio" ufSelecionada="SP" onSelectIbge={onSelectIbge} />,
+        );
+      });
+      const sel = div.querySelector('select[aria-label="Escolher município (teclado)"]') as HTMLSelectElement | null;
+      expect(sel).not.toBeNull();
+      await act(async () => {
+        sel!.value = "3550308";
+        sel!.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      expect(onSelectIbge).toHaveBeenCalledWith("3550308");
+      root.unmount();
+      div.remove();
+    } finally {
+      restoreCtx();
+      restorePath();
+    }
+  });
+  it("nível UF: <select> de UFs chama onSelectIbge com a sigla", async () => {
+    const restorePath = mockPath2D();
+    const restoreCtx = mockCanvas2d();
+    mockFetchTopo2();
+    try {
+      const onSelectIbge = vi.fn();
+      const div = document.createElement("div");
+      document.body.appendChild(div);
+      const root = createRoot(div);
+      await act(async () => {
+        root.render(
+          <MapaBrasil malhaUrl="/data/malha.topojson" nivel="uf" onSelectIbge={onSelectIbge} />,
+        );
+      });
+      const sel = div.querySelector('select[aria-label="Escolher UF (teclado)"]') as HTMLSelectElement | null;
+      expect(sel).not.toBeNull();
+      await act(async () => {
+        sel!.value = "SP";
+        sel!.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      expect(onSelectIbge).toHaveBeenCalledWith("SP");
+      root.unmount();
+      div.remove();
+    } finally {
+      restoreCtx();
       restorePath();
     }
   });

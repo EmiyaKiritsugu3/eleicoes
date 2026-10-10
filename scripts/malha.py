@@ -52,6 +52,8 @@ def simplificar_anel(anel, tolerancia):
             pilha.append((a, imax))
             pilha.append((imax, b))
     out = [p for p, k in zip(pts, keep) if k]
+    if fechado and len({tuple(p) for p in out}) < 3:
+        return anel
     if fechado:
         out.append(out[0])
     return out

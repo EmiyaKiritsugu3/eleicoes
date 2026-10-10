@@ -129,13 +129,16 @@ export default function Metodologia() {
               <li>
                 quem venceu na região: vitória abaixo do piso padrão de 1% de
                 margem é no fio → enganoso, nunca sustentado sem ressalva;
+                margem explícita afirmada no check e descumprida → falso;
                 outro vencedor → falso;
               </li>
               <li>
-                comparação de médias (ponderadas pelo eleitorado, onde venceu
-                vs Brasil): diferença relativa ≥ 5% na direção afirmada →
-                sustentado; direção certa com diferença menor → enganoso;
-                direção errada → falso;
+                comparação de médias (ponderadas pelo peso disponível —
+                eleitorado; sem eleitorado auditado, total de votos; sem total,
+                população —, onde venceu vs Brasil): diferença relativa ≥ 5% na
+                direção afirmada → sustentado; direção certa com diferença menor
+                → enganoso; direção errada → falso; a fonte efetiva do peso é
+                indicada junto ao número;
               </li>
               <li>
                 sinal de correlação: sinal afirmado com |r| ≥ 0,3 →

@@ -163,8 +163,8 @@ def test_fato_sums_match_fato_voto(tmp_path):
 def test_join_miss_keeps_votes_no_demo(tmp_path):
     from etl.build_fato import build_fato
 
-    # 1100 munis × 2 cands = 2200 linhas; 1 muni (2 linhas) sem par
-    # no Censo -> 2*1000 <= 2200, abaixo do teto de 0,1%.
+    # 1100 munis; 1 muni sem par no Censo -> 1*1000 <= 1100,
+    # abaixo do teto de 0,1% (contagem por município, não por linha).
     ibges = [_ibge(i) for i in range(1, 1101)]
     missing = ibges[-1]
     fato_df = _fato_rows(ibges)
@@ -203,7 +203,7 @@ def test_join_orphans_above_threshold_raise(tmp_path):
     ibges = [_ibge(i) for i in range(1, 1101)]
     fato_df = _fato_rows(ibges)
     db = tmp_path / "t.duckdb"
-    # 5 munis (10 linhas) sem par: 10*1000 > 2200 -> fail-closed.
+    # 5 munis sem par: 5*1000 > 1100 -> fail-closed.
     _seed_duckdb(db, fato_df, _censo_raw(ibges[:-5]))
     import pytest
 
@@ -273,6 +273,177 @@ def test_manifest_entry_dual_source(tmp_path):
     assert entry["ano"] == 2022 and entry["turno"] == 1
     assert entry["cargo"] == "presidente"
     assert entry["etl_version"] == "1.1.0"
-    from datetime import date
+    from datetime import date, datetime, timezone
 
-    assert date.fromisoformat(entry["data"]) <= date.today()
+    assert date.fromisoformat(entry["data"]) <= datetime.now(timezone.utc).date()
+
+
+def test_zonas_somam_por_municipio_candidato(tmp_path):
+    """Linhas de zona do mesmo (município, candidato) somam, não sobrescrevem."""
+    from etl.build_fato import build_fato
+
+    ibge, outro = _ibge(1), _ibge(2)
+    rows = [
+        {"ano": 2022, "turno": 1, "cargo": "PRESIDENTE", "uf": "SP",
+         "municipio_ibge": ibge, "candidato_id": "13",
+         "nome_urna": "CANDIDATA EXEMPLO A", "partido": "PA", "votos": 10},
+        {"ano": 2022, "turno": 1, "cargo": "PRESIDENTE", "uf": "SP",
+         "municipio_ibge": ibge, "candidato_id": "13",
+         "nome_urna": "CANDIDATA EXEMPLO A", "partido": "PA", "votos": 7},
+        {"ano": 2022, "turno": 1, "cargo": "PRESIDENTE", "uf": "SP",
+         "municipio_ibge": ibge, "candidato_id": "22",
+         "nome_urna": "CANDIDATO EXEMPLO B", "partido": "PB", "votos": 5},
+        {"ano": 2022, "turno": 1, "cargo": "PRESIDENTE", "uf": "SP",
+         "municipio_ibge": outro, "candidato_id": "13",
+         "nome_urna": "CANDIDATA EXEMPLO A", "partido": "PA", "votos": 1},
+        {"ano": 2022, "turno": 1, "cargo": "PRESIDENTE", "uf": "SP",
+         "municipio_ibge": outro, "candidato_id": "22",
+         "nome_urna": "CANDIDATO EXEMPLO B", "partido": "PB", "votos": 2},
+    ]
+    fato_df = pd.DataFrame(rows)
+    fato_df["votos"] = fato_df["votos"].astype("Int64")
+    db = tmp_path / "t.duckdb"
+    _seed_duckdb(db, fato_df, _censo_raw([ibge, outro]))
+
+    out = build_fato(str(db), str(tmp_path / "out"), 2022, 1, "PRESIDENTE")
+    payload = json.loads(open(out, encoding="utf-8").read())
+
+    assert [c["id"] for c in payload["candidatos"]] == ["13", "22"]
+    by_ibge = {m["ibge"]: m for m in payload["municipios"]}
+    assert by_ibge[ibge]["votos"] == [17, 5]  # 10+7, não last-write (7)
+    assert by_ibge[ibge]["total"] == 22
+    assert by_ibge[outro]["votos"] == [1, 2]
+    assert by_ibge[outro]["total"] == 3
+
+
+def test_nulo_de_zona_apaga_total(tmp_path):
+    """Zona com voto nulo contamina o agregado (incógnita), nunca zera."""
+    from etl.build_fato import build_fato
+
+    ibge = _ibge(1)
+    rows = [
+        {"ano": 2022, "turno": 1, "cargo": "PRESIDENTE", "uf": "SP",
+         "municipio_ibge": ibge, "candidato_id": "13",
+         "nome_urna": "CANDIDATA EXEMPLO A", "partido": "PA", "votos": pd.NA},
+        {"ano": 2022, "turno": 1, "cargo": "PRESIDENTE", "uf": "SP",
+         "municipio_ibge": ibge, "candidato_id": "13",
+         "nome_urna": "CANDIDATA EXEMPLO A", "partido": "PA", "votos": 10},
+        {"ano": 2022, "turno": 1, "cargo": "PRESIDENTE", "uf": "SP",
+         "municipio_ibge": ibge, "candidato_id": "22",
+         "nome_urna": "CANDIDATO EXEMPLO B", "partido": "PB", "votos": 5},
+    ]
+    fato_df = pd.DataFrame(rows)
+    fato_df["votos"] = fato_df["votos"].astype("Int64")
+    db = tmp_path / "t.duckdb"
+    _seed_duckdb(db, fato_df, _censo_raw([ibge]))
+
+    out = build_fato(str(db), str(tmp_path / "out"), 2022, 1, "PRESIDENTE")
+    payload = json.loads(open(out, encoding="utf-8").read())
+
+    muni = payload["municipios"][0]
+    assert muni["votos"][0] is None  # nulo + número -> incógnita, nunca 10
+    assert muni["votos"][1] == 5
+    assert muni["total"] is None
+
+
+def test_candidato_ausente_conta_zero(tmp_path):
+    """Candidato nacional sem linha no município = 0 votos (TSE), não nulo."""
+    from etl.build_fato import build_fato
+
+    mun_a, mun_b = _ibge(1), _ibge(2)
+    rows = [
+        {"ano": 2022, "turno": 1, "cargo": "PRESIDENTE", "uf": "SP",
+         "municipio_ibge": mun_a, "candidato_id": "13",
+         "nome_urna": "CANDIDATA EXEMPLO A", "partido": "PA", "votos": 10},
+        {"ano": 2022, "turno": 1, "cargo": "PRESIDENTE", "uf": "RJ",
+         "municipio_ibge": mun_b, "candidato_id": "22",
+         "nome_urna": "CANDIDATO EXEMPLO B", "partido": "PB", "votos": 5},
+    ]
+    fato_df = pd.DataFrame(rows)
+    fato_df["votos"] = fato_df["votos"].astype("Int64")
+    db = tmp_path / "t.duckdb"
+    _seed_duckdb(db, fato_df, _censo_raw([mun_a, mun_b]))
+
+    out = build_fato(str(db), str(tmp_path / "out"), 2022, 1, "PRESIDENTE")
+    payload = json.loads(open(out, encoding="utf-8").read())
+
+    assert [c["id"] for c in payload["candidatos"]] == ["13", "22"]
+    by_ibge = {m["ibge"]: m for m in payload["municipios"]}
+    assert by_ibge[mun_a]["votos"] == [10, 0]
+    assert by_ibge[mun_a]["total"] == 10
+    assert by_ibge[mun_b]["votos"] == [0, 5]
+    assert by_ibge[mun_b]["total"] == 5
+
+
+def test_orfaos_contados_por_municipio(tmp_path):
+    """Teto de 0,1% usa municípios únicos, não linhas (zonas/candidatos)."""
+    from etl.build_fato import build_fato
+
+    ibges = [_ibge(i) for i in range(1, 1501)]
+    sem_par = _ibge(1501)
+    rows = [
+        {"ano": 2022, "turno": 1, "cargo": "PRESIDENTE", "uf": "SP",
+         "municipio_ibge": b, "candidato_id": "13",
+         "nome_urna": "CANDIDATA EXEMPLO A", "partido": "PA", "votos": 3}
+        for b in ibges
+    ]
+    # 1 município sem par com 3 linhas de zona: por linha seriam 3 órfãos
+    # (3*1000 > 1503, reprovaria); por município é 1 (1*1000 <= 1501, passa).
+    for z in (4, 5, 6):
+        rows.append(
+            {"ano": 2022, "turno": 1, "cargo": "PRESIDENTE", "uf": "SP",
+             "municipio_ibge": sem_par, "candidato_id": "13",
+             "nome_urna": "CANDIDATA EXEMPLO A", "partido": "PA", "votos": z}
+        )
+    fato_df = pd.DataFrame(rows)
+    fato_df["votos"] = fato_df["votos"].astype("Int64")
+    db = tmp_path / "t.duckdb"
+    _seed_duckdb(db, fato_df, _censo_raw(ibges))
+
+    out = build_fato(str(db), str(tmp_path / "out"), 2022, 1, "PRESIDENTE")
+    payload = json.loads(open(out, encoding="utf-8").read())
+
+    assert len(payload["municipios"]) == 1501
+    by_ibge = {m["ibge"]: m for m in payload["municipios"]}
+    assert by_ibge[sem_par]["demo"] is None
+    assert by_ibge[sem_par]["votos"] == [15]  # zonas somadas
+    assert by_ibge[sem_par]["total"] == 15
+
+
+def test_erro_orfaos_informa_contagem_por_municipio(tmp_path):
+    """Mensagem do teto de órfãos traz (municípios, municípios)."""
+    import re
+
+    import pytest
+
+    from etl.build_fato import build_fato
+
+    ibges = [_ibge(i) for i in range(1, 1101)]
+    fato_df = _fato_rows(ibges)
+    db = tmp_path / "t.duckdb"
+    _seed_duckdb(db, fato_df, _censo_raw(ibges[:-5]))
+    with pytest.raises(ValueError, match=re.escape("(5/1100)")):
+        build_fato(str(db), str(tmp_path / "out"), 2022, 1, "PRESIDENTE")
+
+
+def test_gate_soma_censo_roda_no_build_fato(tmp_path):
+    """build_fato com total oficial aplica check_censo_sum fail-closed."""
+    import pytest
+
+    from etl.build_fato import build_fato
+
+    ibges = [_ibge(1), _ibge(2)]
+    fato_df = _fato_rows(ibges)
+    db = tmp_path / "t.duckdb"
+    _seed_duckdb(db, fato_df, _censo_raw(ibges))  # pop 10000 + 10001
+
+    out = build_fato(
+        str(db), str(tmp_path / "out"), 2022, 1, "PRESIDENTE",
+        censo_total_oficial=20001,
+    )
+    assert json.loads(open(out, encoding="utf-8").read())["municipios"]
+    with pytest.raises(ValueError, match="(?i)soma"):
+        build_fato(
+            str(db), str(tmp_path / "out2"), 2022, 1, "PRESIDENTE",
+            censo_total_oficial=1,
+        )

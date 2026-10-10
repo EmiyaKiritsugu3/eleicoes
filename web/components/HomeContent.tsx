@@ -224,8 +224,12 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
       </section>
 
       <section aria-label="Biblioteca curada">
-        <h2>Biblioteca curada — 30 perguntas com resposta auditada</h2>
+        <h2>Biblioteca curada — 30 perguntas</h2>
         {badge}
+        <p>
+          Respostas pré-computadas com fonte e hash quando há dado oficial auditado; sem dado
+          oficial, cada pergunta mostra sem dado oficial em vez de número.
+        </p>
         <ul>
           {(perguntasJson as { slug: string; titulo: string }[]).map((p) => (
             <li key={p.slug}>

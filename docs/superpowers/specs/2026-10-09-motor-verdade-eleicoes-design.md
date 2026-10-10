@@ -16,7 +16,7 @@ Restrições duras: custo zero; só dado oficial verificável e auditável; voto
 
 1. Só dado oficial (TSE + IBGE). Nada estimado, nada sem fonte.
 2. Voto secreto: perfis são SEMPRE ecológicos (município), com aviso anti-falácia embutido no layout.
-3. Correlação nunca é apresentada como causa; "por quê?" = camadas de evidência (estratificação, correlação parcial), veredito em linguagem leiga (sustentado/não sustentado/misto).
+3. Correlação nunca é apresentada como causa; "por quê?" = camadas de evidência (estratificação, compatibilidade observacional), veredito em linguagem leiga (sustentado/não sustentado/misto).
 4. Verdade do SAD herdada: manifest + gates + fail-closed ("sem dado oficial", nunca zero silencioso/número sem hash).
 5. Custo zero v1; offline-first local; mesmo front roda local e Vercel free.
 
@@ -31,7 +31,7 @@ Restrições duras: custo zero; só dado oficial verificável e auditável; voto
 
 - Perfil de onde X venceu: filtro de municípios + médias ponderadas por eleitorado + comparador vs média nacional, sempre com n (municípios + eleitores).
 - Correlações Pearson (+ Spearman se monotônica não-linear), piso n ≥ 30 municípios; dispersão com reta + pontos por UF + tabela por quintis.
-- Por quê: estratificação por região/faixa de renda + correlação parcial; conclusão leiga, nunca causal.
+- Por quê: estratificação por região/faixa de renda (compatibilidade observacional, sem ajuste parcial); conclusão leiga, nunca causal.
 - Verificar: veredito tricolor (sustentado/enganoso/falso) + 3 números que decidem + método + fonte + hash. Toda resposta: query + hash do manifest.
 
 ## 5. Dados (Seção 3 aprovada)
@@ -44,7 +44,7 @@ Restrições duras: custo zero; só dado oficial verificável e auditável; voto
 ## 6. Arquitetura (Seção 4 aprovada)
 
 - ETL estendido (`censo_ibge_2022` → `dim_municipio`), reaproveitando fetch/normalize/validate.
-- Duas velocidades: pré-computado (curada + painel de região, JSON estático) e runtime local (`/explorar` sobre DuckDB, com teto e fallback "sem dado oficial").
+- Duas velocidades: pré-computado (curada + painel de região, JSON estático) e runtime local (`/explorar` no cliente sobre o JSON municipal, com teto e fallback "sem dado oficial").
 - Mapa em canvas (Path2D) p/ milhares de municípios; SVG só em gráficos pequenos; fallback em lista + link TSE sem canvas (degradação do reference).
 - Deploy Next.js estático (local + Vercel free); Supabase fase-2 opcional.
 

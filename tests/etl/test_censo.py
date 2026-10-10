@@ -149,7 +149,7 @@ def test_censo_pending_url_never_downloads_or_registers(tmp_path):
 
 
 def test_censo_manifest_registers_date_and_version(tmp_path):
-    from datetime import date
+    from datetime import date, datetime, timezone
 
     from etl.censo import register_censo_ingest
     from etl.manifest import verify_manifest
@@ -167,5 +167,41 @@ def test_censo_manifest_registers_date_and_version(tmp_path):
 
     entries = json.loads(manifest.read_text(encoding="utf-8"))["ingestions"]
     assert len(entries) == 1
-    assert date.fromisoformat(entries[0]["data"]) <= date.today()
+    assert date.fromisoformat(entries[0]["data"]) <= datetime.now(timezone.utc).date()
     assert entries[0]["etl_version"] == "1.1.0"
+
+
+def test_idade_media_nao_vira_mediana():
+    """IDADE_MEDIA (média) não pode alimentar idade_mediana (mediana)."""
+    from etl.censo import normalize_censo
+
+    df = pd.DataFrame(
+        [
+            {"CD_MUN": "3550308", "IDADE_MEDIA": 40.0, "POP_RESIDENTE": 100},
+            {"CD_MUN": "3304557", "IDADE_MEDIA": 41.0, "POP_RESIDENTE": 200},
+        ]
+    )
+    out = normalize_censo(df)
+    assert out["idade_mediana"].isna().all()  # fail-closed: sem mediana oficial
+
+
+def test_idade_med_alias_continua():
+    """IDADE_MED segue valendo como mediana abreviada (sem super-remoção)."""
+    from etl.censo import normalize_censo
+
+    df = pd.DataFrame([{"CD_MUN": "3550308", "IDADE_MED": 33.0}])
+    out = normalize_censo(df)
+    assert out["idade_mediana"].tolist() == [33.0]
+
+
+def test_codigo_float_normaliza(tmp_path=None):
+    """Coluna de código float (3550308.0) normaliza p/ 7 dígitos, sem warn."""
+    import warnings
+
+    from etl.censo import normalize_censo
+
+    df = pd.DataFrame({"CD_MUN": [3550308.0, 3304557.0]})
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        out = normalize_censo(df)
+    assert out["ibge7"].tolist() == ["3550308", "3304557"]

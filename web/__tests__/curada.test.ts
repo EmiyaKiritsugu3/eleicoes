@@ -177,7 +177,7 @@ describe("curada (pixel-mentiroso: toda seção exibe fonte+hash)", () => {
     );
   }
   function secoesDe(html: string): string[] {
-    const ss = html.split("<section").slice(1);
+    const ss = html.match(/<section\b[\s\S]*?<\/section>/g) ?? [];
     expect(ss.length).toBeGreaterThan(0);
     return ss;
   }
@@ -210,7 +210,12 @@ describe("curada (supressão n < 30 honrada, nunca zero silencioso)", () => {
         html = htmlDe(p, fato5(), SEAL_OK);
       }).not.toThrow();
       expect(html).toContain("sem dado oficial");
-      expect(html).toContain("piso n ≥ 30");
+      // A nota de piso vive na seção Correlação — só as perguntas que
+      // pedem dispersao a exibem (blocos.ver honored); as demais seguem
+      // fail-closed com sem-dado nas seções que mostram.
+      if ((p.blocos.ver as string[]).includes("dispersao")) {
+        expect(html).toContain("piso n ≥ 30");
+      }
       expect(html).toContain("fonte auditada");
     }
   });
@@ -235,5 +240,100 @@ describe("curada (fail-closed sem fato + escopos fora do fato municipal)", () =>
     const html = htmlDe(p, fato40(), SEAL_OK);
     expect(html).toContain("um pleito");
     expect(html).toContain("sem dado oficial");
+  });
+});
+
+describe("curada (Resultado mostra o share médio ponderado afirmado)", () => {
+  it("Resultado exibe share médio ponderado de quem, com %", () => {
+    const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
+    const html = htmlDe(p, fato40(), SEAL_OK);
+    const resultado = html.split('aria-label="Resultado"')[1].split("<section")[0];
+    expect(resultado).toContain("share médio");
+    expect(resultado).toMatch(/%/);
+  });
+});
+
+describe("curada (segundo lugar: perfil de vitória não se aplica)", () => {
+  function fatoMisto(): FatoSintetico {
+    const municipios: MunRow[] = [];
+    for (let i = 0; i < 20; i++) {
+      municipios.push({
+        ibge: `355030${i}`, uf: "SP", nome: `A ${i}`,
+        votos: [600, 400], total: 1000, abst: 50, demo: demo({ esc_sup: 5 + i * 0.5 }),
+      });
+    }
+    for (let i = 0; i < 20; i++) {
+      municipios.push({
+        ibge: `350010${i}`, uf: "SP", nome: `B ${i}`,
+        votos: [400, 600], total: 1000, abst: 50, demo: demo({ esc_sup: 5 + i * 0.5 }),
+      });
+    }
+    return { candidatos: CANDIDATOS, municipios };
+  }
+  it("onde=segundo: título honesto + nota explícita, nunca sem-dado enganoso", () => {
+    const base = perguntas.find((q) => q.slug === "onde-foi-segundo-vencedor")!;
+    const pergunta = { ...base, blocos: { ...base.blocos, ver: ["tabela", "ranking"] } };
+    const html = renderToStaticMarkup(el(pergunta, fatoMisto(), SEAL_OK));
+    expect(html).toContain("2º lugar");
+    expect(html).toContain("perfil de vitória não se aplica");
+    expect(html).not.toContain("Perfil de onde Candidata Exemplo A venceu");
+  });
+});
+
+describe("curada (supressão distingue n<30 de variância zero)", () => {
+  function fatoConstante(): FatoSintetico {
+    const municipios: MunRow[] = [];
+    for (let i = 0; i < 40; i++) {
+      const a = 500 + i * 10;
+      municipios.push({
+        ibge: `355030${i}`, uf: "SP", nome: `Município ${i}`,
+        votos: [a, 1000 - a], total: 1000, abst: 50,
+        demo: demo({ esc_sup: 10 }),
+      });
+    }
+    return { candidatos: CANDIDATOS, municipios };
+  }
+  it("variância zero com n=40: Resultado diz variância zero, não insuficiência", () => {
+    const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
+    const html = htmlDe(p, fatoConstante(), SEAL_OK);
+    const resultado = html.split('aria-label="Resultado"')[1].split("<section")[0];
+    expect(resultado).toContain("variância zero");
+    expect(resultado).not.toContain("insuficientes");
+  });
+});
+
+describe("curada (reprodução fail-closed por escopo)", () => {
+  function fonteDe(html: string): string {
+    return html.split('aria-label="Fonte e reprodu')[1].split("<section")[0];
+  }
+  it("exterior/evolução: sem URL de reprodução (escopo fora do explorar)", () => {
+    for (const slug of ["voto-exterior", "evolucao-vencedor"]) {
+      const p = perguntas.find((q) => q.slug === slug)!;
+      const fonte = fonteDe(htmlDe(p, fato40(), SEAL_OK));
+      expect(fonte).not.toContain("/explorar?q=");
+      expect(fonte).toContain("reprodução indisponível");
+    }
+  });
+  it("escopo coberto: URL de reprodução preservada", () => {
+    const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
+    expect(fonteDe(htmlDe(p, fato40(), SEAL_OK))).toContain("/explorar?q=");
+  });
+});
+
+describe("curada (blocos.ver honored: só as visões pedidas renderizam)", () => {
+  it("ranking-only não mostra Correlação nem Perfil; mostra Ranking", () => {
+    const p = perguntas.find((q) => q.slug === "margem-ampla-vencedor")!;
+    const html = htmlDe(p, fato40(), SEAL_OK);
+    expect(html).not.toContain('aria-label="Correlação"');
+    expect(html).not.toContain('aria-label="Perfil de onde venceu"');
+    expect(html).toContain('aria-label="Ranking"');
+  });
+  it("dispersao mostra Correlação; tabela mostra Perfil", () => {
+    const htmlDisp = htmlDe(perguntas.find((q) => q.slug === "estudo-voto-vencedor")!, fato40(), SEAL_OK);
+    expect(htmlDisp).toContain('aria-label="Correlação"');
+    expect(htmlDisp).not.toContain('aria-label="Ranking"');
+    const htmlTab = htmlDe(perguntas.find((q) => q.slug === "perfil-onde-venceu-vencedor")!, fato40(), SEAL_OK);
+    expect(htmlTab).toContain('aria-label="Perfil de onde venceu"');
+    expect(htmlTab).not.toContain('aria-label="Ranking"');
   });
 });

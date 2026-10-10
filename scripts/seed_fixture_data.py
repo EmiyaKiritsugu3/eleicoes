@@ -16,8 +16,10 @@ preserva o arquivo; passe `--force` para substituir mesmo assim (o CI usa
 ausentes ou inválidos são substituídos sem `--force`.
 
 Antes de substituir, o manifest existente é copiado para
-`<manifest>.bak` e restaurado se o build falhar (M19); em sucesso o
-`.bak` é removido.
+`<manifest>.bak` e o conteúdo pré-existente do diretório público é copiado
+para `<web-data-dir>.bak`; ambos são restaurados se o build falhar (M19)
+e removidos em sucesso. Sem esse backup do diretório público, uma falha
+após o `build_all` deixaria JSONs misturados (novos agregados + fato ausente).
 
 Os dados gerados são SINTÉTICOS (2 linhas, 15 votos, ano 2022) e servem
 apenas para exercitar o data path real no CI (`npm test` + `npm run build`)
@@ -108,7 +110,10 @@ def seed(manifest_path: Path, web_data_dir: Path, force: bool = False) -> dict:
     manifest_path = Path(manifest_path)
     web_data_dir = Path(web_data_dir)
     backup_path = None
-    if manifest_path.exists():
+    manifest_existed = manifest_path.exists()
+    web_existed = web_data_dir.exists()
+    web_backup_dir = None
+    if manifest_existed:
         if _has_official_entries(manifest_path) and not force:
             raise RuntimeError(
                 f"seed: {manifest_path} contém ingestões oficiais — "
@@ -122,6 +127,15 @@ def seed(manifest_path: Path, web_data_dir: Path, force: bool = False) -> dict:
         shutil.copy2(manifest_path, backup_path)
         # Reset p/ saída determinística (build_all anexa ao manifest existente).
         manifest_path.unlink()
+
+    # Backup do diretório público: build_all + build_fato substituem os
+    # JSONs públicos antes de qualquer ponto de falha, então um seed que
+    # falha no meio deixaria saídas misturadas sem este backup.
+    if web_existed:
+        web_backup_dir = web_data_dir.with_name(web_data_dir.name + ".bak")
+        if web_backup_dir.exists():
+            shutil.rmtree(web_backup_dir)
+        shutil.copytree(web_data_dir, web_backup_dir)
 
     try:
         with tempfile.TemporaryDirectory(prefix="sad-seed-") as tmp:
@@ -181,10 +195,20 @@ def seed(manifest_path: Path, web_data_dir: Path, force: bool = False) -> dict:
     except BaseException:
         if backup_path is not None and backup_path.exists():
             shutil.copy2(backup_path, manifest_path)  # restaura o oficial
+        elif not manifest_existed and manifest_path.exists():
+            manifest_path.unlink()  # criado pelo run falho: sem entulho parcial
+        if web_backup_dir is not None and web_backup_dir.exists():
+            shutil.rmtree(web_data_dir, ignore_errors=True)
+            shutil.copytree(web_backup_dir, web_data_dir)  # restaura os JSONs públicos
+            shutil.rmtree(web_backup_dir, ignore_errors=True)  # restaurado: sem entulho
+        elif not web_existed:
+            shutil.rmtree(web_data_dir, ignore_errors=True)  # sem entulho parcial
         raise
     else:
         if backup_path is not None and backup_path.exists():
             backup_path.unlink()  # sucesso: sem entulho
+        if web_backup_dir is not None and web_backup_dir.exists():
+            shutil.rmtree(web_backup_dir)  # sucesso: sem entulho
     return manifest
 
 

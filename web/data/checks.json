@@ -58,8 +58,8 @@
   },
   {
     "slug": "vice-venceu-sp",
-    "titulo": "O segundo colocado virou e venceu em São Paulo?",
-    "frase": "@vice virou e venceu em São Paulo",
+    "titulo": "O segundo colocado venceu em São Paulo?",
+    "frase": "@vice venceu em São Paulo",
     "computacao": { "tipo": "vencedor_regiao", "params": { "quem": "@vice", "regiao": "SP" } },
     "fontes": ["https://dadosabertos.tse.jus.br/"],
     "regiao": "SP"

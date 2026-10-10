@@ -69,7 +69,10 @@ _COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
         "RENDA_MEDIA_DOM",
     ),
     "pobres_pct": ("TX_POBREZA", "POBRES_PCT", "POBREZA_PCT", "PROP_POBRES"),
-    "idade_mediana": ("IDADE_MEDIANA", "IDADE_MEDIA", "IDADE_MED"),
+    # IDADE_MEDIA é média aritmética, não mediana: fora do alias de
+    # propósito (fail-closed — arquivo só com média gera idade_mediana
+    # nula, nunca estatística errada rotulada de mediana).
+    "idade_mediana": ("IDADE_MEDIANA", "IDADE_MED"),
     "urbanizacao": ("TX_URBANIZACAO", "URBANIZACAO", "URB_PCT", "GRAU_URBANIZACAO"),
     "pop": (
         "POP_RESIDENTE",
@@ -124,6 +127,9 @@ def normalize_censo(df: pd.DataFrame) -> pd.DataFrame:
         .astype("string")
         .fillna("")
         .str.strip()
+        # Coluna float (leitura sem dtype): 3550308.0 -> 3550308 antes de
+        # remover não-dígitos (sem isso viram 8 dígitos e são descartados).
+        .str.replace(r"\.0$", "", regex=True)
         .str.replace(r"\D", "", regex=True)
     )
     bad = ~digits.str.fullmatch(r"\d{7}").fillna(False)

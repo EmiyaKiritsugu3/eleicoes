@@ -3,6 +3,7 @@ import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   ExplorarConteudo,
+  aplicarOnde,
   buildExplorarShareUrl,
   parseExplorarQuery,
   type ExplorarSelecao,
@@ -92,6 +93,8 @@ describe("explorar (sem cobertura, fail-closed)", () => {
 });
 
 // 5 municípios (abaixo do piso n ≥ 30): correlação suprimida, não zerada.
+// Votos variam com i (Lula sempre à frente): a supressão vem do piso
+// amostral, nunca de variância zero.
 function linhasPoucas(): MunRow[] {
   const rows: MunRow[] = [];
   for (let i = 0; i < 5; i++) {
@@ -99,7 +102,7 @@ function linhasPoucas(): MunRow[] {
       ibge: `350010${i}`,
       uf: "SP",
       nome: `Peq ${i}`,
-      votos: [600, 400],
+      votos: [600 + i * 10, 400 - i * 10],
       total: 1000,
       abst: 0,
       demo: demo(10 + i),
@@ -208,7 +211,7 @@ describe("explorar (tabela honra o filtro onde)", () => {
     return rows;
   }
   function secaoTabela(html: string): string {
-    return html.split('aria-label="Perfil de onde venceu"')[1] ?? "";
+    return html.split('aria-label="Perfil')[1] ?? "";
   }
   it("onde=venceu: tabela conta só o recorte (n = 20, não 40)", () => {
     const html = renderToStaticMarkup(
@@ -244,7 +247,8 @@ describe("explorar (foco + share)", () => {
         initial={{ ...SEL_VALIDA, foco: rows[0].ibge }}
       />,
     );
-    expect(html).toContain(rows[0].ibge);
+    expect(html).toContain("Mun 0 (3550300) — UF SP");
+    expect(html).not.toContain("fora do fato municipal");
   });
   it("estado → URL compartilhável ?q= + hash (round-trip)", () => {
     const url = buildExplorarShareUrl({ ...SEL_VALIDA, foco: "" }, "a".repeat(64));
@@ -256,5 +260,85 @@ describe("explorar (foco + share)", () => {
     expect(back.onde).toBe("venceu");
     expect(back.cruzar).toBe("esc_sup");
     expect(back.ver).toEqual(["dispersao"]);
+  });
+});
+
+describe("explorar (dispersão: Pearson + Spearman + pontos)", () => {
+  it("mostra Spearman junto de Pearson (nunca Pearson sozinho)", () => {
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo
+        fato={{ candidatos: CANDIDATOS, municipios: linhasValidas() }}
+        seal={SEAL_OK}
+        initial={SEL_VALIDA}
+      />,
+    );
+    expect(html).toContain("Pearson");
+    expect(html).toContain("Spearman");
+  });
+  it("dispersão renderiza pontos por município + reta (não só r e quintis)", () => {
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo
+        fato={{ candidatos: CANDIDATOS, municipios: linhasValidas() }}
+        seal={SEAL_OK}
+        initial={SEL_VALIDA}
+      />,
+    );
+    const dispersao = html.split('aria-label="Dispersão"')[1] ?? "";
+    expect(dispersao).toContain("<circle");
+    expect(dispersao).toContain("mínimos quadrados");
+  });
+});
+
+describe("explorar (segundo lugar: perfil de vitória não se aplica)", () => {
+  function linhasMistas2(): MunRow[] {
+    const rows: MunRow[] = [];
+    for (let i = 0; i < 20; i++) {
+      rows.push({
+        ibge: `355030${i}`, uf: "SP", nome: `Lula ${i}`,
+        votos: [600, 400], total: 1000, abst: 0, demo: demo(10 + i),
+      });
+    }
+    for (let i = 0; i < 20; i++) {
+      rows.push({
+        ibge: `350010${i}`, uf: "SP", nome: `Bol ${i}`,
+        votos: [400, 600], total: 1000, abst: 0, demo: demo(10 + i),
+      });
+    }
+    return rows;
+  }
+  it("onde=2º lugar: título honesto + nota explícita na tabela", () => {
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo
+        fato={{ candidatos: CANDIDATOS, municipios: linhasMistas2() }}
+        seal={SEAL_OK}
+        initial={{ ...SEL_VALIDA, ver: ["tabela"], onde: "segundo" }}
+      />,
+    );
+    expect(html).toContain("2º lugar");
+    expect(html).toContain("perfil de vitória não se aplica");
+    expect(html).not.toContain("Perfil de onde Lula venceu");
+  });
+});
+
+describe("explorar (participação = comparecimento auditado)", () => {
+  it("usa (eleitorado − abstenções) ÷ eleitorado, não só votos nominais", () => {
+    // Comparecimento 90% com só 50% de votos nominais: entra no recorte.
+    const rows: MunRow[] = [{
+      ibge: "3550300", uf: "SP", nome: "Mun 0",
+      votos: [300, 200], total: 500, abst: 100, demo: demo(10),
+    }];
+    expect(aplicarOnde(rows, CANDIDATOS, "lula", "participacao_80")).toHaveLength(1);
+  });
+  it("sem abstenções auditadas: recorre a votos nominais ÷ eleitorado", () => {
+    const dentro: MunRow[] = [{
+      ibge: "3550300", uf: "SP", nome: "Mun 0",
+      votos: [850, 100], total: 950, abst: null, demo: demo(10),
+    }];
+    const fora: MunRow[] = [{
+      ibge: "3550301", uf: "SP", nome: "Mun 1",
+      votos: [300, 200], total: 500, abst: null, demo: demo(10),
+    }];
+    expect(aplicarOnde(dentro, CANDIDATOS, "lula", "participacao_80")).toHaveLength(1);
+    expect(aplicarOnde(fora, CANDIDATOS, "lula", "participacao_80")).toHaveLength(0);
   });
 });

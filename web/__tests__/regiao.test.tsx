@@ -114,7 +114,7 @@ describe("PainelRegiao (município)", () => {
     );
     expect(html).toContain('href="/analisar"');
     expect(html).toContain('href="/explorar?foco=3550308"');
-    expect(html).toContain('href="/verificar?regiao=3550308"');
+    expect(html).toContain('href="/verificar?regiao=SP"');
   });
   it("pesoFonte misto: nota honesta de pesos visível", () => {
     const fatoMisto: FatoRegiao = {
@@ -268,5 +268,238 @@ describe("fatoDatasetDe (?fato= com allowlist)", () => {
     expect(isFatoDataset("resumo")).toBe(false);
     expect(isFatoDataset("")).toBe(false);
     expect(isFatoDataset(null)).toBe(false);
+  });
+  it("manifest default fora do shape -> null (mesmo allowlist do ?fato=)", async () => {
+    const { fatoDatasetDe } = await import("../lib/regiao");
+    expect(
+      fatoDatasetDe({ ingestions: [{ tipo: "fato_municipal", dataset: "fato_../../x" }] }),
+    ).toBe(null);
+    expect(
+      fatoDatasetDe({ ingestions: [{ tipo: "fato_municipal", dataset: "fato_x" }] }),
+    ).toBe(null);
+    expect(
+      fatoDatasetDe({
+        ingestions: [{ tipo: "fato_municipal", dataset: "fato_2022_1_presidente" }],
+      }),
+    ).toBe("fato_2022_1_presidente");
+  });
+});
+
+describe("getSealParaDataset (selo ligado ao dataset selecionado)", () => {
+  const MANIFEST_2 = {
+    ingestions: [
+      {
+        tipo: "fato_municipal",
+        dataset: "fato_2022_1_presidente",
+        sha256: "a".repeat(64),
+        source_url: "https://cdn.tse.jus.br/a.zip",
+        date: "2026-01-01",
+      },
+      {
+        tipo: "fato_municipal",
+        dataset: "fato_2022_2_governador",
+        sha256: "b".repeat(64),
+        source_url: "https://cdn.tse.jus.br/b.zip",
+        date: "2026-02-01",
+      },
+    ],
+  };
+  it("resolve o registro do dataset selecionado, não o da primeira ingestão", async () => {
+    const { getSealParaDataset } = await import("../lib/regiao");
+    expect(getSealParaDataset(MANIFEST_2, "fato_2022_2_governador").official?.hash).toBe(
+      "b".repeat(64),
+    );
+    expect(getSealParaDataset(MANIFEST_2, "fato_2022_1_presidente").official?.hash).toBe(
+      "a".repeat(64),
+    );
+  });
+  it("dataset sem registro -> fail-closed (sem oficial, sem fixture)", async () => {
+    const { getSealParaDataset } = await import("../lib/regiao");
+    const seal = getSealParaDataset(MANIFEST_2, "fato_2024_1_prefeito");
+    expect(seal.official).toBe(null);
+    expect(seal.hasFixture).toBe(false);
+    expect(seal.fixtureHash).toBe("");
+  });
+  it("fixture do dataset nunca é oficial, mas sinaliza fixture", async () => {
+    const { getSealParaDataset } = await import("../lib/regiao");
+    const manifest = {
+      ingestions: [
+        {
+          tipo: "fato_municipal",
+          dataset: "fato_2022_1_presidente",
+          sha256: "f".repeat(64),
+          fixture: true,
+        },
+      ],
+    };
+    const seal = getSealParaDataset(manifest, "fato_2022_1_presidente");
+    expect(seal.official).toBe(null);
+    expect(seal.hasFixture).toBe(true);
+    expect(seal.fixtureHash).toBe("f".repeat(64));
+  });
+  it("entrada sem hash não audita o dataset (fail-closed)", async () => {
+    const { getSealParaDataset } = await import("../lib/regiao");
+    const manifest = {
+      ingestions: [
+        {
+          tipo: "fato_municipal",
+          dataset: "fato_2022_1_presidente",
+          source_url: "https://cdn.tse.jus.br/a.zip",
+        },
+      ],
+    };
+    const seal = getSealParaDataset(manifest, "fato_2022_1_presidente");
+    expect(seal.official).toBe(null);
+  });
+  it("manifest ausente ou dataset vazio -> selo vazio", async () => {
+    const { getSealParaDataset } = await import("../lib/regiao");
+    expect(getSealParaDataset(null, "fato_2022_1_presidente").official).toBe(null);
+    expect(getSealParaDataset(MANIFEST_2, null).official).toBe(null);
+    expect(getSealParaDataset(MANIFEST_2, "").official).toBe(null);
+  });
+});
+
+describe("entradaFatoAuditada (portão fail-closed do fato selecionado)", () => {
+  const MANIFEST = {
+    ingestions: [
+      {
+        tipo: "fato_municipal",
+        dataset: "fato_2022_1_presidente",
+        sha256: "a".repeat(64),
+        source_url: "https://cdn.tse.jus.br/a.zip",
+        date: "2026-01-01",
+      },
+      {
+        tipo: "fato_municipal",
+        dataset: "fato_2022_2_governador",
+        sha256: "f".repeat(64),
+        fixture: true,
+      },
+    ],
+  };
+  it("dataset auditado não-fixture -> devolve a entrada", async () => {
+    const { entradaFatoAuditada } = await import("../lib/regiao");
+    expect(
+      entradaFatoAuditada(MANIFEST, "fato_2022_1_presidente")?.dataset,
+    ).toBe("fato_2022_1_presidente");
+  });
+  it("fixture, sem hash ou outro dataset -> null (sem veredito sem hash)", async () => {
+    const { entradaFatoAuditada } = await import("../lib/regiao");
+    expect(entradaFatoAuditada(MANIFEST, "fato_2022_2_governador")).toBe(null);
+    expect(entradaFatoAuditada(MANIFEST, "fato_2024_1_prefeito")).toBe(null);
+    expect(entradaFatoAuditada(null, "fato_2022_1_presidente")).toBe(null);
+  });
+});
+
+describe("agregarUF usa totalLinha (brancos/nulos no denominador)", () => {
+  it("total soma row.total; margem/participação consistentes com o painel", () => {
+    const rows = [
+      mun("3550308", "SP", [600, 400], demoCompleta(), 1200), // 200 brancos/nulos
+      mun("3550309", "SP", [100, 900], demoCompleta(), 1100), // 100 brancos/nulos
+    ];
+    const a = agregarUF(rows, "SP", CANDIDATOS);
+    expect(a).not.toBeNull();
+    expect(a!.vencedorId).toBe("B"); // 700 x 1300
+    expect(a!.total).toBe(2300); // 1200 + 1100, não 2000
+    expect(a!.margem).toBeCloseTo((1300 - 700) / 2300, 10);
+    expect(a!.participacao).toBeCloseTo(2300 / 20000, 10);
+  });
+});
+
+describe("renda ausente nunca vira R$ 0 (fail-closed)", () => {
+  const FATO_SEM_RENDA: FatoRegiao = {
+    candidatos: CANDIDATOS,
+    municipios: [
+      mun("3550308", "SP", [600, 400], { ...demoCompleta(), renda_media: null }, 1000),
+      mun("3550309", "SP", [100, 900], { ...demoCompleta(), renda_media: null }, 1000),
+    ],
+  };
+  it("município sem renda: SEM_DADO no valor e no baseline Brasil", () => {
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="3550308" fato={FATO_SEM_RENDA} seal={SEAL_OFICIAL} manifestChecked />,
+    );
+    expect(html).not.toContain("R$ 0");
+    expect(html).toContain("sem dado oficial");
+  });
+  it("UF sem renda: SEM_DADO (ramo UF + baseline Brasil)", () => {
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="SP" fato={FATO_SEM_RENDA} seal={SEAL_OFICIAL} manifestChecked />,
+    );
+    expect(html).not.toContain("R$ 0");
+    expect(html).toContain("sem dado oficial");
+  });
+});
+
+describe("ações preservam o dataset selecionado (?fato=)", () => {
+  it("Por quê? carrega ?fato= (município e UF)", () => {
+    const htmlMun = renderToStaticMarkup(
+      <PainelRegiao
+        ibge="3550308"
+        fato={FATO}
+        seal={SEAL_OFICIAL}
+        manifestChecked
+        fatoDataset="fato_2022_1_presidente"
+      />,
+    );
+    expect(htmlMun).toContain(
+      'href="/explorar?foco=3550308&amp;fato=fato_2022_1_presidente"',
+    );
+    const htmlUf = renderToStaticMarkup(
+      <PainelRegiao
+        ibge="SP"
+        fato={FATO}
+        seal={SEAL_OFICIAL}
+        manifestChecked
+        fatoDataset="fato_2022_1_presidente"
+      />,
+    );
+    expect(htmlUf).toContain('href="/explorar?foco=SP&amp;fato=fato_2022_1_presidente"');
+  });
+  it("sem dataset: links inalterados (sem &fato=)", () => {
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="3550308" fato={FATO} seal={SEAL_OFICIAL} manifestChecked />,
+    );
+    expect(html).toContain('href="/explorar?foco=3550308"');
+    expect(html).not.toContain("fato=");
+  });
+  it("dataset fora do shape nunca vaza para a URL", () => {
+    const html = renderToStaticMarkup(
+      <PainelRegiao
+        ibge="3550308"
+        fato={FATO}
+        seal={SEAL_OFICIAL}
+        manifestChecked
+        fatoDataset="fato_../../x"
+      />,
+    );
+    expect(html).toContain('href="/explorar?foco=3550308"');
+    expect(html).not.toContain("fato=");
+  });
+});
+
+describe("Verificar emite a UF (índice filtra por sigla)", () => {
+  it("município SP -> ?regiao=SP (casa com checksParaRegiao)", () => {
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="3550308" fato={FATO} seal={SEAL_OFICIAL} manifestChecked />,
+    );
+    expect(html).toContain('href="/verificar?regiao=SP"');
+  });
+});
+
+describe("isHashDivergente (alerta de hash do /explorar)", () => {
+  it("URL com hash + manifest sem hash oficial -> diverge (fixture-only)", async () => {
+    const { isHashDivergente } = await import("../lib/regiao");
+    expect(isHashDivergente("abc123", "", true)).toBe(true);
+  });
+  it("hash igual -> sem alerta; hashes diferentes -> alerta", async () => {
+    const { isHashDivergente } = await import("../lib/regiao");
+    expect(isHashDivergente("abc123", "abc123", true)).toBe(false);
+    expect(isHashDivergente("abc123", "def456", true)).toBe(true);
+  });
+  it("sem hash na URL -> sem alerta; sem manifestChecked -> sem alerta", async () => {
+    const { isHashDivergente } = await import("../lib/regiao");
+    expect(isHashDivergente("", "", true)).toBe(false);
+    expect(isHashDivergente("", "abc123", true)).toBe(false);
+    expect(isHashDivergente("abc123", "", false)).toBe(false);
   });
 });

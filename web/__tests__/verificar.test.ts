@@ -154,7 +154,7 @@ describe("verificar (veredito tricolor: 1 check sintético por cor)", () => {
       expect(n.rotulo.length).toBeGreaterThan(0);
     }
     const html = htmlDe(CHECK_SUSTENTADO, CHECK_SUSTENTADO.slug, fato40());
-    expect(html).toContain("sustentado");
+    expect(html).toMatch(/Veredito: (<!-- -->)?sustentado/);
     expect(html).toContain("d".repeat(12));
     expect(html).toContain("dadosabertos.tse.jus.br");
   });
@@ -165,7 +165,7 @@ describe("verificar (veredito tricolor: 1 check sintético por cor)", () => {
     expect(typeof v.engano).toBe("string");
     expect((v.engano as string).length).toBeGreaterThan(20);
     const html = htmlDe(CHECK_ENGANOSO, CHECK_ENGANOSO.slug, fato40());
-    expect(html).toContain("enganoso");
+    expect(html).toMatch(/Veredito: (<!-- -->)?enganoso/);
     expect(html).toContain("d".repeat(12));
   });
   it("falso: números contradizem, com 3 números + hash", () => {
@@ -175,7 +175,7 @@ describe("verificar (veredito tricolor: 1 check sintético por cor)", () => {
     expect(v.veredito).toBe("falso");
     expect(v.numeros).toHaveLength(3);
     const html = htmlDe(CHECK_FALSO, CHECK_FALSO.slug, fato40());
-    expect(html).toContain("falso");
+    expect(html).toMatch(/Veredito: (<!-- -->)?falso/);
     expect(html).toContain("d".repeat(12));
   });
 });
@@ -222,6 +222,39 @@ describe("verificar (?regiao= do painel: filtro ou sugestão)", () => {
     expect(sp.length).toBeGreaterThan(0);
     for (const c of sp) expect(c.regiao).toBe("SP");
     expect(checksParaRegiao(checks, "ZZ")).toHaveLength(0);
+  });
+});
+
+describe("verificar (?regiao= IBGE→UF: deep link de município filtra a UF)", () => {
+  it("código IBGE de município SP normaliza para SP e casa nos checks", async () => {
+    const { normalizarRegiao } = (await import("../app/verificar/page")).default;
+    const checks = checksJson as unknown as Check[];
+    expect(normalizarRegiao("3550308")).toBe("SP");
+    expect(checksParaRegiao(checks, normalizarRegiao("3550308")).length).toBeGreaterThan(0);
+  });
+  it("tabela de prefixos IBGE cobre as 27 UFs; sigla passa intacta", async () => {
+    const { normalizarRegiao } = (await import("../app/verificar/page")).default;
+    const esperados: Array<[string, string]> = [
+      ["11", "RO"], ["12", "AC"], ["13", "AM"], ["14", "RR"], ["15", "PA"],
+      ["16", "AP"], ["17", "TO"], ["21", "MA"], ["22", "PI"], ["23", "CE"],
+      ["24", "RN"], ["25", "PB"], ["26", "PE"], ["27", "AL"], ["28", "SE"],
+      ["29", "BA"], ["31", "MG"], ["32", "ES"], ["33", "RJ"], ["35", "SP"],
+      ["41", "PR"], ["42", "SC"], ["43", "RS"], ["50", "MS"], ["51", "MT"],
+      ["52", "GO"], ["53", "DF"],
+    ];
+    expect(esperados).toHaveLength(27);
+    for (const [prefixo, uf] of esperados) {
+      expect(normalizarRegiao(`${prefixo}00000`)).toBe(uf);
+    }
+    expect(normalizarRegiao("sp")).toBe("SP");
+    expect(normalizarRegiao(" SP ")).toBe("SP");
+  });
+  it("prefixo desconhecido ou sigla sem checks cai na sugestão (fail-closed, nunca UF errada)", async () => {
+    const { normalizarRegiao } = (await import("../app/verificar/page")).default;
+    const checks = checksJson as unknown as Check[];
+    // Prefixo 99 não existe: mantém o cru → sem match → sugestão.
+    expect(checksParaRegiao(checks, normalizarRegiao("9912345"))).toHaveLength(0);
+    expect(checksParaRegiao(checks, normalizarRegiao("ZZ"))).toHaveLength(0);
   });
 });
 
@@ -285,6 +318,16 @@ describe("verificar (correlação: nunca falso sobre ruído)", () => {
     expect(v.veredito).toBe("falso");
     expect(v.numeros).toHaveLength(3);
   });
+  it("n < 30 → fail-closed (veredito null, sem status, sem números)", () => {
+    const pts: { x: number; share: number }[] = [];
+    for (let i = 0; i < 10; i++) pts.push({ x: 5 + i * 0.5, share: 0.5 + i * 0.01 });
+    const fato = fatoDe(pts);
+    const v = verificarAfirmacao(CHECK_SINAL_POSITIVO, fato);
+    expect(v.veredito).toBe(null);
+    const html = htmlDe(CHECK_SINAL_POSITIVO, CHECK_SINAL_POSITIVO.slug, fato);
+    expect(html).toContain("sem dado oficial");
+    expect(html).not.toContain('role="status"');
+  });
 });
 
 describe("verificar (vencedor_regiao: piso de margem padrão 1%)", () => {
@@ -311,5 +354,137 @@ describe("verificar (vencedor_regiao: piso de margem padrão 1%)", () => {
     expect(v.veredito).toBe("sustentado");
     expect(v.engano).toBeUndefined();
     expect(v.numeros).toHaveLength(3);
+  });
+  it("margem abaixo da margem explícita afirmada → falso (não enganoso)", () => {
+    // Afirma folga de 10pp; vitória por 4pp contradiz o número afirmado.
+    const check: Check = {
+      slug: "sint-margem-explicita",
+      frase: "A venceu com folga (margem acima de 10 pontos)",
+      computacao: {
+        tipo: "vencedor_regiao",
+        params: { quem: "@vencedor", regiao: "BR", margem_min: 0.1 },
+      },
+      fontes: FONTES,
+    };
+    const fato: FatoSintetico = {
+      candidatos: CANDIDATOS,
+      municipios: [
+        { ibge: "1", uf: "SP", nome: "M1", votos: [520, 480], total: 1000, abst: 10, demo: demo() },
+      ],
+    };
+    const v = verificarAfirmacao(check, fato);
+    expect(v.veredito).toBe("falso");
+    expect(v.numeros).toHaveLength(3);
+    const html = htmlDe(check, check.slug, fato);
+    expect(html).toMatch(/Veredito: (<!-- -->)?falso/);
+  });
+  it("margem acima da margem explícita afirmada → sustentado", () => {
+    const check: Check = {
+      slug: "sint-margem-explicita-ok",
+      frase: "A venceu com folga (margem acima de 10 pontos)",
+      computacao: {
+        tipo: "vencedor_regiao",
+        params: { quem: "@vencedor", regiao: "BR", margem_min: 0.1 },
+      },
+      fontes: FONTES,
+    };
+    const fato: FatoSintetico = {
+      candidatos: CANDIDATOS,
+      municipios: [
+        { ibge: "1", uf: "SP", nome: "M1", votos: [600, 400], total: 1000, abst: 10, demo: demo() },
+      ],
+    };
+    const v = verificarAfirmacao(check, fato);
+    expect(v.veredito).toBe("sustentado");
+    expect(v.numeros).toHaveLength(3);
+  });
+});
+
+describe("verificar (soma_condicional: limiares no lado afirmado)", () => {
+  const CHECK_MINORIA: Check = {
+    slug: "sint-minoria",
+    frase: "Na minoria dos municípios a disputa foi apertada (margem abaixo de 5 pontos)",
+    computacao: {
+      tipo: "soma_condicional",
+      params: { medida: "margem", limiar: 0.05, lado: "abaixo", afirma_maioria: false },
+    },
+    fontes: FONTES,
+  };
+  function fatoMargens(apertadas: number, folgadas: number): FatoSintetico {
+    const municipios: MunRow[] = [];
+    for (let i = 0; i < apertadas; i++) {
+      municipios.push({
+        ibge: `a${i}`, uf: "SP", nome: `Ap ${i}`,
+        votos: [510, 490], total: 1000, abst: 10, demo: demo(),
+      });
+    }
+    for (let i = 0; i < folgadas; i++) {
+      municipios.push({
+        ibge: `f${i}`, uf: "SP", nome: `Fo ${i}`,
+        votos: [600, 400], total: 1000, abst: 10, demo: demo(),
+      });
+    }
+    return { candidatos: CANDIDATOS, municipios };
+  }
+  it("afirma minoria com 20% na condição → sustentado (lado alinhado 80% ≥ 60%)", () => {
+    const v = verificarAfirmacao(CHECK_MINORIA, fatoMargens(1, 4));
+    expect(v.veredito).toBe("sustentado");
+    expect(v.numeros).toHaveLength(3);
+  });
+  it("afirma minoria com 80% na condição → falso (lado alinhado 20% ≤ 50%)", () => {
+    const v = verificarAfirmacao(CHECK_MINORIA, fatoMargens(4, 1));
+    expect(v.veredito).toBe("falso");
+    expect(v.numeros).toHaveLength(3);
+  });
+});
+
+describe("verificar (correlação: Pearson e Spearman precisam concordar)", () => {
+  it("Pearson forte pelo outlier com Spearman oposto → enganoso, nunca sustentado", () => {
+    // 39 pontos em queda + 1 outlier (x alto, share alto): Pearson vira
+    // positivo forte, Spearman segue negativo forte.
+    const pontos: { x: number; share: number }[] = [];
+    for (let i = 0; i < 39; i++) {
+      pontos.push({ x: 5 + i * 0.5, share: 0.62 - 0.004 * i + (i % 2 ? 0.03 : -0.03) });
+    }
+    pontos.push({ x: 200, share: 0.99 });
+    const fato = fatoDe(pontos);
+    const v = verificarAfirmacao(CHECK_SINAL_POSITIVO, fato);
+    expect(v.veredito).toBe("enganoso");
+    expect(v.veredito).not.toBe("sustentado");
+    expect(v.veredito).not.toBe("falso");
+    expect(v.numeros).toHaveLength(3);
+    expect(typeof v.engano).toBe("string");
+  });
+});
+
+describe("verificar (fail-closed sem hash: sem dado oficial, nunca veredito)", () => {
+  const SEAL_SEM_HASH: SealState = { official: null, hasFixture: false, fixtureHash: "" };
+  it("fato com ingestão sem hash → sem dado oficial, sem veredito", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(VerificarConteudo, {
+        check: CHECK_SUSTENTADO,
+        slug: CHECK_SUSTENTADO.slug,
+        checks: checksJson as unknown as Check[],
+        fato: fato40(),
+        seal: SEAL_SEM_HASH,
+        manifestChecked: true,
+      }),
+    );
+    expect(html).toContain("sem dado oficial");
+    expect(html).not.toContain('role="status"');
+  });
+  it("fixture com hash → veredito preservado (transparência, sem selo oficial)", () => {
+    const sealFixture: SealState = { official: null, hasFixture: true, fixtureHash: "c".repeat(64) };
+    const html = renderToStaticMarkup(
+      React.createElement(VerificarConteudo, {
+        check: CHECK_SUSTENTADO,
+        slug: CHECK_SUSTENTADO.slug,
+        checks: checksJson as unknown as Check[],
+        fato: fato40(),
+        seal: sealFixture,
+        manifestChecked: true,
+      }),
+    );
+    expect(html).toMatch(/Veredito: (<!-- -->)?sustentado/);
   });
 });

@@ -33,8 +33,9 @@ export interface MalhaFeature {
   ibge7: string;
   uf: string;
   nome: string;
-  /** Polígonos: lista de anéis, cada anel é lista de [x, y]. */
-  polygons: Array<Array<[number, number]>>;
+  /** Polígonos: lista de polígonos; cada polígono é lista de anéis
+   *  ([0] = casca externa, [1..] = furos). */
+  polygons: Array<Array<Array<[number, number]>>>;
   bbox: [number, number, number, number];
 }
 
@@ -51,17 +52,19 @@ interface TopoJson {
   arcs: Array<Array<[number, number]>>;
 }
 
-export function bboxOf(polygons: Array<Array<[number, number]>>): MalhaFeature["bbox"] {
+export function bboxOf(polygons: MalhaFeature["polygons"]): MalhaFeature["bbox"] {
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
-  for (const ring of polygons) {
-    for (const [x, y] of ring) {
-      if (x < minX) minX = x;
-      if (y < minY) minY = y;
-      if (x > maxX) maxX = x;
-      if (y > maxY) maxY = y;
+  for (const poly of polygons) {
+    for (const ring of poly) {
+      for (const [x, y] of ring) {
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
     }
   }
   return [minX, minY, maxX, maxY];
@@ -71,18 +74,21 @@ function decodeArc(
   arc: Array<[number, number]>,
   transform?: TopoJson["transform"],
 ): Array<[number, number]> {
+  // Sem transform os arcos já são pontos absolutos (TopoJSON não quantizado).
+  if (!transform) {
+    // Latitude cresce p/ norte, canvas cresce p/ baixo: nega Y p/ orientação de tela.
+    return arc.map(([x, y]) => [x, -y] as [number, number]);
+  }
   let x = 0;
   let y = 0;
   return arc.map(([dx, dy]) => {
     x += dx;
     y += dy;
-    if (transform) {
-      return [
-        x * transform.scale[0] + transform.translate[0],
-        y * transform.scale[1] + transform.translate[1],
-      ];
-    }
-    return [x, y] as [number, number];
+    return [
+      x * transform.scale[0] + transform.translate[0],
+      // Latitude cresce p/ norte, canvas cresce p/ baixo: nega Y p/ orientação de tela.
+      -(y * transform.scale[1] + transform.translate[1]),
+    ];
   });
 }
 
@@ -103,16 +109,21 @@ export function decodeTopojson(topo: TopoJson): MalhaFeature[] {
   if (!obj) return out;
   for (const g of obj.geometries) {
     const polygons: MalhaFeature["polygons"] = [];
-    const pushRing = (arcIdxs: number[]) => {
-      const ring: Array<[number, number]> = [];
-      for (const i of arcIdxs) ring.push(...ringFromArcIndex(i, topo.arcs, topo.transform));
-      if (ring.length > 0) polygons.push(ring);
+    const pushPolygon = (ringsIdxs: number[][]) => {
+      const rings: Array<Array<[number, number]>> = [];
+      for (const arcIdxs of ringsIdxs) {
+        const ring: Array<[number, number]> = [];
+        for (const i of arcIdxs) ring.push(...ringFromArcIndex(i, topo.arcs, topo.transform));
+        if (ring.length > 0) rings.push(ring);
+      }
+      // Preserva o aninhamento casca × furos ([0] = externa).
+      if (rings.length > 0) polygons.push(rings);
     };
     if (g.type === "Polygon" && Array.isArray(g.arcs)) {
-      for (const ringIdxs of g.arcs as number[][]) pushRing(ringIdxs);
+      pushPolygon(g.arcs as number[][]);
     } else if (g.type === "MultiPolygon" && Array.isArray(g.arcs)) {
       for (const poly of g.arcs as unknown as number[][][]) {
-        for (const ringIdxs of poly) pushRing(ringIdxs);
+        pushPolygon(poly);
       }
     } else {
       continue;
@@ -147,11 +158,20 @@ function inBbox(bbox: MalhaFeature["bbox"], x: number, y: number): boolean {
   return x >= bbox[0] && x <= bbox[2] && y >= bbox[1] && y <= bbox[3];
 }
 
+/** Ponto-em-polígono com furos: dentro da casca e fora de todo furo. */
+function pontoEmPoligono(poly: Array<Array<[number, number]>>, x: number, y: number): boolean {
+  if (poly.length === 0 || !pointInRing(poly[0], x, y)) return false;
+  for (let k = 1; k < poly.length; k++) {
+    if (pointInRing(poly[k], x, y)) return false;
+  }
+  return true;
+}
+
 /** Hit-test ponto-em-polígono com pré-checagem de bbox (índice espacial simples). */
 export function hitTest(features: MalhaFeature[], x: number, y: number): string | null {
   for (const f of features) {
     if (!inBbox(f.bbox, x, y)) continue;
-    if (f.polygons.some((ring) => pointInRing(ring, x, y))) return f.ibge7;
+    if (f.polygons.some((poly) => pontoEmPoligono(poly, x, y))) return f.ibge7;
   }
   return null;
 }
@@ -194,5 +214,9 @@ export async function loadMalha(malhaUrl: string): Promise<MalhaFeature[]> {
     throw new Error(`malha indisponível (${res.status}): sem dado oficial`);
   }
   const topo = (await res.json()) as TopoJson;
-  return decodeTopojson(topo);
+  const feats = decodeTopojson(topo);
+  if (feats.length === 0) {
+    throw new Error("malha vazia ou inválida: sem dado oficial");
+  }
+  return feats;
 }

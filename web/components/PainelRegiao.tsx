@@ -14,6 +14,7 @@ import React from "react";
 import SourceBadge from "./SourceBadge";
 import SealSlot from "./SealSlot";
 import { formatVotes, type SealState } from "../lib/data";
+import { isFatoDataset } from "../lib/regiao";
 import {
   indiceVencedor,
   perfilOndeVenceu,
@@ -126,7 +127,9 @@ export function agregarUF(
   const vals = somas.filter((s) => s !== -Infinity).sort((a, b) => b - a);
   const v1 = vals[0] ?? 0;
   const v2 = vals[1] ?? 0;
-  const total = v1 + (vals.slice(1).reduce((a, b) => a + b, 0) || 0);
+  // Mesmo denominador do painel municipal: soma `totalLinha` (row.total
+  // inclui brancos/nulos fora de `votos`) em vez de só votos nominais.
+  const total = linhas.reduce((acc, r) => acc + totalLinha(r), 0);
   const eleitores = linhas.map(eleitoresLinha);
   const todosComEleitores = eleitores.every((e) => e !== null);
   const cand = ordem[best];
@@ -156,6 +159,12 @@ function num(v: number): string {
   return Number.isFinite(v) ? String(Math.round(v * 10) / 10) : SEM_DADO;
 }
 
+/** Renda média fail-closed: NaN do motor (sem renda no fato) nunca vira
+ *  "R$ 0" — mesmo tratamento de `num()` para as demais variáveis. */
+function renda(v: number): string {
+  return finito(v) ? `R$ ${formatVotes(Math.round(v))}` : SEM_DADO;
+}
+
 const ALERTA_STYLE: React.CSSProperties = {
   background: "#fff3cd",
   border: "1px solid #b45309",
@@ -167,13 +176,21 @@ interface PainelRegiaoProps {
   fato: FatoRegiao | null;
   seal: SealState;
   manifestChecked?: boolean;
+  /** Dataset selecionado (`?fato=` resolvido pela página): preservado no
+   *  link "Por quê?" para analisar o pleito exibido, não o default. */
+  fatoDataset?: string | null;
 }
 
-export default function PainelRegiao({ ibge, fato, seal, manifestChecked }: PainelRegiaoProps) {
+export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDataset }: PainelRegiaoProps) {
   const badge = <SealSlot seal={seal} />;
   const cod = String(ibge ?? "").trim().toUpperCase();
   const ehExterior = cod === "EXTERIOR";
   const ehUF = /^[A-Z]{2}$/.test(cod);
+  // Sufixo ?fato= validado pelo mesmo allowlist da rota (nunca traversal).
+  const fatoQ =
+    typeof fatoDataset === "string" && isFatoDataset(fatoDataset.trim())
+      ? `&fato=${encodeURIComponent(fatoDataset.trim())}`
+      : "";
 
   const topo = (
     <>
@@ -279,7 +296,7 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked }: Pain
           ) : (
             <ul>
               <li>Escolaridade superior: {num(perfil.medias.esc_sup)}% (Brasil: {num(baseUF.vsBrasil.esc_sup)}%)</li>
-              <li>Renda média: R$ {formatVotes(Math.round(perfil.medias.renda_media))} (Brasil: R$ {formatVotes(Math.round(baseUF.vsBrasil.renda_media))})</li>
+              <li>Renda média: {renda(perfil.medias.renda_media)} (Brasil: {renda(baseUF.vsBrasil.renda_media)})</li>
               <li>Pobres: {num(perfil.medias.pobres_pct)}% (Brasil: {num(baseUF.vsBrasil.pobres_pct)}%)</li>
               <li>Municípios onde venceu: {formatVotes(perfil.nMun)}</li>
             </ul>
@@ -290,7 +307,7 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked }: Pain
           {badge}
           <ul>
             <li><a href="/analisar">Comparar</a></li>
-            <li><a href={`/explorar?foco=${encodeURIComponent(cod)}`}>Por quê?</a></li>
+            <li><a href={`/explorar?foco=${encodeURIComponent(cod)}${fatoQ}`}>Por quê?</a></li>
             <li><a href={`/verificar?regiao=${encodeURIComponent(cod)}`}>Verificar</a></li>
           </ul>
           {seal.official && (
@@ -337,6 +354,11 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked }: Pain
     candidatos: fato.candidatos,
   });
   const foco = encodeURIComponent(String(ibge));
+  // O índice /verificar filtra por sigla de UF: emite a UF da linha para
+  // cair nos checks da região em vez da sugestão (contrato documentado
+  // em `checksParaRegiao`; IBGE7 nunca casa lá).
+  const ufLinha = String(row?.uf ?? "").trim().toUpperCase();
+  const regiaoQ = encodeURIComponent(/^[A-Z]{2}$/.test(ufLinha) ? ufLinha : String(ibge));
 
   return (
     <>
@@ -362,7 +384,7 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked }: Pain
         ) : (
           <ul>
             <li>Escolaridade superior: {num(perfil.medias.esc_sup)}% (Brasil: {num(base.vsBrasil.esc_sup)}%)</li>
-            <li>Renda média: R$ {formatVotes(Math.round(perfil.medias.renda_media))} (Brasil: R$ {formatVotes(Math.round(base.vsBrasil.renda_media))})</li>
+            <li>Renda média: {renda(perfil.medias.renda_media)} (Brasil: {renda(base.vsBrasil.renda_media)})</li>
             <li>Pobres: {num(perfil.medias.pobres_pct)}% (Brasil: {num(base.vsBrasil.pobres_pct)}%)</li>
           </ul>
         )}
@@ -372,8 +394,8 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked }: Pain
         {badge}
         <ul>
           <li><a href="/analisar">Comparar</a></li>
-          <li><a href={`/explorar?foco=${foco}`}>Por quê?</a></li>
-          <li><a href={`/verificar?regiao=${foco}`}>Verificar</a></li>
+          <li><a href={`/explorar?foco=${foco}${fatoQ}`}>Por quê?</a></li>
+          <li><a href={`/verificar?regiao=${regiaoQ}`}>Verificar</a></li>
         </ul>
         {seal.official && (
           <p><small>URL compartilhável: <code>/regiao/{ibge}?hash={seal.official.hash}</code></small></p>

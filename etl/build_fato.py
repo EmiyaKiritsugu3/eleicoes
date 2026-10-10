@@ -11,15 +11,24 @@ arrays compactos (uma linha por município, não um objeto por voto):
 
 Regras fail-closed (nunca zero silencioso / número sem hash):
 - município sem par no Censo → `demo: null`, votos intactos;
-- fração de linhas sem par acima de 0,1% (matemática inteira,
-  `orfaos*1000 > total`, mesmo padrão de `etl.validate`) → `ValueError`;
+- fração de MUNICÍPIOS sem par acima de 0,1% (matemática inteira,
+  `orfaos*1000 > total_municipios`, mesmo padrão de `etl.validate`) →
+  `ValueError` (contagem por município único, não por linha de voto/zona);
 - chave IBGE vazia nunca casa (nem mesmo com `""` do Censo);
 - triple (ano, turno, cargo) sem linhas → `ValueError` ("sem dado
   oficial", nunca JSON vazio);
 - `dim_municipio` ausente → `ValueError` (100% órfãos);
+- fonte V1 é por zona (`votacao_candidato_munzona`): linhas do mesmo
+  (município, candidato) SÃO SOMADAS; valor nulo em qualquer zona
+  contamina o agregado (`null`, incógnita nunca some); candidato da
+  lista nacional sem linha no município = 0 votos (ausência no TSE),
+  nunca `null`;
 - votos nulos (`Int64` anulável, contrato herdado) atravessam como
   `null`; `total` com qualquer nulo é `null` (total com incógnita não
   é afirmado);
+- gate soma-do-Censo (`check_censo_sum`): roda quando `censo_total_oficial`
+  é informado; divergência → `ValueError` antes de escrever o fato
+  (sem total oficial — Censo real pendente — o gate é pulado);
 - `(ano, cargo)` fora do escopo V1 → `ValueError` (sem `source_url`
   oficial não há proveniência a registrar).
 
@@ -44,6 +53,7 @@ import duckdb
 import pandas as pd
 
 from etl import ETL_VERSION
+from etl.censo import check_censo_sum
 from etl.manifest import write_manifest
 from etl.sources import CENSO_DATASETS, V1_DATASETS
 
@@ -90,7 +100,8 @@ def _float_or_none(v):
     return None if v is None or _isna(v) else float(v)
 
 
-def build_fato(duckdb_path, out_dir, ano, turno, cargo) -> str:
+def build_fato(duckdb_path, out_dir, ano, turno, cargo,
+               censo_total_oficial=None) -> str:
     """Gera o fato municipal de (ano, turno, cargo); devolve o path do JSON."""
     try:
         ano = int(ano)
@@ -154,6 +165,17 @@ def build_fato(duckdb_path, out_dir, ano, turno, cargo) -> str:
             f"({ano}, turno {turno}, {cargo_upper})"
         )
 
+    if censo_total_oficial is not None:
+        # Gate total-vs-IBGE fail-closed antes de qualquer escrita: Censo
+        # com soma divergente nunca vira fato. Sem total oficial (Censo
+        # real pendente; fixtures sintéticos não têm total auditado) o
+        # gate é pulado — a chamada sem total assume dado sem soma auditada.
+        erros = check_censo_sum(censo, censo_total_oficial)
+        if erros:
+            raise ValueError(
+                "build_fato: gate do Censo reprovou: " + "; ".join(erros)
+            )
+
     triple["municipio_ibge"] = triple["municipio_ibge"].astype("string").fillna("")
     censo_map: dict[str, dict] = {}
     for row in censo.itertuples():
@@ -168,14 +190,14 @@ def build_fato(duckdb_path, out_dir, ano, turno, cargo) -> str:
         if key and key not in eleit_map:
             eleit_map[key] = (row.eleitorado, row.abstencoes)
 
-    ibges = triple["municipio_ibge"].tolist()
-    orphans = sum(1 for b in ibges if not b or b not in censo_map)
-    total_rows = len(triple)
-    if orphans * 1000 > total_rows:
-        pct = 100 * orphans / total_rows
+    ibges_unicos = set(triple["municipio_ibge"].tolist())
+    orphans = sum(1 for b in ibges_unicos if not b or b not in censo_map)
+    total_munis = len(ibges_unicos)
+    if orphans * 1000 > total_munis:
+        pct = 100 * orphans / total_munis
         raise ValueError(
             f"build_fato: orfaos TSE sem par no Censo acima de 0,1%: "
-            f"{pct:.2f}% ({orphans}/{total_rows})"
+            f"{pct:.2f}% ({orphans}/{total_munis})"
         )
 
     name_map: dict[str, tuple[str, str]] = {}
@@ -207,15 +229,25 @@ def build_fato(duckdb_path, out_dir, ano, turno, cargo) -> str:
          "partido": name_map.get(cid, ("", ""))[1]}
         for cid in order
     ]
-    pos = {cid: k for k, cid in enumerate(order)}
 
     municipios = []
     for ibge, grp in triple.groupby("municipio_ibge", sort=True):
         key = "" if _isna(ibge) else str(ibge)
-        votos: list = [None] * len(order)
+        # Fonte V1 é por zona: soma as linhas por candidato. Ausência de
+        # linha = 0 votos (TSE); nulo presente em qualquer zona = incógnita
+        # (None, nunca somado nem zerado — propaga p/ o total).
+        agregado: dict[str, int | None] = {}
         for row in grp.itertuples():
             cid = "" if _isna(row.candidato_id) else str(row.candidato_id)
-            votos[pos[cid]] = _int_or_none(row.votos)
+            v = _int_or_none(row.votos)
+            if cid not in agregado:
+                agregado[cid] = v
+            elif v is None or agregado[cid] is None:
+                agregado[cid] = None
+            else:
+                agregado[cid] += v
+        votos: list = [agregado[cid] if cid in agregado else 0
+                       for cid in order]
         total = sum(votos) if all(v is not None for v in votos) else None
         el, ab = eleit_map.get(key, (None, None))
         demo_row = censo_map.get(key)

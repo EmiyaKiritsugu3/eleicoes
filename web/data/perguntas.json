@@ -153,13 +153,13 @@
     "slug": "participacao-alta-vencedor",
     "titulo": "Onde venceu com participação alta (acima de 80%)?",
     "blocos": { "quem": "@vencedor", "onde": "participacao_80", "cruzar": "urbanizacao", "ver": ["ranking"] },
-    "texto_metodo": "Recorte de municípios onde o vencedor venceu e a participação (votos ÷ eleitorado) passou de 80%. Participação alta não valida nem invalida resultado: mede comparecimento, não preferência. Sem eleitorado auditado, a seção fica em sem dado oficial."
+    "texto_metodo": "Recorte de municípios onde o vencedor venceu e o comparecimento ((eleitorado − abstenções) ÷ eleitorado, com abstenções auditadas) passou de 80%. Sem abstenções auditadas, o recorte usa votos nominais ÷ eleitorado (medida conservadora, nunca oficial como comparecimento). Participação alta não valida nem invalida resultado: mede comparecimento, não preferência. Sem eleitorado auditado, a seção fica em sem dado oficial."
   },
   {
     "slug": "participacao-alta-vice",
     "titulo": "Onde o segundo colocado venceu com participação alta?",
     "blocos": { "quem": "@vice", "onde": "participacao_80", "cruzar": "urbanizacao", "ver": ["ranking"] },
-    "texto_metodo": "Recorte de municípios onde o segundo colocado venceu e a participação (votos ÷ eleitorado) passou de 80%. Participação mede comparecimento, não preferência. Sem eleitorado auditado, a seção fica em sem dado oficial."
+    "texto_metodo": "Recorte de municípios onde o segundo colocado venceu e o comparecimento ((eleitorado − abstenções) ÷ eleitorado, com abstenções auditadas) passou de 80%. Sem abstenções auditadas, o recorte usa votos nominais ÷ eleitorado (medida conservadora, nunca oficial como comparecimento). Participação mede comparecimento, não preferência. Sem eleitorado auditado, a seção fica em sem dado oficial."
   },
   {
     "slug": "voto-exterior",

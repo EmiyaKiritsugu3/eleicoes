@@ -15,14 +15,16 @@
  *
  * Tipos de computação (1 por check, regra de veredito própria):
  * - `vencedor_regiao`: agregado de votos no recorte (BR ou UF); falso se
- *   outro candidato venceu; enganoso se venceu mas abaixo de `margem_min`
- *   (ou do piso padrão de 1% quando o check não fixa margem — vitória no
- *   fio nunca é "sem ressalva").
+ *   outro candidato venceu ou se a margem ficou abaixo da `margem_min`
+ *   explícita do check (número afirmado contradito); enganoso se venceu
+ *   mas abaixo só do piso padrão de 1% quando o check não fixa margem —
+ *   vitória no fio nunca é "sem ressalva".
  * - `comparar_medias`: média ponderada onde `quem` venceu vs Brasil;
  *   direção errada → falso; direção certa com diferença relativa < 5% →
  *   enganoso (tecnicamente na direção, mas irrelevante).
- * - `correlacao_sinal`: Pearson (+ Spearman) com piso n ≥ 30; falso SÓ com
- *   sinal oposto E efeito claro (|r| ≥ 0,3); |r| < 0,3 p/ qualquer lado →
+ * - `correlacao_sinal`: Pearson E Spearman com piso n ≥ 30; sustentado
+ *   e falso exigem concordância dos dois r em sinal e força (|r| ≥ 0,3);
+ *   divergência → enganoso (possível outlier). |r| < 0,3 p/ qualquer lado →
  *   enganoso (ruído, nunca falso sobre ruído).
  * - `serie_temporal`: SEMPRE fora de escopo (fato cobre um pleito) →
  *   fail-closed, nunca veredito.
@@ -147,7 +149,8 @@ function verificarVencedorRegiao(
   const metodo =
     "Agregado de votos no recorte (soma finita por candidato; vencedor = maior soma). " +
     "Veredito: outro vencedor → falso; venceu mas abaixo da margem mínima afirmada " +
-    `(ou do piso padrão de ${MARGEM_MIN_PADRAO * 100}% quando o check não fixa margem) → enganoso.`;
+    "no check → falso (número afirmado contradito); venceu abaixo só do piso padrão " +
+    `de ${MARGEM_MIN_PADRAO * 100}% (check sem margem explícita) → enganoso.`;
   const linhas = linhasDoRecorte(fato.municipios ?? [], str(params.regiao) || "BR");
   if (linhas.length === 0) return semProva("nenhum município neste recorte", metodo);
   const ordem = fato.candidatos ?? [];
@@ -195,6 +198,16 @@ function verificarVencedorRegiao(
   const pisoRotulo = finito(params.margem_min)
     ? `dos ${(params.margem_min as number) * 100}% afirmados`
     : `do piso padrão de ${MARGEM_MIN_PADRAO * 100}%`;
+  // Margem explícita afirmada e descumprida contradiz o número do check →
+  // falso. O enganoso fica só p/ o piso padrão (vitória no fio sem número
+  // afirmado). Margem indeterminada (total zerado) segue enganoso.
+  if (
+    finito(params.margem_min) &&
+    margem !== null &&
+    (margem as number) < (params.margem_min as number)
+  ) {
+    return { veredito: "falso", numeros, metodo, nomeQuem: afirmado.nome };
+  }
   if (margem === null || (margem as number) < pisoMargem) {
     return {
       veredito: "enganoso",
@@ -273,10 +286,11 @@ function verificarCorrelacaoSinal(
   fato: FatoRegiao,
 ): Verificacao {
   const metodo =
-    "Correlação de Pearson (e Spearman) entre a variável e o share do candidato, " +
-    `com piso n ≥ 30. Sinal afirmado com |r| ≥ ${String(LIMIAR_EFEITO_R).replace(".", ",")} → sustentado; ` +
-    `|r| < ${String(LIMIAR_EFEITO_R).replace(".", ",")} p/ qualquer lado → enganoso (ruído: nunca falso sobre ruído); ` +
-    "sinal oposto com efeito claro → falso. Correlação não implica causa.";
+    "Correlação de Pearson e Spearman entre a variável e o share do candidato, " +
+    `com piso n ≥ 30. Sinal afirmado com |r| ≥ ${String(LIMIAR_EFEITO_R).replace(".", ",")} nos dois r → sustentado; ` +
+    `|r| < ${String(LIMIAR_EFEITO_R).replace(".", ",")} em qualquer um ou divergência de sinal entre eles → enganoso ` +
+    "(ruído ou possível outlier: nunca falso sem concordância); " +
+    "sinal oposto com efeito claro nos dois r → falso. Correlação não implica causa.";
   const variavel = str(params.variavel);
   if (!VAR_DEMO_SET.has(variavel)) return semProva("variável sem cobertura auditada", metodo);
   const ordem = fato.candidatos ?? [];
@@ -297,21 +311,30 @@ function verificarCorrelacaoSinal(
     { rotulo: "Municípios (n)", valor: corrP.n, formato: "n" },
   ];
   const esperado = str(params.sinal) === "negativo" ? -1 : 1;
-  const sinalObs = Math.sign(corrP.r);
-  const forte = Math.abs(corrP.r) >= LIMIAR_EFEITO_R;
-  // Sem penhasco de sinal em r≈0: falso exige sinal oposto COM efeito
-  // claro; |r| fraco p/ qualquer lado é ruído → enganoso, nunca falso.
-  if (sinalObs !== esperado && forte) {
+  const sinalP = Math.sign(corrP.r);
+  const sinalS = Math.sign(corrS.r);
+  const forteP = Math.abs(corrP.r) >= LIMIAR_EFEITO_R;
+  const forteS = Math.abs(corrS.r) >= LIMIAR_EFEITO_R;
+  const concordaSinal = sinalP === esperado && sinalS === esperado;
+  const discordaAmbos = sinalP !== esperado && sinalS !== esperado;
+  // Sem penhasco de sinal em r≈0 e sem veredito sobre outlier: falso e
+  // sustentado exigem concordância de Pearson E Spearman em sinal e força;
+  // divergência (sinal ou força) → enganoso, nunca falso/sustentado.
+  if (discordaAmbos && forteP && forteS) {
     return { veredito: "falso", numeros, metodo, nomeQuem: afirmado.nome };
   }
-  if (!forte) {
+  if (!(concordaSinal && forteP && forteS)) {
+    const divergeSinal = sinalP !== sinalS;
     return {
       veredito: "enganoso",
       numeros,
       metodo,
       nomeQuem: afirmado.nome,
-      engano:
-        sinalObs !== esperado
+      engano: divergeSinal
+        ? `Pearson (r = ${corrP.r.toFixed(3).replace(".", ",")}) e Spearman (r = ${corrS.r.toFixed(3).replace(".", ",")}) ` +
+          `divergem em sinal com n = ${corrP.n}: possível outlier ou relação não-linear — ` +
+          "os números não sustentam a direção afirmada com segurança, nem a derrubam."
+        : sinalP !== esperado
           ? `r = ${corrP.r.toFixed(3).replace(".", ",")} — efeito fraco (|r| abaixo de ` +
             `${String(LIMIAR_EFEITO_R).replace(".", ",")}), indistinguível de ruído com n = ${corrP.n}: ` +
             "os números não derrubam a direção afirmada com segurança, mas a certeza sugerida não existe."
@@ -355,7 +378,14 @@ function verificarSomaCondicional(
       if (medida === "abst") {
         if (finito(r?.abst)) valores.push((r.abst as number) / eleitores);
       } else {
-        valores.push(totalLinha(r) / eleitores);
+        // Participação (comparecimento): (eleitorado − abstenções) ÷
+        // eleitorado com abstenções auditadas; sem abstenções, votos
+        // nominais ÷ eleitorado (mesma regra do filtro participacao_80).
+        valores.push(
+          finito(r?.abst)
+            ? ((eleitores as number) - (r.abst as number)) / (eleitores as number)
+            : totalLinha(r) / (eleitores as number),
+        );
       }
     }
   }
@@ -367,15 +397,17 @@ function verificarSomaCondicional(
     { rotulo: "Municípios avaliados", valor: valores.length, formato: "n" },
     { rotulo: "Fração na condição", valor: share, formato: "pct" },
   ];
-  const maioriaObs = share > 0.5;
-  if (maioriaObs !== afirmaMaioria) return { veredito: "falso", numeros, metodo };
-  if (share < MAIORIA_FOLGADA) {
+  // Limiares no lado afirmado: afirma_maioria:false valida a minoria, então
+  // a régua (50%/60%) corre sobre a fração alinhada (share ou 1 − share).
+  const alinhado = afirmaMaioria ? share : 1 - share;
+  if (!(alinhado > 0.5)) return { veredito: "falso", numeros, metodo };
+  if (alinhado < MAIORIA_FOLGADA) {
     return {
       veredito: "enganoso",
       numeros,
       metodo,
       engano:
-        `a maioria existe (${(share * 100).toFixed(1).replace(".", ",")}%), mas é apertada — ` +
+        `a maioria existe (${(alinhado * 100).toFixed(1).replace(".", ",")}%), mas é apertada — ` +
         "a afirmação sugere uma regra geral que os números sustentam só por pouco.",
     };
   }
@@ -504,7 +536,18 @@ export function VerificarConteudo({
     );
   }
 
-  const v = verificarAfirmacao(check, fato);
+  const hashAuditado =
+    (seal.official !== null && seal.official.hash.trim().length > 0) ||
+    (seal.hasFixture && seal.fixtureHash.trim().length > 0);
+  // Fail-closed por hash: fato carregado de ingestão sem hash não gera
+  // veredito — número sem hash não é oficial. Só há veredito com hash
+  // oficial ou hash de fixture (transparência, sem selo oficial).
+  const v = hashAuditado
+    ? verificarAfirmacao(check, fato)
+    : semProva(
+        "sem hash auditado no manifest — número sem hash não é oficial",
+        "Veredito só com prova auditada: sem hash válido no manifest, nenhuma afirmação recebe veredito.",
+      );
   const frase = resolverFrase(check, fato);
 
   return (

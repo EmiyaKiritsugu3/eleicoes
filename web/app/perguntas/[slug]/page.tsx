@@ -12,8 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { notFound } from "next/navigation";
 import { CuradaConteudo, type PerguntaCurada } from "../Curada";
-import { getSealState } from "../../../lib/data";
-import { fatoDatasetDe } from "../../../lib/regiao";
+import { fatoDatasetDe, getSealParaDataset } from "../../../lib/regiao";
 import type { FatoRegiao } from "../../../components/PainelRegiao";
 import perguntasJson from "../../../data/perguntas.json";
 
@@ -45,8 +44,10 @@ export default function PaginaPergunta({ params }: { params: { slug: string } })
 
   const base = path.join(process.cwd(), "public", "data");
   const manifest = lerJson(path.join(base, "manifest.json"));
-  const seal = getSealState(manifest);
+  // Selo do próprio dataset exibido abaixo (nunca hash de outra ingestão);
+  // sem registro auditado → "dado não auditado" no conteúdo curado.
   const dataset = fatoDatasetDe(manifest, "");
+  const seal = getSealParaDataset(manifest, dataset);
   const fato = dataset ? fatoValido(lerJson(path.join(base, `${dataset}.json`))) : null;
 
   return <CuradaConteudo pergunta={pergunta} fato={fato} seal={seal} manifestChecked />;
