@@ -1,5 +1,15 @@
 /** Loader TopoJSON → paths p/ o mapa canvas (<MapaBrasil>).
  *
+ *  DECISÃO EVOLVE-6 T6 (opção b, pinada): fallback em lista (+ link TSE) é
+ *  o estado PRODUTIVO. Motivo: nenhum GeoJSON de entrada da malha IBGE
+ *  existe no repo ou em fonte oficial pequena buscável — gerar o TopoJSON
+ *  real exigiria baixar a malha nacional (dezenas de MB, shapefile, deps
+ *  novas) ou chutar geometrias (PROIBIDO: nunca commitar malha adivinhada).
+ *  `scripts/malha.py` + fixture cobre só CI/testes; sem artefato, o mapa
+ *  cai no fallback honesto por design (fail-closed). Rotação de manifest
+ *  nunca gruda no mapa velho: <MapaBrasil> sincroniza `features` e limpa
+ *  o erro a cada rotação (features novas OU nova `malhaUrl`).
+ *
  *  A malha real (`web/public/data/malha_municipios.topojson`, gerada por
  *  `scripts/malha.py --output web/public/data/malha_municipios.topojson`) é
  *  buscada em runtime via `loadMalha(MALHA_MUNICIPIOS_URL)`; se ausente, o

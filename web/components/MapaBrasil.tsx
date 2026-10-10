@@ -102,11 +102,23 @@ export default function MapaBrasil({
 
   useEffect(() => {
     // Resolução única: chamador que já resolveu (features) não refaz fetch.
-    if (featuresProp !== undefined) return;
+    // Rotação de manifest (decisão EVOLVE-6 T6-b): features novas do
+    // chamador substituem o estado — sem sync, o mapa grudava no velho
+    // (`useState` só lê a prop na montagem). Erro anterior sempre limpo
+    // (chegada de features OU nova URL): fallback não gruda após recovery.
+    if (featuresProp !== undefined) {
+      setFeatures(featuresProp);
+      setErroMalha(null);
+      return;
+    }
     let vivo = true;
+    setErroMalha(null);
     loadMalha(malhaUrl).then(
       (f) => {
-        if (vivo) setFeatures(f);
+        if (vivo) {
+          setFeatures(f);
+          setErroMalha(null);
+        }
       },
       (e: Error) => {
         if (vivo) setErroMalha(e.message);

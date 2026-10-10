@@ -452,6 +452,124 @@ describe("zoom UF filtra o hit-test (só o desenhado)", () => {
   });
 });
 
+describe("rotação de manifest não gruda no mapa velho (decisão EVOLVE-6 T6-b)", () => {
+  // Mesma geometria, município renomeado: só o sync featuresProp→estado
+  // atualiza o <select> de teclado (pré-fix: estado inicial gruda em A).
+  const FIXTURE_TOPO_B = {
+    type: "Topology",
+    transform: { scale: [1, 1], translate: [0, 0] },
+    objects: {
+      municipios: {
+        type: "GeometryCollection",
+        geometries: [
+          {
+            type: "Polygon",
+            properties: { ibge7: "3550308", uf: "SP", nome: "Campinas" },
+            arcs: [[0]],
+          },
+        ],
+      },
+    },
+    arcs: [
+      [
+        [0, 0],
+        [0, 10],
+        [10, 0],
+        [0, -10],
+        [-10, 0],
+      ],
+    ],
+  };
+  it("features novas do chamador substituem o estado (sem stale)", async () => {
+    const restorePath = mockPath2D();
+    const restoreCtx = mockCanvas2d();
+    try {
+      const featsA = decodeTopojson(FIXTURE_TOPO as never);
+      const featsB = decodeTopojson(FIXTURE_TOPO_B as never);
+      const div = document.createElement("div");
+      document.body.appendChild(div);
+      const root = createRoot(div);
+      await act(async () => {
+        root.render(
+          <MapaBrasil malhaUrl="/data/malha.topojson" nivel="municipio" ufSelecionada="SP" features={featsA} onSelectIbge={() => {}} />,
+        );
+      });
+      expect(div.textContent).toContain("São Paulo");
+      // Rotação: chamador resolveu features novas e repassa.
+      await act(async () => {
+        root.render(
+          <MapaBrasil malhaUrl="/data/malha.topojson" nivel="municipio" ufSelecionada="SP" features={featsB} onSelectIbge={() => {}} />,
+        );
+      });
+      expect(div.textContent).toContain("Campinas");
+      expect(div.textContent).not.toContain("São Paulo");
+      root.unmount();
+      div.remove();
+    } finally {
+      restoreCtx();
+      restorePath();
+    }
+  });
+  it("erro anterior limpa quando a malha chega (fallback não gruda)", async () => {
+    const restorePath = mockPath2D();
+    const restoreCtx = mockCanvas2d();
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 404 })));
+    try {
+      const div = document.createElement("div");
+      document.body.appendChild(div);
+      const root = createRoot(div);
+      await act(async () => {
+        root.render(
+          <MapaBrasil malhaUrl="/data/malha.topojson" nivel="uf" onSelectIbge={() => {}} />,
+        );
+      });
+      // Falhou: fallback em lista, sem canvas.
+      expect(div.querySelector("canvas")).toBeNull();
+      // Rotação: chamador entrega as features (malha surgiu) — canvas volta.
+      const feats = decodeTopojson(FIXTURE_TOPO as never);
+      await act(async () => {
+        root.render(
+          <MapaBrasil malhaUrl="/data/malha.topojson" nivel="uf" features={feats} onSelectIbge={() => {}} />,
+        );
+      });
+      expect(div.querySelector("canvas")).not.toBeNull();
+      root.unmount();
+      div.remove();
+    } finally {
+      restorePath();
+      restoreCtx();
+    }
+  });
+  it("nova malhaUrl tenta de novo após falha (refetch na rotação)", async () => {
+    const restorePath = mockPath2D();
+    const restoreCtx = mockCanvas2d();
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 404 })));
+    try {
+      const div = document.createElement("div");
+      document.body.appendChild(div);
+      const root = createRoot(div);
+      await act(async () => {
+        root.render(
+          <MapaBrasil malhaUrl="/data/v1.topojson" nivel="uf" onSelectIbge={() => {}} />,
+        );
+      });
+      expect(div.querySelector("canvas")).toBeNull();
+      // Rotação: URL nova + malha disponível — refetch recupera o canvas.
+      vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => FIXTURE_TOPO })));
+      await act(async () => {
+        root.render(
+          <MapaBrasil malhaUrl="/data/v2.topojson" nivel="uf" onSelectIbge={() => {}} />,
+        );
+      });
+      expect(div.querySelector("canvas")).not.toBeNull();
+      root.unmount();
+      div.remove();
+    } finally {
+      restorePath();
+      restoreCtx();
+    }
+  });
+});
 describe("operável por teclado (lista junto ao mapa)", () => {
   it("zoom UF: <select> de municípios chama onSelectIbge", async () => {
     const restorePath = mockPath2D();
