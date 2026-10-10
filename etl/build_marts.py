@@ -361,10 +361,19 @@ def _register_sources(df: pd.DataFrame, manifest_path, source_shas=None) -> None
         _validate_entry(new_entry)  # fail-closed Task 6 antes de escrever
     merged = _read_existing_ingestions(manifest_path) + new_entries
     by_key: dict = {}
+    sem_chave: list = []
     for item in merged:
-        if isinstance(item, dict):
+        if not isinstance(item, dict):
+            continue
+        try:
             by_key[_dedupe_key(item)] = item
-    deduped = list(by_key.values())
+        except TypeError:
+            # Entry legada com campo não-hashable (ex. `dataset`/`turno`
+            # como lista — `_validate_entry` não cobre esses campos): sem
+            # chave de dedupe, preservada sem colapso e sem crashar o
+            # build (fail-safe: dado preservado, nunca exceção).
+            sem_chave.append(item)
+    deduped = list(by_key.values()) + sem_chave
     legacy = [item for item in merged if not isinstance(item, dict)]
     manifest_file = Path(manifest_path)
     _write_json_atomico(manifest_file, {"ingestions": deduped + legacy})
