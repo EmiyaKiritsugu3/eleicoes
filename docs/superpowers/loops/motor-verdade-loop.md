@@ -125,3 +125,7 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 
 ## EVOLVE-7 round PR#9-R2 (2026-10-10 ~20:30 UTC)
 - Sonar dup 4.7%→1.0% OK (helpers); 2 S8707 novos (AaEng5Abn3atgy46ToJf/Jg, sinks guardados) won't-fix mesmo ruling.
+
+## EVOLVE-7 mergeado (2026-10-10 ~21:15 UTC)
+- Merge PR #9 (merge commit eb96878): tudo verde — CI ×2, GitGuardian, CodeRabbit, cubic, Sonar. Branch evolve-7 deletada.
+- Total: 6 tasks + R1/R3/R4/R5 com re-reviews limpos. Primeiro pixel real na UI (pop Censo). Suítes finais: pytest 202 + vitest 412 + tsc clean + build.
