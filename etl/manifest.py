@@ -8,7 +8,7 @@ import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 
-REQUIRED_KEYS = ("source_url", "sha256")
+REQUIRED_KEYS = ("source_url", "sha256")  # compat: kept for external importers (internal check uses _validate_entry)
 
 
 def load_manifest(path) -> dict:
