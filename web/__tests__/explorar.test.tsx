@@ -344,6 +344,7 @@ describe("explorar (participação = comparecimento auditado)", () => {
 });
 
 const SEAL_SEM_HASH = { official: null, hasFixture: false, fixtureHash: "" };
+const SEAL_HASH_VAZIO = { official: { hash: "", url: "", date: "" }, hasFixture: false, fixtureHash: "" };
 const SEAL_FIXTURE = { official: null, hasFixture: true, fixtureHash: "c".repeat(64) };
 
 function htmlExplorar(fato: { candidatos: typeof CANDIDATOS; municipios: MunRow[] }, seal: typeof SEAL_OK) {
@@ -371,6 +372,11 @@ describe("explorar (gate de hash: fato sem hash não sustenta número)", () => {
   it("selo fixture com hash segue sustentando números (paridade com Verificar)", () => {
     const html = htmlExplorar({ candidatos: CANDIDATOS, municipios: linhasValidas() }, SEAL_FIXTURE);
     expect(secaoResultado(html)).toMatch(/r \(Pearson\) = -?\d/);
+  });
+  it("official com hash vazio → SEM_DADO, sem r (paridade com Verificar)", () => {
+    const html = htmlExplorar({ candidatos: CANDIDATOS, municipios: linhasValidas() }, SEAL_HASH_VAZIO);
+    expect(secaoResultado(html)).toContain("sem dado oficial");
+    expect(secaoResultado(html)).not.toMatch(/r \(Pearson\) = -?\d/);
   });
 });
 
