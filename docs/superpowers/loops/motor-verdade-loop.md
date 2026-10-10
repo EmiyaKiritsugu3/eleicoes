@@ -122,3 +122,6 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 
 ## EVOLVE-7 completo (final review: Merge Yes with fixes → fixed + re-reviewed)
 - 6/6 tasks + seam-fix (promoção direta p/ served) + rotation-Censo, re-reviews limpos; resto → EVOLVE-8 backlog.
+
+## EVOLVE-7 round PR#9-R2 (2026-10-10 ~20:30 UTC)
+- Sonar dup 4.7%→1.0% OK (helpers); 2 S8707 novos (AaEng5Abn3atgy46ToJf/Jg, sinks guardados) won't-fix mesmo ruling.
