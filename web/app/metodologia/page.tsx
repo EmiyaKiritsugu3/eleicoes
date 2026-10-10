@@ -100,6 +100,13 @@ export default function Metodologia() {
             mecanismo de deploy. Sem dados oficiais publicados, o site exibe o
             banner “dado não auditado”, que é o comportamento correto.
           </li>
+          <li>
+            <strong>Fato municipal + Censo:</strong> o ETL também gera{" "}
+            <code>fato_ano_turno_cargo.json</code> (junção TSE + ingestões{" "}
+            <code>censo_ibge_2022</code> do IBGE), consumido pelas seções de
+            perfil e correlação. Sem Censo auditado, essas seções exibem “sem
+            dado oficial”.
+          </li>
         </ul>
       </section>
 
