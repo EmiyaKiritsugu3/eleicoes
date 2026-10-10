@@ -246,3 +246,28 @@ describe("task 6: paridade de motivos de supressão (reason correta, não só SE
     expect(mapa).toContain(HASH_REASON);
   });
 });
+
+describe("task 4 (evolve-5): paridade de motivos em Resumo/Pivô/Série", () => {
+  const HASH_REASON = "sem hash auditado no manifest";
+  it("/analisar Resumo semProva nomeia o hash (não bare)", async () => {
+    mockFetch(MANIFEST_INVALIDO);
+    const div = await renderJsdom(<Analisar />);
+    const resumo = secao(div.innerHTML, "Resumo filtrado");
+    expect(resumo).toContain(SEM_DADO);
+    expect(resumo).toContain(HASH_REASON);
+  });
+  it("/analisar Pivô semProva nomeia o hash (não bare via emptyStateFor)", async () => {
+    mockFetch(MANIFEST_INVALIDO);
+    const div = await renderJsdom(<Analisar />);
+    const pivo = secao(div.innerHTML, "Pivô");
+    expect(pivo).toContain(SEM_DADO);
+    expect(pivo).toContain(HASH_REASON);
+  });
+  it("/analisar Série semProva nomeia o hash (não bare via emptyStateFor)", async () => {
+    mockFetch(MANIFEST_INVALIDO);
+    const div = await renderJsdom(<Analisar />);
+    const serie = secao(div.innerHTML, "Série histórica");
+    expect(serie).toContain(SEM_DADO);
+    expect(serie).toContain(HASH_REASON);
+  });
+});

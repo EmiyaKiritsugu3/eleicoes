@@ -162,8 +162,8 @@ def seed(manifest_path: Path, web_data_dir: Path, force: bool = False) -> dict:
             build_all(curated, db_tmp, manifest_path,
                       web_data_dir=web_data_dir)
             # Motor Verdade: Censo fixture -> dim_municipio -> fato sintético,
-            # pelo caminho REAL (normalize_censo + build_fato). O Censo real
-            # segue indisponível (URL pendente, Task 1): o entry do Censo
+            # pelo caminho REAL (normalize_censo + build_fato). Seed é
+            # fixture-only por desenho: o entry do Censo
             # abaixo usa a página do catálogo IBGE como source_url e o sha256
             # do payload sintético — sempre marcado fixture:true adiante.
             import duckdb

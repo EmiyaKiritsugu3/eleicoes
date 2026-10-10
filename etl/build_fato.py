@@ -28,7 +28,8 @@ Regras fail-closed (nunca zero silencioso / número sem hash):
   é afirmado);
 - gate soma-do-Censo (`check_censo_sum`): roda quando `censo_total_oficial`
   é informado; divergência → `ValueError` antes de escrever o fato
-  (sem total oficial — Censo real pendente — o gate é pulado);
+  (sem total oficial informado — ex. fixtures sintéticos sem soma
+  auditada — o gate é pulado);
 - `(ano, cargo)` fora do escopo V1 → `ValueError` (sem `source_url`
   oficial não há proveniência a registrar).
 
@@ -286,7 +287,8 @@ def build_fato(duckdb_path, out_dir, ano, turno, cargo,
         if "dim_municipio" not in tables:
             raise ValueError(
                 "build_fato: sem dado oficial — tabela dim_municipio ausente "
-                f"em {db_path} (Censo não ingerido; URL pendente, Task 1)"
+                f"em {db_path} (Censo não ingerido; ingira o Censo antes de "
+                "construir o fato)"
             )
         triple = con.execute(
             "SELECT ano, turno, cargo, uf, municipio_ibge, candidato_id, votos"
@@ -320,9 +322,9 @@ def build_fato(duckdb_path, out_dir, ano, turno, cargo,
 
     if censo_total_oficial is not None:
         # Gate total-vs-IBGE fail-closed antes de qualquer escrita: Censo
-        # com soma divergente nunca vira fato. Sem total oficial (Censo
-        # real pendente; fixtures sintéticos não têm total auditado) o
-        # gate é pulado — a chamada sem total assume dado sem soma auditada.
+        # com soma divergente nunca vira fato. Sem total oficial
+        # (fixtures sintéticos não têm total auditado) o gate é pulado —
+        # a chamada sem total assume dado sem soma auditada.
         erros = check_censo_sum(censo, censo_total_oficial)
         if erros:
             raise ValueError(

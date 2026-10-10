@@ -8,6 +8,8 @@
  *   (colunas de dados primeiro, proveniência por último).
  */
 
+import { SEM_DADO } from "./textos";
+
 export type FiltrosPartilhaveis = Record<string, string | number | undefined | null>;
 
 /** Chaves que `/analisar` hidrata da query (M13): qualquer outra chave
@@ -70,7 +72,7 @@ export function buildShareUrl(
 
 /** Zero linhas -> "sem dado oficial" (nunca tela branca / zero silencioso). */
 export function emptyStateFor(rows: unknown): string {
-  if (!Array.isArray(rows) || rows.length === 0) return "sem dado oficial";
+  if (!Array.isArray(rows) || rows.length === 0) return SEM_DADO;
   return "";
 }
 

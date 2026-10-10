@@ -26,8 +26,8 @@ import {
   semCoberturaTurnoZona,
 } from "../../lib/export";
 import { vereditoTemProva } from "../../lib/regiao";
+import { MOTIVO_SEM_HASH, SEM_DADO } from "../../lib/textos";
 
-const SEM_DADO = "sem dado oficial";
 const SEM_COBERTURA_AGG =
   " — filtro sem cobertura no agregado V1 (só ano/cargo/UF e partido)";
 
@@ -360,7 +360,11 @@ export default function Analisar() {
         {partidoIgnoradoUF && !semCob && <p role="note">{NOTA_PARTIDO}</p>}
         {carregando ? (
           <p role="status">a carregar…</p>
-        ) : !resumo || res.vazio || semCob || semProva ? (
+        ) : semProva ? (
+          <p>
+            {SEM_DADO} — {MOTIVO_SEM_HASH}
+          </p>
+        ) : !resumo || res.vazio || semCob ? (
           <p>{SEM_DADO}</p>
         ) : (
           <p>Total de votos no filtro: {formatVotes(res.totalVotos)}</p>
@@ -388,6 +392,10 @@ export default function Analisar() {
         </div>
         {carregando ? (
           <p role="status">a carregar…</p>
+        ) : semProva ? (
+          <p>
+            {SEM_DADO} — {MOTIVO_SEM_HASH}
+          </p>
         ) : emptyStateFor(pivoRows) ? (
           <p>{emptyStateFor(pivoRows)}</p>
         ) : (
@@ -526,6 +534,10 @@ export default function Analisar() {
         {partidoIgnoradoUF && !semCob && <p role="note">{NOTA_PARTIDO}</p>}
         {carregando ? (
           <p role="status">a carregar…</p>
+        ) : semProva ? (
+          <p>
+            {SEM_DADO} — {MOTIVO_SEM_HASH}
+          </p>
         ) : emptyStateFor(ev) ? (
           <p>{SEM_DADO}</p>
         ) : (

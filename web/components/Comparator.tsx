@@ -1,5 +1,6 @@
 import React from "react";
 import { formatVotes } from "../lib/data";
+import { SEM_DADO } from "../lib/textos";
 
 export interface CompareSide {
   titulo: string;
@@ -13,8 +14,6 @@ interface ComparatorProps {
   labelLeft?: string;
   labelRight?: string;
 }
-
-const SEM_DADO = "sem dado oficial";
 
 function Side({
   side,

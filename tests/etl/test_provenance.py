@@ -343,8 +343,7 @@ def test_standalone_build_fato_atualiza_sha_nos_artifacts(tmp_path):
 def test_dedupe_key_unificada_sem_fork():
     """EVOLVE-4 T2: `_dedupe_key` única vive em `etl.manifest` (sem fork).
 
-    `build_marts` (antigo 3-tuple) e `build_fato` (antigo 5-tuple
-    `_ingestion_dedupe_key`) importam o MESMO objeto — lógicas de
+    `build_marts` e `build_fato` importam o MESMO objeto — lógicas de
     idempotência divergentes reprovam aqui. `verificar_fato_manifest`
     também vive no módulo-folha (importável de `etl.build_fato` por
     compatibilidade, sem redefinição).

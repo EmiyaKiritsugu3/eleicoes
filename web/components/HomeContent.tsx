@@ -22,8 +22,7 @@ import {
   type SealState,
 } from "../lib/data";
 import { vereditoTemProva } from "../lib/regiao";
-
-const SEM_DADO = "sem dado oficial";
+import { SEM_DADO } from "../lib/textos";
 
 /** Prefixo IBGE de 2 dígitos → sigla UF (códigos estáveis do IBGE).
  *  Permite ao clique no canvas (que retorna IBGE7 do município) focar o

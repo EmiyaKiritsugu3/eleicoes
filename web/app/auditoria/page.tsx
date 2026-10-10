@@ -15,8 +15,7 @@ import {
   type Manifest,
   type ManifestIngestion,
 } from "../../lib/data";
-
-const SEM_DADO = "sem dado oficial";
+import { SEM_DADO } from "../../lib/textos";
 
 async function fetchJson<T>(path: string): Promise<T | null> {
   try {

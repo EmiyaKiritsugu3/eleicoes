@@ -2,7 +2,8 @@
 
 Contrato sob teste:
 - `build_fato` 2x (mesmo triple) -> manifest do <db dir> com 1 ingestion
-  (upsert pelo predicado do mirror `_ingestion_dedupe_key`, sem fork) e
+  (upsert pelo predicado do mirror `_dedupe_key` de `etl.manifest`,
+  sem fork) e
   `sha256` igual ao dos bytes do fato; rerun com dado novo ATUALIZA o
   sha sem duplicar; triples distintos preservam o histórico.
 - Crash entre passos (fato reescrito, manifest ainda velho) -> o

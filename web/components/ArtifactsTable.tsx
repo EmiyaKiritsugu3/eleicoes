@@ -8,8 +8,7 @@ import {
   isOfficialDisplay,
   type ManifestArtifact,
 } from "../lib/data";
-
-const SEM_DADO = "sem dado oficial";
+import { SEM_DADO } from "../lib/textos";
 
 /** Tabela de arquivos servidos com prova de bytes (EVOLVE-2 Task 1):
  *  sha resumido (12) com hash cheio no title + tamanho pt-BR + data.
