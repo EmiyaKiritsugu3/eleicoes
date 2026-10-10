@@ -1,9 +1,11 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { ArtifactsTable } from "../../components/ArtifactsTable";
 import SourceBadge from "../../components/SourceBadge";
 import FixtureBadge from "../../components/FixtureBadge";
 import {
+  getArtifacts,
   getOfficialAuditInfo,
   isAudited,
   isFixtureEntry,
@@ -73,6 +75,7 @@ export default function Auditoria() {
   const ingestions = Array.isArray(manifest?.ingestions)
     ? (manifest?.ingestions ?? [])
     : [];
+  const artifacts = getArtifacts(manifest);
   // Alerta honesto sem depender de CSS externo (M4-web): fundo/borda inline.
   const ALERTA_STYLE: React.CSSProperties = {
     background: "#fff3cd",
@@ -110,7 +113,7 @@ export default function Auditoria() {
         ) : ingestions.length === 0 ? (
           <p>{SEM_DADO} — nenhuma ingestão registrada no manifest</p>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Ingestões do manifest com fonte, hash, linhas e data">
           <table>
             <caption>Ingestões do manifest com fonte, hash, linhas e data</caption>
             <thead>
@@ -180,6 +183,15 @@ export default function Auditoria() {
             </tbody>
           </table>
           </div>
+        )}
+      </section>
+
+      <section aria-label="Arquivos servidos">
+        <h2>Arquivos servidos</h2>
+        {!checked ? (
+          <p>carregando manifest…</p>
+        ) : (
+          <ArtifactsTable artifacts={artifacts} />
         )}
       </section>
 

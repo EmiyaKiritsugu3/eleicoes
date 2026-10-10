@@ -161,7 +161,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         ) : ufs.length === 0 ? (
           <p>{SEM_DADO}</p>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Votos por UF">
           <table>
             <caption>Votos por UF</caption>
             <thead>
@@ -188,7 +188,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         ) : cands.length === 0 ? (
           <p>{SEM_DADO}</p>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Ranking de candidatos por votos">
           <table>
             <caption>Ranking de candidatos por votos</caption>
             <thead>
@@ -224,7 +224,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
                 </li>
               ))}
             </ul>
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Evolução anual de votos (tabela equivalente)">
             <table>
               <caption>Evolução anual de votos (tabela equivalente)</caption>
               <thead>

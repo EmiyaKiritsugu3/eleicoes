@@ -31,8 +31,9 @@ import {
   SEM_DADO,
   type FatoRegiao,
 } from "./PainelRegiao";
-import type { SealState } from "../lib/data";
+import { formatVotes, type SealState } from "../lib/data";
 import { MALHA_MUNICIPIOS_URL } from "../lib/malha";
+import { vereditoTemProva } from "../lib/regiao";
 import {
   VAR_DEMO,
   PISO_CORRELACAO_N,
@@ -255,7 +256,12 @@ export function ExplorarConteudo({
   const quemOk = ordem.some((c) => c?.id === sel.quem);
   const ondeOk = ONDE_OPCOES.some((o) => o.value === sel.onde);
   const cruzarOk = (VAR_DEMO as readonly string[]).includes(sel.cruzar);
-  const coberto = fato !== null && quemOk && ondeOk && cruzarOk;
+  // Fail-closed por hash (paridade com o veredito em Verificar.tsx: sem
+  // hash auditado — oficial ou fixture — o fato não sustenta número; sem
+  // hash, r/n caem nos ramos SEM_DADO abaixo). Só display é gated; o
+  // motor (`lib/motor`) e o selo (`lib/data`, `lib/regiao`) não mudam.
+  const hashAuditado = vereditoTemProva(seal);
+  const coberto = hashAuditado && fato !== null && quemOk && ondeOk && cruzarOk;
 
   const filtradas = useMemo(
     () => (coberto ? aplicarOnde(linhas, ordem, sel.quem, sel.onde) : []),
@@ -357,6 +363,9 @@ export function ExplorarConteudo({
 
   const cores = useMemo(() => {
     const out: Record<string, string> = {};
+    // Fail-closed por hash: sem fato hash-verificado o mapa não colore
+    // vencedores (resultado eleitoral nunca sem hash); vazio, sem cores.
+    if (!hashAuditado) return out;
     for (const r of linhas) {
       const w = indiceVencedor(r?.votos ?? []);
       if (w >= 0 && w < ordem.length) {
@@ -365,7 +374,7 @@ export function ExplorarConteudo({
     }
     if (sel.foco && sel.foco.trim() !== "") out[sel.foco.trim()] = "#f59e0b";
     return out;
-  }, [linhas, ordem.length, idxQuem, sel.foco]);
+  }, [hashAuditado, linhas, ordem.length, idxQuem, sel.foco]);
 
   const focoRow = useMemo(() => {
     const f = (sel.foco ?? "").trim();
@@ -502,8 +511,8 @@ export function ExplorarConteudo({
           Resultado — {quemNome} · {ondeLabel} · {sel.cruzar}
         </h2>
         {badge}
-        {!fato ? (
-          <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}</p>
+        {!fato || !hashAuditado ? (
+          <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}{!fato ? "" : " — sem hash auditado no manifest; números exigem fato hash-verificado"}</p>
         ) : !coberto ? (
           <p role="alert" style={ALERTA_STYLE}>
             {SEM_DADO} — combinação sem cobertura nos blocos; ajuste quem · onde · cruzar com
@@ -516,7 +525,7 @@ export function ExplorarConteudo({
             n = {filtradas.length} municípios
             {corr && corrS ? (
               <>
-                {" "}· r (Pearson) = {corr.r.toFixed(3)} · r (Spearman) = {corrS.r.toFixed(3)}{" "}
+                {" "}· r (Pearson) = {corr.r.toFixed(3).replace(".", ",")} · r (Spearman) = {corrS.r.toFixed(3).replace(".", ",")}{" "}
                 (n = {corr.n})
               </>
             ) : (
@@ -541,7 +550,7 @@ export function ExplorarConteudo({
             <p>
               {String(focoRow.nome ?? focoRow.ibge)} ({String(focoRow.ibge)}) — UF{" "}
               {String(focoRow.uf ?? "")}
-              {idxQuem >= 0 && shareCandidato(focoRow, idxQuem) !== null
+              {idxQuem >= 0 && hashAuditado && shareCandidato(focoRow, idxQuem) !== null
                 ? ` · share de ${quemNome}: ${((shareCandidato(focoRow, idxQuem) as number) * 100).toFixed(1).replace(".", ",")}%`
                 : ""}
             </p>
@@ -569,7 +578,7 @@ export function ExplorarConteudo({
           ) : (
             <>
               <p>
-                r (Pearson) = {corr.r.toFixed(3)} · r (Spearman) = {corrS.r.toFixed(3)} (n ={" "}
+                r (Pearson) = {corr.r.toFixed(3).replace(".", ",")} · r (Spearman) = {corrS.r.toFixed(3).replace(".", ",")} (n ={" "}
                 {corr.n})
               </p>
               {reta !== null && (
@@ -629,7 +638,7 @@ export function ExplorarConteudo({
                   </svg>
                 </figure>
               )}
-              <div style={{ overflowX: "auto" }}>
+              <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label={`Share médio por quintil de ${sel.cruzar}`}>
               <table>
                 <caption>Share médio por quintil de {sel.cruzar}</caption>
                 <thead>
@@ -643,7 +652,7 @@ export function ExplorarConteudo({
                   {faixas.map((f) => (
                     <tr key={f.faixa}>
                       <td>{f.faixa}</td>
-                      <td>{f.mediaY.toFixed(3)}</td>
+                      <td>{f.mediaY.toFixed(3).replace(".", ",")}</td>
                       <td>{f.n}</td>
                     </tr>
                   ))}
@@ -662,7 +671,7 @@ export function ExplorarConteudo({
           {!coberto || ranking.length === 0 ? (
             <p role="alert" style={ALERTA_STYLE}>{SEM_DADO} — sem cobertura neste recorte</p>
           ) : (
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Top municípios por share">
             <table>
               <caption>Top municípios por share</caption>
               <thead>
@@ -708,10 +717,10 @@ export function ExplorarConteudo({
             <>
               {(perfil.pesoFonte === "misto") && <p role="note">{NOTA_PESO_MISTO}</p>}
               <p>
-                n = {perfil.nMun} municípios · {perfil.nEleitores} eleitores (peso:{" "}
+                n = {formatVotes(perfil.nMun)} municípios · {formatVotes(perfil.nEleitores)} eleitores (peso:{" "}
                 {perfil.pesoFonte})
               </p>
-              <div style={{ overflowX: "auto" }}>
+              <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Médias ponderadas vs Brasil">
               <table>
                 <caption>Médias ponderadas vs Brasil</caption>
                 <thead>
@@ -727,12 +736,12 @@ export function ExplorarConteudo({
                       <td>{v}</td>
                       <td>
                         {Number.isFinite(perfil.medias[v as VarDemo])
-                          ? (perfil.medias[v as VarDemo] as number).toFixed(2)
+                          ? (perfil.medias[v as VarDemo] as number).toFixed(2).replace(".", ",")
                           : SEM_DADO}
                       </td>
                       <td>
                         {Number.isFinite(base.vsBrasil[v as VarDemo])
-                          ? (base.vsBrasil[v as VarDemo] as number).toFixed(2)
+                          ? (base.vsBrasil[v as VarDemo] as number).toFixed(2).replace(".", ",")
                           : SEM_DADO}
                       </td>
                     </tr>
@@ -749,8 +758,8 @@ export function ExplorarConteudo({
         <section aria-label="Mapa">
           <h2>Mapa — vencedor por município</h2>
           {badge}
-          {!fato ? (
-            <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}</p>
+          {!fato || !hashAuditado ? (
+            <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}{!fato ? "" : " — sem hash auditado no manifest; números exigem fato hash-verificado"}</p>
           ) : (
             <MapaBrasil
               malhaUrl={MALHA_MUNICIPIOS_URL}

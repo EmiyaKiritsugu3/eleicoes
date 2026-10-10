@@ -337,3 +337,58 @@ describe("curada (blocos.ver honored: só as visões pedidas renderizam)", () =>
     expect(htmlTab).not.toContain('aria-label="Ranking"');
   });
 });
+
+const SEAL_FIXTURE: SealState = { official: null, hasFixture: true, fixtureHash: "c".repeat(64) };
+const SEAL_HASH_VAZIO: SealState = { official: { hash: "", url: "", date: "" }, hasFixture: false, fixtureHash: "" };
+
+function secaoResultadoCurada(html: string): string {
+  return html.split('aria-label="Resultado"')[1].split("<section")[0];
+}
+
+describe("curada (gate de hash: fato sem hash não sustenta número)", () => {
+  it("fato presente sem hash → Resultado SEM_DADO, sem r nem share", () => {
+    const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
+    const resultado = secaoResultadoCurada(htmlDe(p, fato40(), SEAL_NULO));
+    expect(resultado).toContain("sem dado oficial");
+    expect(resultado).not.toMatch(/r \(Pearson\) = -?\d/);
+    expect(resultado).not.toMatch(/share médio[^%]*%/);
+  });
+  it("selo fixture com hash segue sustentando números (paridade com Verificar)", () => {
+    const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
+    expect(secaoResultadoCurada(htmlDe(p, fato40(), SEAL_FIXTURE))).toMatch(
+      /r \(Pearson\) = -?\d/,
+    );
+  });
+  it("official com hash vazio → SEM_DADO, sem r nem share (paridade com Verificar)", () => {
+    const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
+    const resultado = secaoResultadoCurada(htmlDe(p, fato40(), SEAL_HASH_VAZIO));
+    expect(resultado).toContain("sem dado oficial");
+    expect(resultado).not.toMatch(/r \(Pearson\) = -?\d/);
+    expect(resultado).not.toMatch(/share médio[^%]*%/);
+  });
+  it("selo com hash + fato null → Método SEM_DADO (sem n=0, sem veredito)", () => {
+    const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
+    const html = htmlDe(p, null, SEAL_OK);
+    const metodo = html.split('aria-label="Método"')[1].split("<section")[0];
+    expect(metodo).toContain("sem dado oficial");
+    expect(metodo).not.toMatch(/n = 0/);
+    expect(metodo).not.toContain("veredito:");
+  });
+  it("Método com fato+hash segue exibindo n e veredito (sem regressão)", () => {
+    const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
+    const html = htmlDe(p, fato40(), SEAL_OK);
+    const metodo = html.split('aria-label="Método"')[1].split("<section")[0];
+    expect(metodo).toMatch(/n = 40 municípios/);
+    expect(metodo).toContain("veredito:");
+  });
+});
+
+describe("curada (decimais pt-BR: vírgula, nunca ponto)", () => {
+  it("r (Pearson/Spearman) renderiza com vírgula", () => {
+    const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
+    const html = htmlDe(p, fato40(), SEAL_OK);
+    expect(html).toMatch(/r \(Pearson\) = -?\d+,\d{3}/);
+    expect(html).not.toMatch(/r \(Pearson\) = -?\d+\.\d{3}/);
+    expect(html).not.toMatch(/r \(Spearman\) = -?\d+\.\d{3}/);
+  });
+});

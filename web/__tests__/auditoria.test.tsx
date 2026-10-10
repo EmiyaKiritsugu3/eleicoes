@@ -99,3 +99,41 @@ describe.skipIf(!HAS_SEED)("auditoria data path (CI seed via real build_all)", (
     expect(porUf.length).toBe(2);
   });
 });
+
+describe("auditoria artifacts (EVOLVE-2 Task 1)", () => {
+  it("getArtifacts devolve só entries com arquivo+hash, na ordem do manifest", async () => {
+    const { getArtifacts } = await import("../lib/data");
+    const m = {
+      ingestions: [],
+      artifacts: [
+        { arquivo: "resumo.json", sha256: "ab".repeat(32), size_bytes: 1234, data: "2026-10-10" },
+        { arquivo: "", sha256: "cd".repeat(32) },
+        { arquivo: "sem-hash.json" },
+        "lixo",
+      ],
+    };
+    expect(getArtifacts(m)).toEqual([
+      { arquivo: "resumo.json", sha256: "ab".repeat(32), size_bytes: 1234, data: "2026-10-10" },
+    ]);
+    expect(getArtifacts(null)).toEqual([]);
+    expect(getArtifacts({ ingestions: [] })).toEqual([]);
+  });
+  it("ArtifactsTable renderiza sha resumido + tamanho pt-BR + data", async () => {
+    const { ArtifactsTable } = await import("../components/ArtifactsTable");
+    const sha = "ab".repeat(32);
+    const html = renderToStaticMarkup(
+      <ArtifactsTable artifacts={[{ arquivo: "resumo.json", sha256: sha, size_bytes: 1234, data: "2026-10-10" }]} />,
+    );
+    expect(html).toContain("resumo.json");
+    expect(html).toContain(`title="${sha}"`);
+    expect(html).toContain(`>${sha.slice(0, 12)}<`);
+    expect(html).toContain("1.234 bytes");
+    expect(html).toContain("2026-10-10");
+  });
+  it("ArtifactsTable sem artifacts mostra nota honesta, nunca tabela vazia", async () => {
+    const { ArtifactsTable } = await import("../components/ArtifactsTable");
+    const html = renderToStaticMarkup(<ArtifactsTable artifacts={[]} />);
+    expect(html).not.toContain("<table");
+    expect(html).toContain("sem dado oficial");
+  });
+});

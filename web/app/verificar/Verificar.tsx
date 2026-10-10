@@ -52,6 +52,7 @@ import {
   type VarDemo,
 } from "../../lib/motor";
 import { resolverCandidato } from "../perguntas/Curada";
+import { vereditoTemProva } from "../../lib/regiao";
 
 export type Veredito = "sustentado" | "enganoso" | "falso";
 
@@ -536,12 +537,12 @@ export function VerificarConteudo({
     );
   }
 
-  const hashAuditado =
-    (seal.official !== null && seal.official.hash.trim().length > 0) ||
-    (seal.hasFixture && seal.fixtureHash.trim().length > 0);
   // Fail-closed por hash: fato carregado de ingestão sem hash não gera
   // veredito — número sem hash não é oficial. Só há veredito com hash
   // oficial ou hash de fixture (transparência, sem selo oficial).
+  // Predicado único em `vereditoTemProva` (lib/regiao) — mesma fonte de
+  // Explorar/Curada, sem drift entre telas.
+  const hashAuditado = vereditoTemProva(seal);
   const v = hashAuditado
     ? verificarAfirmacao(check, fato)
     : semProva(

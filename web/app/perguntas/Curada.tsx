@@ -36,7 +36,8 @@ import {
   SEM_DADO,
   type FatoRegiao,
 } from "../../components/PainelRegiao";
-import type { SealState } from "../../lib/data";
+import { formatVotes, type SealState } from "../../lib/data";
+import { vereditoTemProva } from "../../lib/regiao";
 import {
   VAR_DEMO,
   PISO_CORRELACAO_N,
@@ -141,6 +142,11 @@ export function CuradaConteudo({
   manifestChecked?: boolean;
 }) {
   const badge = <SealSlot seal={seal} />;
+  // Fail-closed por hash (paridade com o veredito em Verificar.tsx: sem
+  // hash auditado — oficial ou fixture — o fato não sustenta número; sem
+  // hash, r/n/share caem nos ramos SEM_DADO abaixo). Só display é gated;
+  // o motor (`lib/motor`) e o selo (`lib/data`, `lib/regiao`) não mudam.
+  const hashAuditado = vereditoTemProva(seal);
   const linhas: MunRow[] = fato?.municipios ?? [];
   const ordem = fato?.candidatos ?? [];
 
@@ -273,8 +279,8 @@ export function CuradaConteudo({
       <section aria-label="Resultado">
         <h2>Resultado</h2>
         {badge}
-        {!fato || !cand ? (
-          <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}</p>
+        {!hashAuditado || !fato || !cand ? (
+          <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}{hashAuditado ? "" : " — sem hash auditado no manifest; números exigem fato hash-verificado"}</p>
         ) : filtradas.length === 0 ? (
           <p role="alert" style={ALERTA_STYLE}>
             {SEM_DADO}
@@ -319,7 +325,7 @@ export function CuradaConteudo({
             lugar&rdquo;: este recorte lista municípios em que o candidato perdeu, e média
             de derrota não descreve onde venceu.
           </p>
-        ) : !perfil || !base || perfil.nMun === 0 ? (
+        ) : !hashAuditado || !perfil || !base || perfil.nMun === 0 ? (
           <p role="alert" style={ALERTA_STYLE}>
             {SEM_DADO}
             {escopo ? ` — ${escopo}` : ""}
@@ -328,10 +334,10 @@ export function CuradaConteudo({
           <>
             {perfil.pesoFonte === "misto" && <p role="note">{NOTA_PESO_MISTO}</p>}
             <p>
-              n = {perfil.nMun} municípios · {perfil.nEleitores} eleitores (peso:{" "}
+              n = {formatVotes(perfil.nMun)} municípios · {formatVotes(perfil.nEleitores)} eleitores (peso:{" "}
               {perfil.pesoFonte})
             </p>
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Médias ponderadas vs Brasil">
             <table>
               <caption>Médias ponderadas vs Brasil</caption>
               <thead>
@@ -347,12 +353,12 @@ export function CuradaConteudo({
                     <td>{v}</td>
                     <td>
                       {finito(perfil.medias[v as VarDemo])
-                        ? (perfil.medias[v as VarDemo] as number).toFixed(2)
+                        ? (perfil.medias[v as VarDemo] as number).toFixed(2).replace(".", ",")
                         : SEM_DADO}
                     </td>
                     <td>
                       {finito(base.vsBrasil[v as VarDemo])
-                        ? (base.vsBrasil[v as VarDemo] as number).toFixed(2)
+                        ? (base.vsBrasil[v as VarDemo] as number).toFixed(2).replace(".", ",")
                         : SEM_DADO}
                     </td>
                   </tr>
@@ -370,7 +376,7 @@ export function CuradaConteudo({
         <h2>Correlação — {pergunta.blocos.cruzar} × share de {cand ? cand.nome : "—"}</h2>
         {badge}
         <p role="note">{ECO_SEAL} — cada ponto é um município, nunca uma pessoa.</p>
-        {!fato || !cand ? (
+        {!hashAuditado || !fato || !cand ? (
           <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}</p>
         ) : !cruzarOk ? (
           <p role="alert" style={ALERTA_STYLE}>
@@ -389,7 +395,7 @@ export function CuradaConteudo({
             <p>
               r (Pearson) = {fmtR(corrP.r)} · r (Spearman) = {fmtR(corrS.r)} (n = {corrP.n})
             </p>
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label={`Share médio por quintil de ${pergunta.blocos.cruzar}`}>
             <table>
               <caption>Share médio por quintil de {pergunta.blocos.cruzar}</caption>
               <thead>
@@ -403,7 +409,7 @@ export function CuradaConteudo({
                 {faixas.map((f) => (
                   <tr key={f.faixa}>
                     <td>{f.faixa}</td>
-                    <td>{f.mediaY.toFixed(3)}</td>
+                    <td>{f.mediaY.toFixed(3).replace(".", ",")}</td>
                     <td>{f.n}</td>
                   </tr>
                 ))}
@@ -422,7 +428,7 @@ export function CuradaConteudo({
           {ECO_SEAL} — o padrão é testado dentro de cada região e faixa de renda; correlação
           não implica causa.
         </p>
-        {!fato || !cand || filtradas.length === 0 ? (
+        {!hashAuditado || !fato || !cand || filtradas.length === 0 ? (
           <p role="alert" style={ALERTA_STYLE}>
             {SEM_DADO}
             {escopo ? ` — ${escopo}` : ""}
@@ -432,7 +438,7 @@ export function CuradaConteudo({
             <p>
               Veredito em linguagem leiga: <strong>{VEREDITO_PT[veredito]}</strong>
             </p>
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Correlação por região">
             <table>
               <caption>Correlação por região</caption>
               <thead>
@@ -459,7 +465,7 @@ export function CuradaConteudo({
               </tbody>
             </table>
             </div>
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Correlação por faixa de renda">
             <table>
               <caption>Correlação por faixa de renda</caption>
               <thead>
@@ -494,13 +500,13 @@ export function CuradaConteudo({
       <section aria-label="Ranking">
         <h2>Ranking — maior share de {cand ? cand.nome : "—"}</h2>
         {badge}
-        {ranking.length === 0 ? (
+        {!hashAuditado || ranking.length === 0 ? (
           <p role="alert" style={ALERTA_STYLE}>
             {SEM_DADO}
             {escopo ? ` — ${escopo}` : " — sem cobertura neste recorte"}
           </p>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Top municípios por share">
           <table>
             <caption>Top municípios por share</caption>
             <thead>
@@ -530,10 +536,15 @@ export function CuradaConteudo({
         {badge}
         <p>{pergunta.texto_metodo}</p>
         <p>
-          Números desta resposta: n = {filtradas.length} municípios
-          {corrP ? ` · r (Pearson) = ${fmtR(corrP.r)}` : ""}
-          {corrS ? ` · r (Spearman) = ${fmtR(corrS.r)}` : ""} · veredito:{" "}
-          {VEREDITO_PT[veredito]} · voto é secreto: perfis são sempre de municípios.
+          Números desta resposta:{" "}
+          {!hashAuditado || !fato || !cand ? (
+            <>{SEM_DADO}{hashAuditado ? "" : " — sem hash auditado no manifest; números exigem fato hash-verificado"}</>
+          ) : (
+            <>n = {filtradas.length} municípios
+            {corrP ? ` · r (Pearson) = ${fmtR(corrP.r)}` : ""}
+            {corrS ? ` · r (Spearman) = ${fmtR(corrS.r)}` : ""} · veredito:{" "}
+            {VEREDITO_PT[veredito]} · voto é secreto: perfis são sempre de municípios.</>
+          )}
         </p>
       </section>
 

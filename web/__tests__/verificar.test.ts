@@ -487,4 +487,19 @@ describe("verificar (fail-closed sem hash: sem dado oficial, nunca veredito)", (
     );
     expect(html).toMatch(/Veredito: (<!-- -->)?sustentado/);
   });
+  it("official com hash vazio → semProva (paridade com Explorar/Curada)", () => {
+    const sealVazio: SealState = { official: { hash: "", url: "", date: "" }, hasFixture: false, fixtureHash: "" };
+    const html = renderToStaticMarkup(
+      React.createElement(VerificarConteudo, {
+        check: CHECK_SUSTENTADO,
+        slug: CHECK_SUSTENTADO.slug,
+        checks: checksJson as unknown as Check[],
+        fato: fato40(),
+        seal: sealVazio,
+        manifestChecked: true,
+      }),
+    );
+    expect(html).toContain("sem dado oficial");
+    expect(html).not.toMatch(/Veredito: (<!-- -->)?(sustentado|enganoso|falso)/);
+  });
 });

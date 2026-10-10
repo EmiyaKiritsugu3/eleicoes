@@ -382,7 +382,7 @@ export default function Analisar() {
         ) : emptyStateFor(pivoRows) ? (
           <p>{emptyStateFor(pivoRows)}</p>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label={`Pivô por ${pivo}`}>
           <table>
             <caption>Pivô por {pivo}</caption>
             <thead>
@@ -483,7 +483,7 @@ export default function Analisar() {
             {SEM_DADO} — financiamento sem fonte no V1 (só votação nominal)
           </p>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Dispersão votos × financiamento">
           <table>
             <caption>Dispersão votos × financiamento</caption>
             <thead>
@@ -516,7 +516,7 @@ export default function Analisar() {
         ) : emptyStateFor(ev) ? (
           <p>{SEM_DADO}</p>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Série histórica de votos por ano">
           <table>
             <caption>Série histórica de votos por ano</caption>
             <thead>

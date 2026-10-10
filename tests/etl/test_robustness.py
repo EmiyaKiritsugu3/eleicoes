@@ -98,7 +98,7 @@ def test_concurrent_same_dest_downloads(tmp_path, monkeypatch):  # 2 threads, me
             for i in range(0, len(payload), chunk_size):
                 yield payload[i:i + chunk_size]
 
-    def fake_get(url, stream=True, timeout=None):
+    def fake_get(url, stream=True, timeout=None, **kwargs):
         return _Resp()
 
     monkeypatch.setattr(fetch.requests, "get", fake_get)

@@ -104,12 +104,14 @@ export function getSealParaDataset(manifest: unknown, dataset: string | null): S
   return vazio;
 }
 
-/** Há prova para veredito com este selo: hash oficial ou hash de fixture
- *  (transparência, sem selo oficial) — espelha `hashAuditado` de
- *  VerificarConteudo. Sem nenhum dos dois, nenhum fato alimenta veredito.
+/** Há prova para veredito com este selo: hash oficial não-vazio ou hash
+ *  de fixture (transparência, sem selo oficial) — fonte única da verdade
+ *  do gate de hash de Verificar/Explorar/Curada (fail-closed: hash vazio
+ *  ou só-espaços nunca sustenta número). Sem nenhum dos dois, nenhum fato
+ *  alimenta veredito.
  */
 export function vereditoTemProva(seal: SealState): boolean {
-  if (seal.official !== null) return true;
+  if (seal.official !== null && seal.official.hash.trim().length > 0) return true;
   return seal.hasFixture && seal.fixtureHash.trim().length > 0;
 }
 

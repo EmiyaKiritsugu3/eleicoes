@@ -9,6 +9,7 @@ import {
   type ExplorarSelecao,
 } from "../components/Explorar";
 import type { MunRow } from "../lib/motor";
+import type { SealState } from "../lib/data";
 
 const CANDIDATOS = [
   { id: "lula", nome: "Lula", partido: "PT" },
@@ -340,5 +341,75 @@ describe("explorar (participação = comparecimento auditado)", () => {
     }];
     expect(aplicarOnde(dentro, CANDIDATOS, "lula", "participacao_80")).toHaveLength(1);
     expect(aplicarOnde(fora, CANDIDATOS, "lula", "participacao_80")).toHaveLength(0);
+  });
+});
+
+const SEAL_SEM_HASH = { official: null, hasFixture: false, fixtureHash: "" };
+const SEAL_HASH_VAZIO = { official: { hash: "", url: "", date: "" }, hasFixture: false, fixtureHash: "" };
+const SEAL_FIXTURE = { official: null, hasFixture: true, fixtureHash: "c".repeat(64) };
+
+function htmlExplorar(fato: { candidatos: typeof CANDIDATOS; municipios: MunRow[] }, seal: SealState) {
+  return renderToStaticMarkup(
+    <ExplorarConteudo fato={fato} seal={seal} initial={SEL_VALIDA} />,
+  );
+}
+
+function secaoResultado(html: string): string {
+  return html.split('aria-label="Resultado"')[1].split("<section")[0];
+}
+
+describe("explorar (gate de hash: fato sem hash não sustenta número)", () => {
+  it("fato presente sem hash → Resultado SEM_DADO, sem r", () => {
+    const html = htmlExplorar({ candidatos: CANDIDATOS, municipios: linhasValidas() }, SEAL_SEM_HASH);
+    expect(secaoResultado(html)).toContain("sem dado oficial");
+    expect(secaoResultado(html)).not.toMatch(/r \(Pearson\) = -?\d/);
+  });
+  it("fato presente sem hash → Dispersão sem r, só SEM_DADO", () => {
+    const html = htmlExplorar({ candidatos: CANDIDATOS, municipios: linhasValidas() }, SEAL_SEM_HASH);
+    const dispersao = html.split('aria-label="Dispersão"')[1].split("<section")[0];
+    expect(dispersao).toContain("sem dado oficial");
+    expect(dispersao).not.toMatch(/r \(Pearson\) = -?\d/);
+  });
+  it("selo fixture com hash segue sustentando números (paridade com Verificar)", () => {
+    const html = htmlExplorar({ candidatos: CANDIDATOS, municipios: linhasValidas() }, SEAL_FIXTURE);
+    expect(secaoResultado(html)).toMatch(/r \(Pearson\) = -?\d/);
+  });
+  it("official com hash vazio → SEM_DADO, sem r (paridade com Verificar)", () => {
+    const html = htmlExplorar({ candidatos: CANDIDATOS, municipios: linhasValidas() }, SEAL_HASH_VAZIO);
+    expect(secaoResultado(html)).toContain("sem dado oficial");
+    expect(secaoResultado(html)).not.toMatch(/r \(Pearson\) = -?\d/);
+  });
+  it("mapa sem hash → SEM_DADO, sem canvas nem fallback (vencedores suprimidos)", () => {
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo
+        fato={{ candidatos: CANDIDATOS, municipios: linhasValidas() }}
+        seal={SEAL_SEM_HASH}
+        initial={{ ...SEL_VALIDA, ver: ["mapa"] }}
+      />,
+    );
+    const mapa = html.split('aria-label="Mapa"')[1].split("<section")[0];
+    expect(mapa).toContain("sem dado oficial");
+    expect(mapa).not.toContain("<canvas");
+    expect(mapa).not.toContain("Mapa indisponível neste navegador");
+  });
+  it("mapa com hash segue renderizando (sem regressão)", () => {
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo
+        fato={{ candidatos: CANDIDATOS, municipios: linhasValidas() }}
+        seal={SEAL_OK}
+        initial={{ ...SEL_VALIDA, ver: ["mapa"] }}
+      />,
+    );
+    const mapa = html.split('aria-label="Mapa"')[1].split("<section")[0];
+    expect(mapa).not.toContain("sem dado oficial");
+  });
+});
+
+describe("explorar (decimais pt-BR: vírgula, nunca ponto)", () => {
+  it("r (Pearson/Spearman) renderiza com vírgula", () => {
+    const html = htmlExplorar({ candidatos: CANDIDATOS, municipios: linhasValidas() }, SEAL_OK);
+    expect(html).toMatch(/r \(Pearson\) = -?\d+,\d{3}/);
+    expect(html).not.toMatch(/r \(Pearson\) = -?\d+\.\d{3}/);
+    expect(html).not.toMatch(/r \(Spearman\) = -?\d+\.\d{3}/);
   });
 });

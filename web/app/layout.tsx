@@ -11,7 +11,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="pt-BR">
       <body style={{ fontFamily: "system-ui, sans-serif", margin: 0, color: "#111" }}>
         <header style={{ maxWidth: 960, margin: "0 auto", padding: "1rem 1rem 0" }}>
-          <nav aria-label="Principal" style={{ display: "flex", gap: "1rem" }}>
+          <nav aria-label="Principal" style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
             <a href="/">Início</a>
             <a href="/analisar">Analisar</a>
             <a href="/explorar">Explorar</a>
