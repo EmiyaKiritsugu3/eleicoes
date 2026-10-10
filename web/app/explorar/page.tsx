@@ -104,9 +104,15 @@ export default function Explorar() {
       ocupadoRef.current = true;
       const minha = ++geracaoRef.current;
       try {
-        const manifest = (await fetchJson("/data/manifest.json")).data;
+        // Blip ≠ rotação (fail-closed sem supressão): manifest ilegível
+        // (offline/500/JSON inválido — `status !== "ok"`) sai ANTES da
+        // comparação e mantém o último selo validado
+        // (stale-while-revalidate); só um fetch OK com selo diferente
+        // rotaciona. Falha nunca publica selo vazio nem limpa o fato.
+        const leitura = await fetchJson("/data/manifest.json");
+        if (leitura.status !== "ok") return;
         if (geracaoRef.current !== minha) return;
-        const { dataset, novoSeal } = derivarDatasetESelo(manifest);
+        const { dataset, novoSeal } = derivarDatasetESelo(leitura.data);
         if (JSON.stringify({ ds: dataset, seal: novoSeal }) === seloRef.current) return;
         const f = dataset ? (await fetchJson<FatoRegiao>(`/data/${dataset}.json`)).data : null;
         if (geracaoRef.current !== minha) return;

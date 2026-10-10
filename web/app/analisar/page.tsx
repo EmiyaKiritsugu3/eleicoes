@@ -100,6 +100,22 @@ export default function Analisar() {
   const ocupadoRef = useRef(false);
   const geracaoRef = useRef(0);
 
+  // Guard de geração partilhado (mount + rotação — sem fork do epílogo):
+  // reserva `ocupadoRef`, carimba a geração do run e só libera o flag se o
+  // run atual ainda for o dono (finally de run stale nunca solta o flag
+  // alheio). `carga` recebe `minha` e barra o próprio publish quando
+  // `geracaoRef.current !== minha`.
+  const correrSobGuard = useCallback(async (carga: (minha: number) => Promise<void>) => {
+    if (ocupadoRef.current) return;
+    ocupadoRef.current = true;
+    const minha = ++geracaoRef.current;
+    try {
+      await carga(minha);
+    } finally {
+      if (geracaoRef.current === minha) ocupadoRef.current = false;
+    }
+  }, []);
+
   // Núcleo único de leitura pesada (paridade com `carregarPesados` da Home,
   // webfix Finding 6): mount (`effect` abaixo) e rotação (`aoRetomar`)
   // partilham este helper — a sequência de fetches existe UMA vez (sem
@@ -139,45 +155,38 @@ export default function Analisar() {
     setCompA(q.a ?? "");
     setCompB(q.b ?? "");
     setUrlHash(q.hash ?? "");
-    const minha = ++geracaoRef.current;
-    ocupadoRef.current = true;
-    (async () => {
-      try {
-        const novoSeal = await carregarPesados();
-        if (geracaoRef.current !== minha) return;
-        seloRef.current = JSON.stringify(novoSeal);
-        setSeal(novoSeal);
-        setManifestChecked(true);
-      } finally {
-        if (geracaoRef.current === minha) ocupadoRef.current = false;
-      }
-    })();
+    void correrSobGuard(async (minha) => {
+      const novoSeal = await carregarPesados();
+      if (geracaoRef.current !== minha) return;
+      seloRef.current = JSON.stringify(novoSeal);
+      setSeal(novoSeal);
+      setManifestChecked(true);
+    });
     return () => {
       ocupadoRef.current = false;
     };
-  }, [carregarPesados]);
+  }, [carregarPesados, correrSobGuard]);
 
   // Rotação de manifest (paridade Home/regiao): no foco da janela ou na
   // volta de visibilidade, re-lê SÓ o manifest (barato) e só refaz o fetch
   // pesado quando o selo mudou — sem fetch duplicado quando inalterado, sem
-  // números stale após rotação. Troca silenciosa: sem "a carregar", sem
-  // tocar nos filtros — só selo + dados assentam juntos.
+  // números stale após rotação. Blip ≠ rotação: manifest ilegível
+  // (`status !== "ok"`) sai antes da comparação e mantém o último selo
+  // validado (stale-while-revalidate). Troca silenciosa: sem "a carregar",
+  // sem tocar nos filtros — só selo + dados assentam juntos.
   useEffect(() => {
     const aoRetomar = async () => {
-      if (ocupadoRef.current) return;
-      ocupadoRef.current = true;
-      const minha = ++geracaoRef.current;
-      try {
-        const conferido = getSealState((await fetchJson("/data/manifest.json")).data);
+      await correrSobGuard(async (minha) => {
+        const leitura = await fetchJson("/data/manifest.json");
+        if (leitura.status !== "ok") return;
         if (geracaoRef.current !== minha) return;
+        const conferido = getSealState(leitura.data);
         if (JSON.stringify(conferido) === seloRef.current) return;
         const novoSeal = await carregarPesados();
         if (geracaoRef.current !== minha) return;
         seloRef.current = JSON.stringify(novoSeal);
         setSeal(novoSeal);
-      } finally {
-        if (geracaoRef.current === minha) ocupadoRef.current = false;
-      }
+      });
     };
     const aoFocar = () => {
       void aoRetomar();
@@ -191,7 +200,7 @@ export default function Analisar() {
       window.removeEventListener("focus", aoFocar);
       document.removeEventListener("visibilitychange", aoVisibilidade);
     };
-  }, [carregarPesados]);
+  }, [carregarPesados, correrSobGuard]);
 
   const set =
     (k: keyof AnalisarFiltros) => (e: React.ChangeEvent<HTMLInputElement>) =>

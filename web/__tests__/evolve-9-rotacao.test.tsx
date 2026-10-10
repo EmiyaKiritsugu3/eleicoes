@@ -74,14 +74,21 @@ function perfil(html: string): string {
 let manifestAtual: unknown = MANIFEST_A;
 let fatoAtual: unknown = FATO;
 let porUfAtual: unknown = POR_UF;
+// Blip de rede: com true, o fetch do manifest REJEITA (offline) — a rotação
+// deve manter o último selo validado, nunca suprimir dado válido.
+let falharManifest = false;
 const chamadas: string[] = [];
 
 function instalarRotacao() {
   manifestAtual = MANIFEST_A;
   fatoAtual = FATO;
   porUfAtual = POR_UF;
+  falharManifest = false;
   instalarFetchRoteado(chamadas, (u) => {
-    if (u.endsWith("/data/manifest.json")) return { ok: true, json: async () => manifestAtual };
+    if (u.endsWith("/data/manifest.json")) {
+      if (falharManifest) throw new TypeError("fetch failed");
+      return { ok: true, json: async () => manifestAtual };
+    }
     if (u.endsWith("/data/resumo.json")) return { ok: true, json: async () => RESUMO };
     if (u.endsWith("/data/por_uf.json")) return { ok: true, json: async () => porUfAtual };
     if (u.endsWith("/data/por_candidato.json")) return { ok: true, json: async () => POR_CAND };
@@ -175,6 +182,18 @@ describe("/explorar: rotação de manifest (EVOLVE-9 Task 3b)", () => {
     await voltarVisivel();
     expect(div.innerHTML).toContain(`sha256: ${HASH_B}`);
   });
+
+  it("blip no manifest (fetch rejeita) → dado válido mantido, sem supressão", async () => {
+    instalarRotacao();
+    const div = await montar(<ExplorarPage />);
+    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
+    falharManifest = true;
+    await focarRotacao();
+    // Stale-while-revalidate: falha ≠ rotação — selo e fato intactos.
+    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
+    expect(div.innerHTML).not.toContain("dado não auditado");
+    expect(conta(`/data/${DS}.json`)).toBe(1);
+  });
 });
 
 describe("/verificar: rotação de manifest (EVOLVE-9 Task 3b)", () => {
@@ -205,6 +224,17 @@ describe("/verificar: rotação de manifest (EVOLVE-9 Task 3b)", () => {
     manifestAtual = MANIFEST_B;
     await voltarVisivel();
     expect(div.innerHTML).toContain(`sha256: ${HASH_B}`);
+  });
+
+  it("blip no manifest (fetch rejeita) → selo válido mantido, sem supressão", async () => {
+    instalarRotacao();
+    const div = await montar(<VerificarPage />);
+    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
+    falharManifest = true;
+    await focarRotacao();
+    // Stale-while-revalidate: falha ≠ rotação — selo intacto.
+    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
+    expect(div.innerHTML).not.toContain("dado não auditado");
   });
 });
 
@@ -237,5 +267,20 @@ describe("/analisar: rotação de manifest (EVOLVE-9 Task 3b)", () => {
     manifestAtual = MANIFEST_B;
     await voltarVisivel();
     expect(div.innerHTML).toContain(`sha256: ${HASH_B}`);
+  });
+
+  it("blip no manifest (fetch rejeita) → números mantidos, sem supressão", async () => {
+    instalarRotacao();
+    const div = await montar(<AnalisarPage />);
+    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
+    expect(div.innerHTML).toContain("Total de votos no filtro: 3.000");
+    falharManifest = true;
+    await focarRotacao();
+    // Stale-while-revalidate: falha ≠ rotação — selo e números intactos,
+    // sem refetch pesado sobre dado válido.
+    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
+    expect(div.innerHTML).toContain("Total de votos no filtro: 3.000");
+    expect(div.innerHTML).not.toContain("dado não auditado");
+    expect(conta("/data/resumo.json")).toBe(1);
   });
 });

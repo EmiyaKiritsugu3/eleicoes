@@ -66,9 +66,13 @@ function PaginaVerificarIndice() {
   const ocupadoRef = useRef(false);
   const geracaoRef = useRef(0);
 
-  // Núcleo único de leitura (mount + rotação partilham — sem fork).
+  // Núcleo único de leitura (mount + rotação partilham — sem fork):
+  // devolve `ok` (fetch do manifest com `status === "ok"`) + selo derivado.
+  // A rotação só publica com `ok` (blip ≠ rotação: falha mantém o último
+  // selo validado, nunca publica selo vazio).
   const carregarSelo = useCallback(async () => {
-    return getSealState((await fetchJson("/data/manifest.json")).data);
+    const leitura = await fetchJson("/data/manifest.json");
+    return { ok: leitura.status === "ok", novoSeal: getSealState(leitura.data) };
   }, []);
 
   useEffect(() => {
@@ -79,10 +83,10 @@ function PaginaVerificarIndice() {
     ocupadoRef.current = true;
     (async () => {
       try {
-        const novoSeal = await carregarSelo();
+        const r = await carregarSelo();
         if (geracaoRef.current !== minha) return;
-        seloRef.current = JSON.stringify(novoSeal);
-        setSeal(novoSeal);
+        seloRef.current = JSON.stringify(r.novoSeal);
+        setSeal(r.novoSeal);
       } finally {
         if (geracaoRef.current === minha) ocupadoRef.current = false;
       }
@@ -101,11 +105,13 @@ function PaginaVerificarIndice() {
       ocupadoRef.current = true;
       const minha = ++geracaoRef.current;
       try {
-        const novoSeal = await carregarSelo();
+        const r = await carregarSelo();
+        // Blip ≠ rotação: manifest ilegível mantém o último selo validado.
+        if (!r.ok) return;
         if (geracaoRef.current !== minha) return;
-        if (JSON.stringify(novoSeal) === seloRef.current) return;
-        seloRef.current = JSON.stringify(novoSeal);
-        setSeal(novoSeal);
+        if (JSON.stringify(r.novoSeal) === seloRef.current) return;
+        seloRef.current = JSON.stringify(r.novoSeal);
+        setSeal(r.novoSeal);
       } finally {
         if (geracaoRef.current === minha) ocupadoRef.current = false;
       }
