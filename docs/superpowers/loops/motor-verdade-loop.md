@@ -11,11 +11,13 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 5. **Anti-regressão**: todo ciclo roda a suíte completa local antes do push; CI precisa estar verde; findings viram testes quando aplicável.
 6. **Contexto**: sem ferramenta de compactação manual — mitigação é contexto enxuto + este arquivo + git. Se compactar, retomar por aqui.
 
-## Estado atual
+## Estado atual (atualizado 2026-10-10 ~16:50 UTC)
 
-- [x] Fase PR-GREEN: CI verde (setuptools discovery corrigido iteração 1; Node 22 iteração 3); findings cubic/CodeRabbit das iterações 1–4 corrigidos; re-review final pendente.
-- [ ] Merge PR #2 (motor-verdade → main) — após checks verdes.
-- [ ] EVOLVE-1: (a definir após merge).
+- [x] PR #2 (motor-verdade → main): mergeado 47d6895, CI verde.
+- [x] EVOLVE-1: mergeado 453a9da (PR #3).
+- [x] EVOLVE-2: mergeado 71aa4ff (PR #4).
+- [ ] EVOLVE-3: PR #5 aberto — CI/GitGuardian/CodeRabbit/Sonar verdes pós-triagem; cubic re-review pendente; 5 achados CodeRabbit em triagem/fix.
+- (Histórico original deste bloco preservado abaixo por valor de auditoria.)
 
 ## Log de ciclos
 
