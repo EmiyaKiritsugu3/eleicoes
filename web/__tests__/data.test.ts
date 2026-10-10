@@ -185,6 +185,8 @@ describe("getSealState (selo único de /, /analisar e /auditoria)", () => {
     ]) {
       const seal = getSealState(m);
       expect(seal.official).toBe(null);
+      // Hash malformado nunca vaza p/ fixtureHash (só 64-hex entra, mesmo em fixture).
+      expect(seal.fixtureHash).toBe("");
     }
   });
   it("ausente/vazio/sem-hash: sem selo e sem fixture (fail-closed)", async () => {

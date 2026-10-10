@@ -408,19 +408,20 @@ function secaoPerfilCurada(html: string): string {
 }
 
 describe("curada (rótulo pt-BR do peso: sem valor cru do motor)", () => {
-  it("peso eleitorado: '(peso: eleitorado)', sem '(peso: eleitores)'", () => {
+  it("peso eleitorado: 'eleitores (peso: eleitorado)', sem valor cru", () => {
     const p = perguntas.find((q) => q.slug === "perfil-onde-venceu-vencedor")!;
     const perfil = secaoPerfilCurada(htmlDe(p, fato40(), SEAL_OK));
-    expect(perfil).toContain("(peso: eleitorado)");
+    expect(perfil).toContain("eleitores (peso: eleitorado)");
     expect(perfil).not.toContain("(peso: eleitores)");
     expect(perfil).not.toContain("(peso: misto)");
   });
-  it("peso misto: cadeia de fallback em pt-BR, sem '(peso: misto)'", () => {
+  it("peso misto: peso efetivo, sem rótulo 'eleitores' (nEleitores inclui fallback)", () => {
     const p = perguntas.find((q) => q.slug === "perfil-onde-venceu-vencedor")!;
     const perfil = secaoPerfilCurada(
       htmlDe(p, { candidatos: CANDIDATOS, municipios: linhasMistas() }, SEAL_OK),
     );
-    expect(perfil).toContain("(peso: eleitorado, total ou população)");
+    expect(perfil).toContain("de peso efetivo (eleitorado, total ou população)");
+    expect(perfil).not.toContain("eleitores (peso:");
     expect(perfil).not.toContain("(peso: misto)");
   });
 });

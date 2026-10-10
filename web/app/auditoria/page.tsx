@@ -204,7 +204,7 @@ export default function Auditoria() {
             title={
               canDownload
                 ? "Baixar manifest.json (verifique o selo: oficial ou amostra sintética)"
-                : "Baixar bloqueado — sem ingestão auditada (manifest ausente, vazio ou sem hash)"
+                : "O download está bloqueado — sem ingestão auditada (manifest ausente, vazio ou sem hash)"
             }
             onClick={downloadManifest}
           >
@@ -213,13 +213,13 @@ export default function Auditoria() {
         </p>
         {checked && !canDownload && (
           <p role="alert">
-            baixar bloqueado — sem ingestão auditada; sem hash válido não há
+            O download está bloqueado — sem ingestão auditada; sem hash válido não há
             proveniência a oferecer
           </p>
         )}
         {checked && canDownload && !official && (
           <p role="note">
-            baixar permitido por transparência — o manifest disponível é
+            O download está permitido por transparência — o manifest disponível é
             amostra sintética, sem valor oficial
           </p>
         )}

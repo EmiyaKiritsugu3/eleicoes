@@ -68,7 +68,8 @@ export default function Metodologia() {
           </li>
         </ul>
         <p>
-          Ingestões, hashes e arquivos para baixar em <a href="/auditoria">/auditoria</a>.
+          Ingestões, hashes e arquivos servidos em <a href="/auditoria">/auditoria</a>{" "}
+          (o manifest pode ser baixado lá).
         </p>
       </section>
 

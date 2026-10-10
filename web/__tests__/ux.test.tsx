@@ -633,7 +633,7 @@ describe("copy pt-BR (EVOLVE-3 Task 5: rótulos, hash nomeado, baixar)", () => {
     expect(perfil).toContain("(peso: eleitorado, total ou população)");
     expect(perfil).not.toContain("(peso: misto)");
   });
-  it("curada perfil: mesmo rótulo pt-BR do peso", () => {
+  it("curada perfil: peso efetivo no modo misto, eleitores no puro", () => {
     const html = renderToStaticMarkup(
       <CuradaConteudo
         pergunta={PERGUNTA}
@@ -642,7 +642,7 @@ describe("copy pt-BR (EVOLVE-3 Task 5: rótulos, hash nomeado, baixar)", () => {
         manifestChecked
       />,
     );
-    expect(perfilDe(html)).toContain("(peso: eleitorado)");
+    expect(perfilDe(html)).toContain("eleitores (peso: eleitorado)");
     const htmlMisto = renderToStaticMarkup(
       <CuradaConteudo
         pergunta={PERGUNTA}
@@ -651,7 +651,8 @@ describe("copy pt-BR (EVOLVE-3 Task 5: rótulos, hash nomeado, baixar)", () => {
         manifestChecked
       />,
     );
-    expect(perfilDe(htmlMisto)).toContain("(peso: eleitorado, total ou população)");
+    expect(perfilDe(htmlMisto)).toContain("de peso efetivo (eleitorado, total ou população)");
+    expect(perfilDe(htmlMisto)).not.toContain("eleitores (peso:");
     expect(perfilDe(htmlMisto)).not.toContain("(peso: misto)");
   });
   it("explorar perfil sem hash nomeia o hash (paridade Resultado/Mapa)", () => {
@@ -677,22 +678,20 @@ describe("copy pt-BR (EVOLVE-3 Task 5: rótulos, hash nomeado, baixar)", () => {
     expect(perfilDe(html)).toContain("sem dado oficial");
     expect(perfilDe(html)).toContain("sem hash auditado no manifest");
   });
-  it("auditoria SSR: zero 'download', botão/hint dizem 'baixar'", () => {
+  it("auditoria SSR: botão 'Baixar', hint em frase completa", () => {
     const html = renderToStaticMarkup(<Auditoria />);
-    expect(html).not.toMatch(/download/i);
     expect(html).toContain("Baixar manifest");
-    expect(html).toContain("Baixar bloqueado");
+    expect(html).toContain("O download está bloqueado");
   });
-  it("auditoria sem ingestão auditada: 'baixar bloqueado', nunca 'download'", async () => {
+  it("auditoria sem ingestão auditada: frase completa de bloqueio", async () => {
     (globalThis as Record<string, unknown>).fetch = vi.fn(async () => ({
       ok: true,
       json: async () => ({ ingestions: [] }),
     }));
     const div = await renderJsdom(<Auditoria />);
-    expect(div.innerHTML).toContain("baixar bloqueado");
-    expect(div.innerHTML).not.toMatch(/download/i);
+    expect(div.innerHTML).toContain("O download está bloqueado");
   });
-  it("auditoria amostra sintética: 'baixar permitido', nunca 'download'", async () => {
+  it("auditoria amostra sintética: frase completa de permissão", async () => {
     (globalThis as Record<string, unknown>).fetch = vi.fn(async () => ({
       ok: true,
       json: async () => ({
@@ -707,10 +706,9 @@ describe("copy pt-BR (EVOLVE-3 Task 5: rótulos, hash nomeado, baixar)", () => {
       }),
     }));
     const div = await renderJsdom(<Auditoria />);
-    expect(div.innerHTML).toContain("baixar permitido");
-    expect(div.innerHTML).not.toMatch(/download/i);
+    expect(div.innerHTML).toContain("O download está permitido");
   });
-  it("metodologia: hash 64-hex + 'baixar', sem 'não-vazio' nem 'download'", () => {
+  it("metodologia: hash 64-hex + arquivos servidos, sem 'não-vazio' nem 'download'", () => {
     // metodologia/page.tsx não importa React (JSX automático do Next);
     // no vitest o runtime clássico resolve React via global.
     vi.stubGlobal("React", React);
@@ -720,6 +718,8 @@ describe("copy pt-BR (EVOLVE-3 Task 5: rótulos, hash nomeado, baixar)", () => {
       expect(html).not.toContain("não-vazio");
       expect(html).not.toMatch(/download/i);
       expect(html).toContain("baixar");
+      expect(html).toContain("arquivos servidos em");
+      expect(html).not.toContain("arquivos para baixar");
     } finally {
       vi.unstubAllGlobals();
     }
