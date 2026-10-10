@@ -41,7 +41,9 @@ def _rede_disponivel() -> bool:
     return True
 
 
-pytestmark = pytest.mark.skipif(not _rede_disponivel(), reason=_SKIP_REASON)
+# Sem mark em nível de módulo: SÓ o teste de rede real leva skipif (ver
+# decorador em test_censo_real_zip_para_fato_verificavel) — os dois testes
+# offline abaixo rodam sempre, inclusive em CI sem rede.
 
 
 def test_flag_sem_rede_forca_skip(monkeypatch):
@@ -85,6 +87,7 @@ def test_gate_soma_bloqueia_dim_e_manifest_sem_rede(tmp_path, monkeypatch):
     assert not manifest.exists()
 
 
+@pytest.mark.skipif(not _rede_disponivel(), reason=_SKIP_REASON)
 def test_censo_real_zip_para_fato_verificavel(tmp_path, monkeypatch):
     """Bytes reais (326 KB) → dim_municipio → fato JSON com manifest verde."""
     import json
