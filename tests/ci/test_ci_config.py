@@ -73,10 +73,13 @@ def test_budget_guards():
 
 
 def test_ci_concurrency_and_docs_skip():
-    text = pathlib.Path(".github/workflows/ci.yml").read_text()
     ci = _ci()
     conc = ci.get("concurrency", {})
     assert conc.get("cancel-in-progress") is True  # cancela run obsoleto
     assert "group" in conc
-    assert "paths-ignore" in text  # pula runs docs-only
-    assert "docs/**" in text and "*.md" in text
+    on = ci.get(True, ci.get("on", {}))  # PyYAML: `on:` vira chave True
+    for trigger in ("push", "pull_request"):
+        if trigger in on:  # cada trigger existente pula runs docs-only
+            ignored = on[trigger].get("paths-ignore", [])
+            assert "docs/**" in ignored and "*.md" in ignored, trigger
+    assert "push" in on or "pull_request" in on
