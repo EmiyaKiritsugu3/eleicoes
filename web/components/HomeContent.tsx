@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import MapaBrasil from "./MapaBrasil";
 import { loadMalha, MALHA_MUNICIPIOS_URL, UFS, type MalhaFeature } from "../lib/malha";
 import SourceBadge from "./SourceBadge";
@@ -81,15 +81,67 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   const [manifestChecked, setManifestChecked] = useState(false);
   const [malhaFeatures, setMalhaFeatures] = useState<MalhaFeature[] | null>(null);
   const [f, setF] = useState<Filtros>(initialFiltros ?? {});
+  // EVOLVE-7 Task 6 — trigger vivo de rotação de manifest: `sealRef` é a
+  // verdade comparável fora do closure (o effect de foco monta uma vez e
+  // nunca veria o `seal` novo); `ocupadoRef` evita fetch duplicado entre o
+  // carregamento inicial e um foco no meio dele.
+  const sealRef = useRef<SealState>(seal);
+  const ocupadoRef = useRef(false);
 
-  useEffect(() => {
-    (async () => {
+  const carregarDados = useCallback(async () => {
+    if (ocupadoRef.current) return;
+    ocupadoRef.current = true;
+    try {
       setResumo(await fetchJson<ResumoJson>("/data/resumo.json"));
       setPorUf((await fetchJson<PorUfRow[]>("/data/por_uf.json")) ?? []);
       setPorCand((await fetchJson<PorCandidatoRow[]>("/data/por_candidato.json")) ?? []);
-      setSeal(getSealState(await fetchJson("/data/manifest.json")));
+      const novoSeal = getSealState(await fetchJson("/data/manifest.json"));
+      sealRef.current = novoSeal;
+      setSeal(novoSeal);
       setManifestChecked(true);
-    })();
+    } finally {
+      ocupadoRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    void carregarDados();
+  }, [carregarDados]);
+
+  // Rotação de manifest (completa o sync do EVOLVE-6 T6, que reage a props
+  // repassadas mas não tinha trigger vivo): no foco da janela ou na volta
+  // de visibilidade, re-lê SÓ o manifest (barato) e só refaz o fetch pesado
+  // quando o selo mudou — sem fetch duplicado quando inalterado, sem
+  // números stale após rotação. A malha segue "as needed" no effect de
+  // elegibilidade abaixo (geometria não rota com o manifest).
+  useEffect(() => {
+    const aoRetomar = async () => {
+      if (ocupadoRef.current) return;
+      ocupadoRef.current = true;
+      try {
+        const novoSeal = getSealState(await fetchJson("/data/manifest.json"));
+        if (JSON.stringify(novoSeal) === JSON.stringify(sealRef.current)) return;
+        setResumo(await fetchJson<ResumoJson>("/data/resumo.json"));
+        setPorUf((await fetchJson<PorUfRow[]>("/data/por_uf.json")) ?? []);
+        setPorCand((await fetchJson<PorCandidatoRow[]>("/data/por_candidato.json")) ?? []);
+        sealRef.current = novoSeal;
+        setSeal(novoSeal);
+      } finally {
+        ocupadoRef.current = false;
+      }
+    };
+    const aoFocar = () => {
+      void aoRetomar();
+    };
+    const aoVisibilidade = () => {
+      if (document.visibilityState === "visible") void aoRetomar();
+    };
+    window.addEventListener("focus", aoFocar);
+    document.addEventListener("visibilitychange", aoVisibilidade);
+    return () => {
+      window.removeEventListener("focus", aoFocar);
+      document.removeEventListener("visibilitychange", aoVisibilidade);
+    };
   }, []);
 
   const set = (k: keyof Filtros) => (e: React.ChangeEvent<HTMLInputElement>) =>
