@@ -156,3 +156,7 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
   - `pytest tests/ -q` → 202 passed, 1 skipped em 15.38s (wall ~15s).
   - `(cd web && npm test)` → 29 arquivos, 473/473 passed, vitest Duration 2.79s (wall ~4s).
 - (Futuros ciclos: anexar novas linhas abaixo neste formato — comando, resultado, wall.)
+
+## EVOLVE-9 mergeado (2026-10-10 ~23:55 UTC)
+- Merge PR #11 (merge commit d082f65): tudo verde — CI ×2, GitGuardian, CodeRabbit, cubic ("All reported issues were addressed"), Sonar. Branch evolve-9 deletada.
+- Total: 6 tasks + R1/R2/R3/R4/R5 com re-reviews limpos. Suítes finais: pytest 202 + vitest 485 + tsc clean + build.
