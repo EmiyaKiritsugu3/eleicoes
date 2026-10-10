@@ -1,7 +1,8 @@
 """Quality gates + quarentena (offline-first, custo zero).
 
-`run_gates(db_path, manifest_path=None, totais_oficiais=None) -> list[str]`:
-lista de erros (vazia = ok).
+`run_gates(db_path, manifest_path=None, totais_oficiais=None, fato_paths=None) -> list[str]`:
+lista de erros (vazia = ok). Com `fato_paths`, cada fato precisa
+conferir com o manifest resolvido (bytes-aware, EVOLVE-4 T2).
 
 Contrato do chamador (orquestrador ETL, fora do escopo v1): se a lista
 for não vazia, o ETL DEVE falhar a ingestão e manter a versão anterior
@@ -38,6 +39,8 @@ quarentenado fica excluído por construção.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import shutil
 import warnings
 from datetime import datetime, timezone
@@ -46,7 +49,8 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 
-from etl.manifest import verify_manifest
+from etl.manifest import _validate_artifact_entry
+from etl.manifest import verificar_fato_manifest, verify_manifest
 
 ORPHAN_THRESHOLD = 0.001  # spec: reprova "acima de 0,1%"
 
@@ -175,12 +179,95 @@ def _gate_orphans(con, tables: set[str]) -> list[str]:
     return []
 
 
-def run_gates(db_path, manifest_path=None, totais_oficiais=None) -> list[str]:
+def _fato_artifact_ok(doc: dict, fato_path) -> bool:
+    """True iff o mirror atesta os bytes do fato via `artifacts` (T2 fix P1-A).
+
+    Segunda perna da atestação bytes-aware: cobre o fato publicado cujo
+    mirror já é cópia do canônico (só-ingestions TSE + `artifacts`, sem
+    ingestão do fato) — rebuild saudável passa pelos bytes atestados.
+    Exige entry estruturalmente válida (`_validate_artifact_entry`,
+    fail-closed contra traversal/malformada) com `arquivo` == nome do
+    fato e `sha256`+`size_bytes` conferindo com os bytes atuais. Fato
+    novo reprova aqui e na perna de ingestão (crash detection
+    intacta); fato sem atestação nenhuma reprova nas duas.
+    """
+    try:
+        raw = Path(fato_path).read_bytes()
+    except OSError:
+        return False
+    artifacts = doc.get("artifacts")
+    if not isinstance(artifacts, list):
+        return False
+    nome = Path(fato_path).name
+    digest = hashlib.sha256(raw).hexdigest()
+    for entry in artifacts:
+        if not isinstance(entry, dict) or entry.get("arquivo") != nome:
+            continue
+        try:
+            _validate_artifact_entry(entry)
+        except ValueError:
+            continue
+        if entry.get("size_bytes") != len(raw):
+            continue
+        sha = entry.get("sha256")
+        if isinstance(sha, str) and sha.lower() == digest:
+            return True
+    return False
+
+
+def _gate_fatos(manifest, fato_paths) -> list[str]:
+    """Erros bytes-aware: cada fato precisa conferir com o manifest (EVOLVE-4 T2).
+
+    Delega ao predicado `verificar_fato_manifest` (módulo-folha
+    `etl.manifest` — sem ciclo de import): fato novo + manifest velho
+    (crash entre passos) reprova fail-closed em pt-BR. Aceita também a
+    atestação via `artifacts` (`_fato_artifact_ok`, fix P1-A): o mirror
+    publicado é cópia do canônico e não carrega ingestão do fato, mas
+    atesta seus bytes — sem essa perna, rebuilds saudáveis reprovariam.
+    Sem manifest localizável não há baseline p/ comparar bytes — nesse
+    caso o gate de manifest já reprovou (bootstrap seguro documentado,
+    T2 fix P1-B: sem mirror anterior não há estado rasgado a detectar;
+    o primeiro build atesta os bytes de forma fresca via
+    `register_served_artifacts`, e um atacante com escrita no fs derrota
+    qualquer gate — a fronteira é o acesso ao fs, não o predicado);
+    então ausente aqui é `[]`, nunca verde silencioso do gate total.
+    Erros começam por "fato" (nunca "manifest") para sobreviverem ao
+    filtro do `build_all`, que só exclui o gate de forma.
+    """
+    if isinstance(fato_paths, (str, Path)):
+        fato_paths = [fato_paths]
+    errors: list[str] = []
+    if manifest is None or not Path(manifest).is_file():
+        return errors
+    try:
+        doc = json.loads(Path(manifest).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        doc = None
+    if not isinstance(doc, dict):
+        doc = None
+    for fato_path in fato_paths:
+        if verificar_fato_manifest(manifest, fato_path):
+            continue
+        if doc is not None and _fato_artifact_ok(doc, fato_path):
+            continue
+        errors.append(
+            f"fato inconsistente com o manifest: {fato_path} (sha dos "
+            "bytes diverge da ingestão — possível crash entre fato e "
+            "manifest; o rerun repara)"
+        )
+    return errors
+
+
+def run_gates(db_path, manifest_path=None, totais_oficiais=None,
+              fato_paths=None) -> list[str]:
     """Roda os quality gates sobre o DuckDB; devolve erros (vazia = ok).
 
     Nunca levanta por problema nos dados: qualquer falha vira item da
     lista (contrato `-> list[str]`). Sem `totais_oficiais`, emite
-    `UserWarning` e checa só integridade interna.
+    `UserWarning` e checa só integridade interna. `fato_paths=None`
+    (default) preserva o comportamento anterior; com uma lista de
+    fatos, cada um precisa conferir com o manifest resolvido
+    (`_gate_fatos`, bytes-aware fail-closed).
     """
     db_path = Path(db_path)
     errors: list[str] = []
@@ -210,6 +297,8 @@ def run_gates(db_path, manifest_path=None, totais_oficiais=None) -> list[str]:
         errors.append("manifest ausente: nenhum manifest.json localizado para validar")
     elif not verify_manifest(manifest):
         errors.append(f"manifest invalido: {manifest} reprovado em verify_manifest")
+    if fato_paths is not None:
+        errors.extend(_gate_fatos(manifest, fato_paths))
     return errors
 
 

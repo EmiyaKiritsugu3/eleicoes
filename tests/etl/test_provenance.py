@@ -311,6 +311,12 @@ def test_standalone_build_fato_atualiza_sha_nos_artifacts(tmp_path):
     assert entries[0]["sha256"] == hashlib.sha256(raw).hexdigest()
     assert entries[0]["size_bytes"] == len(raw)
     assert verify_manifest(str(served_path)) is True
+    # EVOLVE-4 T2 (motivo do freeze): o manifest do `<db dir>` segue
+    # SÓ-ingestions por contrato legado — a prova dos bytes do standalone
+    # vive no mirror servido (`artifacts`) + no gate bytes-aware
+    # (`run_gates(..., fato_paths=...)`); registrar `artifacts: []` aqui
+    # quebraria `verify_manifest` (`_artifacts_ok` exige lista não-vazia)
+    # e os testes de upsert que pinam `verify_manifest(...) is True`.
     db_manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
     assert "artifacts" not in db_manifest
     assert len(db_manifest["ingestions"]) == 1
@@ -332,6 +338,129 @@ def test_standalone_build_fato_atualiza_sha_nos_artifacts(tmp_path):
     assert entries2[0]["size_bytes"] == len(raw2)
     assert len(manifest2["ingestions"]) == 1  # upsert idempotente
     assert verify_manifest(str(served_path)) is True
+
+
+def test_dedupe_key_unificada_sem_fork():
+    """EVOLVE-4 T2: `_dedupe_key` única vive em `etl.manifest` (sem fork).
+
+    `build_marts` (antigo 3-tuple) e `build_fato` (antigo 5-tuple
+    `_ingestion_dedupe_key`) importam o MESMO objeto — lógicas de
+    idempotência divergentes reprovam aqui. `verificar_fato_manifest`
+    também vive no módulo-folha (importável de `etl.build_fato` por
+    compatibilidade, sem redefinição).
+    """
+    from etl import build_fato, build_marts, manifest
+
+    assert build_marts._dedupe_key is manifest._dedupe_key
+    assert build_fato._dedupe_key is manifest._dedupe_key
+    assert manifest.verificar_fato_manifest is build_fato.verificar_fato_manifest
+    # Folha do DAG: manifest.py não importa nada de `etl` (sem ciclo
+    # validate→build_fato; ver também a checagem de imports no relatório).
+    # AST (não substring): comentários/docstrings citando "from etl" não
+    # contam como import (fix P3 — o teste antigo era frágil a isso).
+    import ast
+    import inspect
+
+    tree = ast.parse(inspect.getsource(manifest))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            assert not any(
+                a.name == "etl" or a.name.startswith("etl.")
+                for a in node.names
+            ), f"manifest importa {node.names!r}"
+        elif isinstance(node, ast.ImportFrom):
+            assert (node.module or "").split(".")[0] != "etl", (
+                f"manifest importa de {node.module!r}"
+            )
+    # O superset preserva o fluxo TSE (turno None, dataset 1:1) e
+    # distingue triples do fluxo fato (turno/dataset load-bearing).
+    tse = {"dataset": "votacao_2022", "ano": 2022, "cargo": "presidente",
+           "source_url": "https://cdn.tse.jus.br/x.zip"}
+    assert manifest._dedupe_key(tse) == (
+        "votacao_2022", 2022, None, "PRESIDENTE",
+        "https://cdn.tse.jus.br/x.zip")
+
+
+def test_rebuild_saudavel_com_fato_publicado_passa(tmp_path):
+    """EVOLVE-4 T2 fix P1-A: rebuild saudável com fato publicado passa.
+
+    Sequência build_all → build_fato → build_all → build_all. O 2º
+    build_all publica o mirror como cópia do canônico (só-ingestions TSE
+    + `artifacts`, sem ingestão do fato); o 3º precisa passar pelos bytes
+    atestados em `artifacts` — sem isso, rebuilds saudáveis reprovariam
+    ("fato inconsistente" sobre bytes corretos). Adulterar o fato depois
+    segue reprovando (crash detection não enfraquecido).
+    """
+    from pathlib import Path
+
+    import duckdb
+
+    from etl.build_fato import build_fato
+    from etl.build_marts import build_all
+
+    curated = tmp_path / "curated"
+    _seed(curated)
+    db = tmp_path / "t.duckdb"
+    manifest = tmp_path / "m.json"
+    webdata = tmp_path / "webdata"
+    build_all(curated, db, manifest, web_data_dir=webdata)
+
+    con = duckdb.connect(str(db))
+    try:
+        con.execute(
+            "CREATE TABLE dim_municipio (ibge7 VARCHAR, esc_sup DOUBLE, "
+            "esc_med DOUBLE, esc_fund DOUBLE, renda_media DOUBLE, "
+            "pobres_pct DOUBLE, idade_mediana DOUBLE, urbanizacao DOUBLE, "
+            "pop BIGINT)"
+        )
+        con.execute(
+            "INSERT INTO dim_municipio VALUES "
+            "('3550308', 20, 35, 45, 2500, 15, 33, 90, 10000), "
+            "('3304557', 25, 35, 40, 2600, 18, 34, 85, 12000)"
+        )
+    finally:
+        con.close()
+
+    fato = Path(build_fato(str(db), str(webdata), 2022, 1, "PRESIDENTE"))
+    build_all(curated, db, manifest, web_data_dir=webdata)
+    build_all(curated, db, manifest, web_data_dir=webdata)  # P1-A: saudável passa
+    assert verify_manifest(str(webdata / "manifest.json")) is True
+
+    # Crash detection intacta: fato adulterado após o mirror reprova.
+    fato.write_bytes(b'{"candidatos": [], "municipios": [{"x": 1}]}')
+    with pytest.raises(RuntimeError, match="gates reprovados") as excinfo:
+        build_all(curated, db, manifest, web_data_dir=webdata)
+    assert "fato" in str(excinfo.value)
+
+
+def test_legacy_entry_list_valued_preservada_sem_crash(tmp_path):
+    """EVOLVE-4 T2 fix P2: entry legada com campo não-hashable não crasha o dedupe.
+
+    `_validate_entry` só cobre `source_url`/`sha256`: `dataset`/`turno`
+    como lista passa na forma mas quebrava `by_key[_dedupe_key(item)]`
+    (`TypeError: unhashable`). A entry é preservada sem chave de dedupe
+    (sem colapso, sem crash) ao lado da ingestão nova.
+    """
+    curated = tmp_path / "curated"
+    _seed(curated)
+    manifest = tmp_path / "m.json"
+    manifest.write_text(json.dumps({"ingestions": [{
+        "source_url": "https://cdn.tse.jus.br/legado.zip",
+        "sha256": "cd" * 32,
+        "dataset": ["lista", "nao-hashable"],
+        "ano": 2022,
+        "turno": ["1"],
+        "cargo": "presidente",
+        "tipo": "legado",
+        "rows": 1,
+    }]}), encoding="utf-8")
+    build_all(curated, tmp_path / "t.duckdb", manifest,
+              web_data_dir=tmp_path / "webdata")
+    entries = _manifest_entries(manifest)
+    legadas = [e for e in entries if e.get("tipo") == "legado"]
+    assert len(legadas) == 1
+    assert legadas[0]["dataset"] == ["lista", "nao-hashable"]
+    assert len(entries) == 2  # legada preservada + ingestão nova
 
 
 def test_standalone_poda_fato_sem_proveniencia(tmp_path):

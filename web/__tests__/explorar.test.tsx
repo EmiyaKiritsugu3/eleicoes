@@ -10,43 +10,20 @@ import {
 } from "../components/Explorar";
 import type { MunRow } from "../lib/motor";
 import type { SealState } from "../lib/data";
-
-const CANDIDATOS = [
-  { id: "lula", nome: "Lula", partido: "PT" },
-  { id: "bol", nome: "Bolsonaro", partido: "PL" },
-];
+import {
+  CANDIDATOS_LULA as CANDIDATOS,
+  demoBase,
+  municipios40Linear,
+} from "./helpers";
 
 function demo(escSup: number) {
-  return {
-    esc_sup: escSup,
-    esc_med: 30,
-    esc_fund: 50,
-    renda_media: 2000,
-    pobres_pct: 20,
-    idade_mediana: 35,
-    urbanizacao: 80,
-    pop: 10000,
-    eleitores: 1000,
-  };
+  return demoBase(escSup, 2000);
 }
 
 // 40 municípios, Lula vence todos; share de Lula cresce com esc_sup
 // (correlação forte, n = 40 ≥ piso 30).
 function linhasValidas(): MunRow[] {
-  const rows: MunRow[] = [];
-  for (let i = 0; i < 40; i++) {
-    const lula = 500 + i * 10;
-    rows.push({
-      ibge: `355030${i}`,
-      uf: "SP",
-      nome: `Mun ${i}`,
-      votos: [lula, 1000 - lula],
-      total: 1000,
-      abst: 0,
-      demo: demo(5 + i * 0.5),
-    });
-  }
-  return rows;
+  return municipios40Linear({ nome: (i) => `Mun ${i}`, abst: 0, demo: (i) => demo(5 + i * 0.5) });
 }
 
 const SEAL_OK = {
@@ -402,6 +379,38 @@ describe("explorar (gate de hash: fato sem hash não sustenta número)", () => {
     );
     const mapa = html.split('aria-label="Mapa"')[1].split("<section")[0];
     expect(mapa).not.toContain("sem dado oficial");
+  });
+  it("Dispersão sem hash nomeia o hash (não 'sem cobertura nos blocos')", () => {
+    const html = htmlExplorar({ candidatos: CANDIDATOS, municipios: linhasValidas() }, SEAL_SEM_HASH);
+    const dispersao = html.split('aria-label="Dispersão"')[1].split("<section")[0];
+    expect(dispersao).toContain("sem dado oficial");
+    expect(dispersao).toContain("sem hash auditado no manifest");
+    expect(dispersao).not.toContain("sem cobertura nos blocos");
+  });
+  it("Ranking sem hash nomeia o hash (não 'sem cobertura neste recorte')", () => {
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo
+        fato={{ candidatos: CANDIDATOS, municipios: linhasValidas() }}
+        seal={SEAL_SEM_HASH}
+        initial={{ ...SEL_VALIDA, ver: ["ranking"] }}
+      />,
+    );
+    const ranking = html.split('aria-label="Ranking"')[1].split("<section")[0];
+    expect(ranking).toContain("sem dado oficial");
+    expect(ranking).toContain("sem hash auditado no manifest");
+    expect(ranking).not.toContain("sem cobertura neste recorte");
+  });
+  it("Dispersão sem cobertura COM hash mantém motivo de cobertura (sem regressão)", () => {
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo
+        fato={{ candidatos: CANDIDATOS, municipios: linhasValidas() }}
+        seal={SEAL_OK}
+        initial={{ ...SEL_VALIDA, quem: "" }}
+      />,
+    );
+    const dispersao = html.split('aria-label="Dispersão"')[1].split("<section")[0];
+    expect(dispersao).toContain("sem cobertura nos blocos");
+    expect(dispersao).not.toContain("sem hash auditado");
   });
 });
 

@@ -487,6 +487,10 @@ export default function Analisar() {
         {badge}
         {carregando ? (
           <p role="status">a carregar…</p>
+        ) : semProva ? (
+          <p>
+            {SEM_DADO} — sem hash auditado no manifest; números exigem fato hash-verificado
+          </p>
         ) : emptyStateFor(dispersao) ? (
           <p>
             {SEM_DADO} — financiamento sem fonte no V1 (só votação nominal)

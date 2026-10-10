@@ -512,10 +512,21 @@ describe("vereditoTemProva (portão de veredito da rota /verificar)", () => {
     ).toBe(true);
     expect(vereditoTemProva({ official: null, hasFixture: false, fixtureHash: "" })).toBe(false);
   });
-  it("fixture com hash -> true (transparência, sem selo oficial); sem hash -> false", async () => {
+  it("selo hand-built com hash não-64-hex nega prova (strict, fonte única isAudited)", async () => {
     const { vereditoTemProva } = await import("../lib/regiao");
-    expect(vereditoTemProva({ official: null, hasFixture: true, fixtureHash: "cd".repeat(32) })).toBe(true);
-    expect(vereditoTemProva({ official: null, hasFixture: true, fixtureHash: "" })).toBe(false);
-    expect(vereditoTemProva({ official: null, hasFixture: true, fixtureHash: "   " })).toBe(false);
+    expect(
+      vereditoTemProva({ official: { hash: "abc", url: "u", date: "d" }, hasFixture: false, fixtureHash: "" }),
+    ).toBe(false);
+    expect(vereditoTemProva({ official: null, hasFixture: true, fixtureHash: "abc" })).toBe(false);
+    expect(
+      vereditoTemProva({ official: { hash: "   ", url: "u", date: "d" }, hasFixture: false, fixtureHash: "" }),
+    ).toBe(false);
+  });
+  it("selo legítimo com 64-hex (incl. maiúsculas) mantém prova — sem regressão", async () => {
+    const { vereditoTemProva } = await import("../lib/regiao");
+    expect(
+      vereditoTemProva({ official: { hash: "AB".repeat(32), url: "u", date: "d" }, hasFixture: false, fixtureHash: "" }),
+    ).toBe(true);
+    expect(vereditoTemProva({ official: null, hasFixture: true, fixtureHash: "ef".repeat(32) })).toBe(true);
   });
 });

@@ -2,6 +2,7 @@ import React from "react";
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import Analisar from "../app/analisar/page";
+import { afirmarSeloSomenteFixture } from "./helpers";
 
 // SSR estático: useEffect não roda (sem fetch nem window), então a página
 // renderiza o estado inicial — selo na variante "dado não auditado".
@@ -23,15 +24,5 @@ describe("fixture-never-official em /analisar (selo via getSealState)", () => {
     expect(html).not.toContain("fonte auditada");
     expect(html).not.toContain("fonte oficial");
   });
-  it("manifest só-fixture: selo oficial nulo, fixture sinalizada", async () => {
-    const { getSealState } = await import("../lib/data");
-    const seal = getSealState({
-      ingestions: [
-        { source_url: "https://cdn.tse.jus.br/x.zip", sha256: "f".repeat(64), fixture: true },
-      ],
-    });
-    expect(seal.official).toBe(null);
-    expect(seal.hasFixture).toBe(true);
-    expect(seal.fixtureHash).toBe("f".repeat(64));
-  });
+  it("manifest só-fixture: selo oficial nulo, fixture sinalizada", afirmarSeloSomenteFixture);
 });

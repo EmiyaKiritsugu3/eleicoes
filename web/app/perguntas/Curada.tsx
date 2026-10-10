@@ -381,7 +381,7 @@ export function CuradaConteudo({
         {badge}
         <p role="note">{ECO_SEAL} — cada ponto é um município, nunca uma pessoa.</p>
         {!hashAuditado || !fato || !cand ? (
-          <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}</p>
+          <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}{!hashAuditado ? " — sem hash auditado no manifest; números exigem fato hash-verificado" : ""}</p>
         ) : !cruzarOk ? (
           <p role="alert" style={ALERTA_STYLE}>
             {SEM_DADO} — sem cobertura nos blocos
@@ -435,7 +435,7 @@ export function CuradaConteudo({
         {!hashAuditado || !fato || !cand || filtradas.length === 0 ? (
           <p role="alert" style={ALERTA_STYLE}>
             {SEM_DADO}
-            {escopo ? ` — ${escopo}` : ""}
+            {!hashAuditado ? " — sem hash auditado no manifest; números exigem fato hash-verificado" : escopo ? ` — ${escopo}` : ""}
           </p>
         ) : (
           <>
@@ -507,7 +507,7 @@ export function CuradaConteudo({
         {!hashAuditado || ranking.length === 0 ? (
           <p role="alert" style={ALERTA_STYLE}>
             {SEM_DADO}
-            {escopo ? ` — ${escopo}` : " — sem cobertura neste recorte"}
+            {!hashAuditado ? " — sem hash auditado no manifest; números exigem fato hash-verificado" : escopo ? ` — ${escopo}` : " — sem cobertura neste recorte"}
           </p>
         ) : (
           <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Top municípios por share">

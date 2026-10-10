@@ -8,7 +8,7 @@ import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 
-REQUIRED_KEYS = ("source_url", "sha256")
+REQUIRED_KEYS = ("source_url", "sha256")  # compat: kept for external importers (internal check uses _validate_entry)
 
 
 def load_manifest(path) -> dict:
@@ -30,6 +30,27 @@ def _validate_entry(entry: dict) -> None:
         or not re.fullmatch(r"[0-9a-f]{64}", sha.lower())
     ):
         raise ValueError(f"manifest entry com sha256 inválido: {sha!r}")
+
+
+def _dedupe_key(entry: dict) -> tuple:
+    """Chave única de idempotência das ingestões (EVOLVE-4 T2, sem fork).
+
+    `(dataset, ano, turno, CARGO_MAIÚSCULO, source_url)`: generaliza a
+    antiga chave TSE `(ano, cargo, source_url)` de `build_marts` e a
+    `_ingestion_dedupe_key` de `build_fato` — ambos os fluxos importam
+    ESTA função. Os campos extras são load-bearing no fluxo fato
+    (`turno`/`dataset` distinguem triples; colapsar p/ o 3-tuple
+    fundiria turnos do mesmo par — rejeitado): no fluxo TSE `turno` é
+    sempre None e `dataset` é 1:1 com `(ano, cargo)` no V1, de modo que
+    o dedupe ali é idêntico ao antigo.
+    """
+    return (
+        entry.get("dataset"),
+        entry.get("ano"),
+        entry.get("turno"),
+        str(entry.get("cargo", "")).upper(),
+        entry.get("source_url"),
+    )
 
 
 def write_manifest(path, entry: dict) -> dict:
@@ -142,7 +163,11 @@ def _artifacts_ok(manifest: dict, path) -> bool:
 
 
 def verify_manifest(path) -> bool:
-    """Return True iff manifest is valid JSON with ingestions carrying source_url+sha256.
+    """Return True iff manifest is valid JSON with strict ingestions.
+
+    Cada ingestão passa por `_validate_entry` (`source_url` truthy +
+    `sha256` 64-hex — paridade com `isAudited` do front); sha frouxo
+    (`"abc123"`) reprova mesmo sem a chave `artifacts`.
 
     Com chave `artifacts` presente, cada entry precisa provar os bytes
     servidos (arquivo irmão do manifest com sha256+tamanho conferindo);
@@ -158,9 +183,57 @@ def verify_manifest(path) -> bool:
     if not isinstance(ingestions, list) or not ingestions:
         return False
     for entry in ingestions:
-        if not isinstance(entry, dict):
+        try:
+            _validate_entry(entry)
+        except ValueError:
             return False
-        for key in REQUIRED_KEYS:
-            if not entry.get(key):
-                return False
     return _artifacts_ok(manifest, path)
+
+
+def verificar_fato_manifest(db_manifest_path, fato_path) -> bool:
+    """True iff a ingestão do `<db dir>` confere com os bytes do fato.
+
+    Predicado anti-crash-entre-passos (EVOLVE-3 Task 2; movido p/ este
+    módulo-folha na EVOLVE-4 T2 para que `etl.validate` delegue sem
+    importar `etl.build_fato` — DAG manifest ← validate ← build_marts
+    ← build_fato preservado): compara o `sha256` da entry (última com
+    `dataset` == stem do fato — tolera histórico append-only legado com
+    duplicatas) com o sha dos bytes atuais do arquivo. Fato novo +
+    manifest velho (crash após o fato, antes do manifest) REPROVA;
+    ausência, corrupção ou divergência qualquer também reprova
+    (fail-closed, nunca verde falso). Estrito (CodeRabbit PR#5 F1): a
+    lista inteira precisa ser válida — item não-dict ou entry
+    malformada reprova mesmo com match válido adiante. O writer
+    preserva o legado sem apagar; o VERIFICADOR nunca dá verde no
+    malformado (coerente com `verify_manifest`, que também reprova ali).
+    """
+    try:
+        raw = Path(fato_path).read_bytes()
+    except OSError:
+        return False
+    try:
+        manifest = json.loads(Path(db_manifest_path).read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError,
+            UnicodeDecodeError):
+        return False
+    if not isinstance(manifest, dict):
+        return False
+    ingestions = manifest.get("ingestions")
+    if not isinstance(ingestions, list):
+        return False
+    for e in ingestions:
+        try:
+            _validate_entry(e)  # não-dict e malformada reprovam aqui
+        except ValueError:
+            return False
+    stem = Path(fato_path).stem
+    match = None
+    for e in ingestions:
+        if isinstance(e, dict) and e.get("dataset") == stem:
+            match = e  # última vence (legado append-only duplicava)
+    if match is None:
+        return False
+    sha = match.get("sha256")
+    if not isinstance(sha, str) or not sha:
+        return False
+    return hashlib.sha256(raw).hexdigest() == sha.lower()

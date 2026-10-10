@@ -5,28 +5,27 @@
 import React from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { act } from "react-dom/test-utils";
-import { createRoot, type Root } from "react-dom/client";
 import { HomeContent } from "../components/HomeContent";
 import Analisar from "../app/analisar/page";
 import { ExplorarConteudo, type ExplorarSelecao } from "../components/Explorar";
 import { CuradaConteudo } from "../app/perguntas/Curada";
 import { getSealState } from "../lib/data";
 import perguntas from "../data/perguntas.json";
-import type { MunRow } from "../lib/motor";
+import {
+  SEM_DADO,
+  MANIFEST_OK,
+  MANIFEST_INVALIDO,
+  responderBasico,
+  renderJsdom,
+  teardownJsdom,
+  secao,
+  CANDIDATOS_EXEMPLO as CANDIDATOS,
+  demoBase,
+  municipios40Linear,
+} from "./helpers";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
-const SEM_DADO = "sem dado oficial";
-
-const RESUMO = { total_votos: 3000, total_linhas: 3, anos: [2022], tabelas: [] };
-const POR_UF = [
-  { ano: 2022, cargo: "presidente", uf: "SP", votos: 2000 },
-  { ano: 2022, cargo: "presidente", uf: "RJ", votos: 1000 },
-];
-const POR_CAND = [{ candidato_id: "a", nome_urna: "Cand A", partido: "PA", votos: 2500, financiamento: 5000 }];
-// Manifest inválido: sem ingestão auditável → selo vazio (sem oficial, sem fixture).
-const MANIFEST_INVALIDO = { ingestions: [] };
 // Manifest só-fixture com hash válido: vereditoTemProva true → números
 // seguem visíveis (sem selo oficial), paridade Explorar/Curada.
 const MANIFEST_FIXTURE = {
@@ -34,55 +33,14 @@ const MANIFEST_FIXTURE = {
     { source_url: "https://cdn.tse.jus.br/x.zip", sha256: "f".repeat(64), date: "2026-01-01", fixture: true },
   ],
 };
-const MANIFEST_OK = {
-  ingestions: [
-    { source_url: "https://cdn.tse.jus.br/x.zip", sha256: "a".repeat(64), date: "2026-01-01" },
-  ],
-};
 
 function mockFetch(manifest: unknown) {
-  (globalThis as Record<string, unknown>).fetch = vi.fn(async (url: string) => {
-    if (String(url).endsWith("/data/resumo.json")) return { ok: true, json: async () => RESUMO };
-    if (String(url).endsWith("/data/por_uf.json")) return { ok: true, json: async () => POR_UF };
-    if (String(url).endsWith("/data/por_candidato.json"))
-      return { ok: true, json: async () => POR_CAND };
-    if (String(url).endsWith("/data/manifest.json")) return { ok: true, json: async () => manifest };
-    return { ok: false, json: async () => null };
-  });
+  (globalThis as Record<string, unknown>).fetch = vi.fn(async (url: string) =>
+    responderBasico(String(url), manifest, null, null),
+  );
 }
 
-const fetchOriginal = globalThis.fetch;
-let el: HTMLDivElement | null = null;
-let root: Root | null = null;
-
-afterEach(async () => {
-  await act(async () => {
-    root?.unmount();
-  });
-  root = null;
-  el?.remove();
-  el = null;
-  globalThis.fetch = fetchOriginal;
-  vi.restoreAllMocks();
-});
-
-async function renderJsdom(node: React.ReactElement): Promise<HTMLDivElement> {
-  el = document.createElement("div");
-  document.body.appendChild(el);
-  await act(async () => {
-    root = createRoot(el!);
-    root.render(node);
-  });
-  await act(async () => {});
-  await act(async () => {});
-  await act(async () => {});
-  return el!;
-}
-
-function secao(html: string, label: string): string {
-  const m = html.match(new RegExp(`<section aria-label="${label}">([\\s\\S]*?)</section>`));
-  return m ? m[1] : "";
-}
+afterEach(teardownJsdom);
 
 // Renderiza /analisar com a query dada (o effect hidrata modo/a/b da URL
 // via parseAnalisarSearchParams); restaura "/" ao final para não vazar
@@ -98,25 +56,13 @@ async function renderAnalisarComQuery(qs: string): Promise<HTMLDivElement> {
 
 // Fato p/ Explorar/Curada (40 municípios, n ≥ piso 30).
 function demo(i: number) {
-  return {
-    esc_sup: 5 + i * 0.5, esc_med: 30, esc_fund: 50, renda_media: 2000,
-    pobres_pct: 20, idade_mediana: 35, urbanizacao: 80, pop: 10000, eleitores: 1000,
-  };
+  return demoBase(5 + i * 0.5, 2000);
 }
-const CANDIDATOS = [
-  { id: "cand-a", nome: "Candidata Exemplo A", partido: "PA" },
-  { id: "cand-b", nome: "Candidato Exemplo B", partido: "PB" },
-];
 function fato40() {
-  const municipios: MunRow[] = [];
-  for (let i = 0; i < 40; i++) {
-    const a = 500 + i * 10;
-    municipios.push({
-      ibge: `355030${i}`, uf: "SP", nome: `Município ${i}`,
-      votos: [a, 1000 - a], total: 1000, abst: 50, demo: demo(i),
-    });
-  }
-  return { candidatos: CANDIDATOS, municipios };
+  return {
+    candidatos: CANDIDATOS,
+    municipios: municipios40Linear({ nome: (i) => `Município ${i}`, abst: 50, demo }),
+  };
 }
 const SEL_VALIDA: ExplorarSelecao = {
   quem: "cand-a", onde: "venceu", cruzar: "esc_sup", ver: ["dispersao"], foco: "",
@@ -223,5 +169,80 @@ describe("gating-paridade Task 4: controle — manifest válido segue com númer
     const disp = secao(div.innerHTML, "Dispersão votos x financiamento");
     expect(disp).toContain("5.000");
     expect(disp).not.toContain(SEM_DADO);
+  });
+});
+
+describe("task 6: paridade de motivos de supressão (reason correta, não só SEM_DADO)", () => {
+  const HASH_REASON = "sem hash auditado no manifest";
+  const PERG_CORR = {
+    slug: "t6-corr", titulo: "t6",
+    blocos: { quem: "@vencedor", onde: "venceu", cruzar: "esc_sup", ver: ["dispersao"] },
+    texto_metodo: "m",
+  };
+  const PERG_RANK = {
+    slug: "t6-rank", titulo: "t6",
+    blocos: { quem: "@vencedor", onde: "venceu", cruzar: "esc_sup", ver: ["ranking"] },
+    texto_metodo: "m",
+  };
+  function secaoEstatica(html: string, label: string): string {
+    return html.split(`aria-label="${label}"`)[1].split("<section")[0];
+  }
+  it("/analisar Dispersão semProva nomeia o hash (não 'financiamento sem fonte')", async () => {
+    mockFetch(MANIFEST_INVALIDO);
+    const div = await renderJsdom(<Analisar />);
+    const disp = secao(div.innerHTML, "Dispersão votos x financiamento");
+    expect(disp).toContain(SEM_DADO);
+    expect(disp).toContain(HASH_REASON);
+    expect(disp).not.toContain("financiamento sem fonte");
+  });
+  it("Curada Correlação sem hash nomeia o hash (paridade Resultado :283)", () => {
+    const seal = getSealState(MANIFEST_INVALIDO);
+    const html = renderToStaticMarkup(
+      <CuradaConteudo pergunta={PERG_CORR} fato={fato40()} seal={seal} manifestChecked />,
+    );
+    const corr = secaoEstatica(html, "Correlação");
+    expect(corr).toContain(SEM_DADO);
+    expect(corr).toContain(HASH_REASON);
+  });
+  it("Curada Por quê sem hash nomeia o hash (supressão vence escopo)", () => {
+    const seal = getSealState(MANIFEST_INVALIDO);
+    // `onde` com escopo (exterior): regressão que mostrasse o motivo de
+    // escopo em vez do hash seria capturada (falta HASH_REASON + sobra escopo).
+    const perguntaEscopo = { ...PERG_CORR, blocos: { ...PERG_CORR.blocos, onde: "exterior" } };
+    const html = renderToStaticMarkup(
+      <CuradaConteudo pergunta={perguntaEscopo} fato={fato40()} seal={seal} manifestChecked />,
+    );
+    const pq = secaoEstatica(html, "Por quê");
+    expect(pq).toContain(SEM_DADO);
+    expect(pq).toContain(HASH_REASON);
+    expect(pq).not.toContain("fora do escopo auditado");
+  });
+  it("Curada Ranking sem hash nomeia o hash (não 'sem cobertura')", () => {
+    const seal = getSealState(MANIFEST_INVALIDO);
+    const html = renderToStaticMarkup(
+      <CuradaConteudo pergunta={PERG_RANK} fato={fato40()} seal={seal} manifestChecked />,
+    );
+    const rank = secaoEstatica(html, "Ranking");
+    expect(rank).toContain(SEM_DADO);
+    expect(rank).toContain(HASH_REASON);
+    expect(rank).not.toContain("sem cobertura neste recorte");
+  });
+  it("Explorar Resultado fato null sem hash nomeia o hash (paridade Curada :283)", () => {
+    const seal = getSealState(MANIFEST_INVALIDO);
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo fato={null} seal={seal} initial={SEL_VALIDA} />,
+    );
+    const resultado = secaoEstatica(html, "Resultado");
+    expect(resultado).toContain(SEM_DADO);
+    expect(resultado).toContain(HASH_REASON);
+  });
+  it("Explorar Mapa fato null sem hash nomeia o hash", () => {
+    const seal = getSealState(MANIFEST_INVALIDO);
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo fato={null} seal={seal} initial={{ ...SEL_VALIDA, ver: ["mapa"] }} />,
+    );
+    const mapa = secaoEstatica(html, "Mapa");
+    expect(mapa).toContain(SEM_DADO);
+    expect(mapa).toContain(HASH_REASON);
   });
 });

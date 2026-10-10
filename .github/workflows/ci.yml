@@ -43,12 +43,51 @@ jobs:
       - name: Seed fixture data (real ETL path, no TSE download)
         run: python scripts/seed_fixture_data.py --force
 
+      # Malha municipal p/ o mapa da Home (EVOLVE-4 Task 3): artefato
+      # gitignored (web/.gitignore), gerado aqui pelo caminho REAL
+      # (scripts/malha.py) sobre um GeoJSON fixture mínimo (2 quadrados p/
+      # os municípios do seed) — sem download do IBGE, custo zero. Produção
+      # exige a malha real do IBGE via o mesmo script; sem artefato, a Home
+      # cai no fallback honesto (lista v1) por design (fail-closed).
+      - name: Build fixture malha (scripts/malha.py, no IBGE download)
+        run: |
+          python - <<'EOF'
+          import json
+          polys = {
+              "3550308": ([[0, 0], [0, 10], [10, 10], [10, 0], [0, 0]], "SP", "São Paulo"),
+              "3304557": ([[11, 0], [11, 1], [12, 1], [12, 0], [11, 0]], "RJ", "Rio de Janeiro"),
+          }
+          fc = {"type": "FeatureCollection", "features": [
+              {"type": "Feature",
+               "properties": {"ibge7": ibge, "uf": uf, "nome": nome},
+               "geometry": {"type": "Polygon", "coordinates": [poly]}}
+              for ibge, (poly, uf, nome) in polys.items()]}
+          with open("/tmp/malha_fixture.geojson", "w", encoding="utf-8") as f:
+              json.dump(fc, f)
+          EOF
+          python scripts/malha.py --input /tmp/malha_fixture.geojson --output web/public/data/malha_municipios.topojson --quantize 100 --tolerancia 0
+          ls -la web/public/data/malha_municipios.topojson
+          # Checagem de conteúdo (fail-closed): existência não basta — uma
+          # regressão no gerador que esvaziasse as geometrias passaria no
+          # test -f mas quebraria o mapa. Decodifica e exige ≥1 geometria
+          # com propriedade ibge7 (mesmo contrato de `loadMalha` no front).
+          python - <<'EOF'
+          import json
+          topo = json.load(open("web/public/data/malha_municipios.topojson", encoding="utf-8"))
+          geoms = [g for o in topo.get("objects", {}).values()
+                   if isinstance(o, dict) for g in o.get("geometries", [])]
+          com_ibge = [g for g in geoms if (g.get("properties") or {}).get("ibge7")]
+          assert com_ibge, "malha sem geometrias com ibge7 (regressão no gerador?)"
+          print(f"OK: {len(com_ibge)} geometrias com ibge7")
+          EOF
+
       - name: Assert motor fixtures (Censo + fato before web tests)
         run: |
           test -f web/public/data/fato_2022_1_presidente.json
           test -f web/public/data/resumo.json
           test -f web/public/data/por_uf.json
           test -f web/public/data/por_candidato.json
+          test -f web/public/data/malha_municipios.topojson
           python -c "import json; m=json.load(open('web/public/data/manifest.json')); ts={e.get('tipo') for e in m['ingestions']}; assert 'censo_ibge_2022' in ts and 'fato_municipal' in ts, ts"
 
       - name: Setup Node

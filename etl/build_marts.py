@@ -28,7 +28,7 @@ import duckdb
 import pandas as pd
 
 from etl import ETL_VERSION
-from etl.manifest import _validate_entry, load_manifest
+from etl.manifest import _dedupe_key, _validate_entry, load_manifest
 from etl.normalize import CANONICAL_COLUMNS, normalize_resultados
 from etl.sources import V1_DATASETS
 from etl.validate import run_gates
@@ -265,12 +265,6 @@ def _write_json_aggs(df: pd.DataFrame, web_data_dir: Path = WEB_DATA_DIR) -> Non
     )
 
 
-def _dedupe_key(entry: dict) -> tuple:
-    """Chave de idempotência da entry: `(ano, cargo.upper(), source_url)`."""
-    return (entry.get("ano"), str(entry.get("cargo", "")).upper(),
-            entry.get("source_url"))
-
-
 def _read_existing_ingestions(manifest_path) -> list:
     """Ingestions já registradas; tolera ausente/vazio/corrompido.
 
@@ -324,9 +318,10 @@ def _register_sources(df: pd.DataFrame, manifest_path, source_shas=None) -> None
     (ISO yyyy-mm-dd UTC, M15) e `etl_version` (M15). `rows` conta só as
     linhas do próprio par (M16). df vazio escreve `{"ingestions": []}` (E5).
     Tolerante a `votos` nulo (contrato Task 2: só usa ano/cargo + CSV).
-    Idempotente (E6): dedupe por `(ano, cargo.upper(), source_url)` mantendo
-    a última — rebuild com a mesma fonte atualiza em vez de duplicar; runs
-    distintas (outro par ou outra fonte) preservam o histórico.
+    Idempotente (E6): dedupe pela `_dedupe_key` única de `etl.manifest`
+    mantendo a última — rebuild com a mesma fonte atualiza em vez de
+    duplicar; runs distintas (outro par ou outra fonte) preservam o
+    histórico.
     """
     if df.empty:
         Path(manifest_path).write_text(
@@ -366,10 +361,19 @@ def _register_sources(df: pd.DataFrame, manifest_path, source_shas=None) -> None
         _validate_entry(new_entry)  # fail-closed Task 6 antes de escrever
     merged = _read_existing_ingestions(manifest_path) + new_entries
     by_key: dict = {}
+    sem_chave: list = []
     for item in merged:
-        if isinstance(item, dict):
+        if not isinstance(item, dict):
+            continue
+        try:
             by_key[_dedupe_key(item)] = item
-    deduped = list(by_key.values())
+        except TypeError:
+            # Entry legada com campo não-hashable (ex. `dataset`/`turno`
+            # como lista — `_validate_entry` não cobre esses campos): sem
+            # chave de dedupe, preservada sem colapso e sem crashar o
+            # build (fail-safe: dado preservado, nunca exceção).
+            sem_chave.append(item)
+    deduped = list(by_key.values()) + sem_chave
     legacy = [item for item in merged if not isinstance(item, dict)]
     manifest_file = Path(manifest_path)
     _write_json_atomico(manifest_file, {"ingestions": deduped + legacy})
@@ -471,7 +475,7 @@ def register_served_artifacts(manifest_path, web_data_dir,
     arquivos presentes, então rebuilds atualizam sem duplicar. Cada entry é
     validada por `_validate_entry` (fail-closed: `source_url` truthy + sha
     64-hex). Vive em chave própria para não colidir com o dedupe das
-    ingestões `(ano, cargo, source_url)` nem com `verify_manifest`.
+    ingestões (`_dedupe_key` única) nem com `verify_manifest`.
     Devolve as entries registradas.
     """
     today = datetime.now(timezone.utc).date().isoformat()
@@ -911,9 +915,11 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
     caminho de falha de geração meio-promovida (Task 5) — ali os `.tmp` são
     preservados de propósito p/ diagnóstico. No
     sucesso, cada staging troca de lugar com o público e o anterior vira
-    `<alvo>.prev` (removido no sucesso seguinte). O gate de manifest é
-    excluído aqui — o manifest desta ingestão ainda não foi escrito (vai
-    em `_register_sources`, após os JSONs) — e a ausência de totais
+    `<alvo>.prev` (removido no sucesso seguinte). O gate de forma do
+    manifest é excluído aqui — o manifest desta ingestão ainda não foi
+    escrito (vai em `_register_sources`, após os JSONs) — mas o gate
+    bytes-aware de fatos (`fato_paths` vs espelho staged) é ativo: fato
+    novo + mirror velho reprova; e a ausência de totais
     oficiais é só `UserWarning` (contrato `run_gates`), nunca erro.
     """
     curated = Path(curated_dir)
@@ -955,7 +961,19 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
         # Ordem Tasks 4–7 preservada, toda dentro do staging.
         _write_partitioned_parquet(df, curated_st)
         _write_duckdb(df, db_st)
-        gate_errors = run_gates(db_st, manifest_path=None)
+        # Gates contra o staging (EVOLVE-4 T2, bytes-aware): o manifest
+        # aqui é o espelho staged (atestação servida anterior) e os fatos
+        # staged precisam conferir com ele (`fato_paths`); fato novo +
+        # mirror velho (crash entre passos) reprova com erro "fato"
+        # (não filtrado). O gate de forma do manifest segue excluído —
+        # o manifest desta ingestão ainda não foi escrito (vai em
+        # `_register_sources`, após os JSONs) — e a ausência de totais
+        # oficiais é só `UserWarning` (contrato `run_gates`), nunca erro.
+        # Sem mirror anterior não há baseline: o gate de fatos é `[]` e
+        # a atestação fresca de `register_served_artifacts` cobre.
+        gate_errors = run_gates(
+            db_st, manifest_path=web_st / "manifest.json",
+            fato_paths=sorted(web_st.glob("fato_*.json")))
         gate_errors = [e for e in gate_errors if not e.startswith("manifest")]
         if gate_errors:
             raise RuntimeError(f"gates reprovados: {'; '.join(gate_errors)}")

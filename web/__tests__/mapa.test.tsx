@@ -15,6 +15,11 @@ import {
   resolverCliqueMapa,
   UFS,
 } from "../lib/malha";
+import {
+  FIXTURE_TOPO_2UF as FIXTURE_2UF,
+  mockPath2D,
+  mockCanvas2d,
+} from "./helpers";
 
 // Malha fixture mínima: um quadrado rotulado 3550308 (São Paulo-SP).
 // Coords de TELA (pós-flip Y): o quadrado geo (0,0)-(10,10) decodifica p/ y -10..0.
@@ -50,33 +55,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
-
-function mockPath2D() {
-  const g = globalThis as Record<string, unknown>;
-  const prev = g["Path2D"];
-  g["Path2D"] = class {
-    moveTo() {}
-    lineTo() {}
-    closePath() {}
-  };
-  return () => {
-    g["Path2D"] = prev;
-  };
-}
-
-function mockCanvas2d() {
-  const fake = {
-    clearRect() {},
-    fill() {},
-    stroke() {},
-    fillStyle: "",
-    strokeStyle: "",
-  };
-  const spy = vi
-    .spyOn(window.HTMLCanvasElement.prototype, "getContext")
-    .mockReturnValue(fake as unknown as CanvasRenderingContext2D);
-  return () => spy.mockRestore();
-}
 
 function mockFetchTopo() {
   vi.stubGlobal(
@@ -422,43 +400,7 @@ describe("malha vazia falha fechado", () => {
 
 // Dois vizinhos: SP (0,0)-(10,10) + faixa a leste (11,0)-(12,1).
 // Com zoom em SP, a faixa cai dentro do canvas mas não é desenhada.
-const FIXTURE_2UF = {
-  type: "Topology",
-  transform: { scale: [1, 1], translate: [0, 0] },
-  objects: {
-    municipios: {
-      type: "GeometryCollection",
-      geometries: [
-        {
-          type: "Polygon",
-          properties: { ibge7: "3550308", uf: "SP", nome: "São Paulo" },
-          arcs: [[0]],
-        },
-        {
-          type: "Polygon",
-          properties: { ibge7: "3304557", uf: "RJ", nome: "Rio de Janeiro" },
-          arcs: [[1]],
-        },
-      ],
-    },
-  },
-  arcs: [
-    [
-      [0, 0],
-      [0, 10],
-      [10, 0],
-      [0, -10],
-      [-10, 0],
-    ],
-    [
-      [11, 0],
-      [0, 1],
-      [1, 0],
-      [0, -1],
-      [-1, 0],
-    ],
-  ],
-};
+// (Topologia em ./helpers — FIXTURE_TOPO_2UF, fonte única.)
 
 function mockFetchTopo2() {
   vi.stubGlobal(

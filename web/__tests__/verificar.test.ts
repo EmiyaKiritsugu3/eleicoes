@@ -11,34 +11,16 @@ import {
 } from "../app/verificar/Verificar";
 import type { SealState } from "../lib/data";
 import type { MunRow } from "../lib/motor";
+import {
+  CANDIDATOS_EXEMPLO as CANDIDATOS,
+  demoCurada as demo,
+  type FatoSintetico,
+} from "./helpers";
 
 // Fato sintético: 40 municípios, cand-a vence todos; share de cand-a tem
 // leve inclinação positiva com esc_sup (r ≈ 0,12 — sinal certo, efeito
 // fraco). Nenhum fato real é lido aqui (funções puras sobre MunRow).
-const CANDIDATOS = [
-  { id: "cand-a", nome: "Candidata Exemplo A", partido: "PA" },
-  { id: "cand-b", nome: "Candidato Exemplo B", partido: "PB" },
-];
-
-type FatoSintetico = {
-  candidatos: typeof CANDIDATOS;
-  municipios: MunRow[];
-} | null;
-
-function demo(over: Partial<Record<string, number>> = {}) {
-  return {
-    esc_sup: 10,
-    esc_med: 30,
-    esc_fund: 50,
-    renda_media: 2000,
-    pobres_pct: 20,
-    idade_mediana: 35,
-    urbanizacao: 80,
-    pop: 10000,
-    eleitores: 1000,
-    ...over,
-  };
-}
+// (CANDIDATOS/demo/FatoSintetico em ./helpers — fonte única.)
 
 function linhas40(): MunRow[] {
   const rows: MunRow[] = [];

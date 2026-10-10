@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import MapaBrasil from "./MapaBrasil";
+import { loadMalha, MALHA_MUNICIPIOS_URL, UFS, type MalhaFeature } from "../lib/malha";
 import SourceBadge from "./SourceBadge";
 import SealSlot from "./SealSlot";
 import perguntasJson from "../data/perguntas.json";
@@ -22,6 +24,27 @@ import {
 import { vereditoTemProva } from "../lib/regiao";
 
 const SEM_DADO = "sem dado oficial";
+
+/** Prefixo IBGE de 2 dígitos → sigla UF (códigos estáveis do IBGE).
+ *  Permite ao clique no canvas (que retorna IBGE7 do município) focar o
+ *  filtro UF da Home sem adivinhar: prefixo fora da tabela → null. */
+const UF_POR_CODIGO_IBGE: Record<string, string> = {
+  "11": "RO", "12": "AC", "13": "AM", "14": "RR", "15": "PA", "16": "AP", "17": "TO",
+  "21": "MA", "22": "PI", "23": "CE", "24": "RN", "25": "PB", "26": "PE", "27": "AL",
+  "28": "SE", "29": "BA", "31": "MG", "32": "ES", "33": "RJ", "35": "SP",
+  "41": "PR", "42": "SC", "43": "RS", "50": "MS", "51": "MT", "52": "GO", "53": "DF",
+};
+
+/** Seleção do mapa → sigla UF p/ focar o filtro (fail-closed: EXTERIOR e
+ *  seleções desconhecidas retornam null em vez de focar errado). Aceita
+ *  sigla UF (fallback em lista/teclado) ou IBGE7 (clique no canvas). */
+export function ufDeSelecaoMapa(sel: string): string | null {
+  const s = (sel ?? "").trim().toUpperCase();
+  if ((UFS as readonly string[]).includes(s)) return s;
+  const m = /^(\d{2})\d{5}$/.exec(s);
+  if (m) return UF_POR_CODIGO_IBGE[m[1]] ?? null;
+  return null;
+}
 
 async function fetchJson<T>(path: string): Promise<T | null> {
   try {
@@ -57,6 +80,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   const [porCand, setPorCand] = useState<PorCandidatoRow[]>([]);
   const [seal, setSeal] = useState<SealState>({ official: null, hasFixture: false, fixtureHash: "" });
   const [manifestChecked, setManifestChecked] = useState(false);
+  const [malhaFeatures, setMalhaFeatures] = useState<MalhaFeature[] | null>(null);
   const [f, setF] = useState<Filtros>(initialFiltros ?? {});
 
   useEffect(() => {
@@ -89,6 +113,31 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   // carregados e com o banner "dado não auditado" acima. Só display é
   // gated; fetch e agregação (getResumo/rankingUf/...) não mudam.
   const semProva = manifestChecked && !vereditoTemProva(seal);
+  // Elegibilidade do mapa (espelha o gate de render abaixo): sem ela a seção
+  // suprime de todo jeito, então a malha (1–3MB) nem é buscada/decodificada.
+  const elegivelMapa = manifestChecked && !semProva && ufs.length > 0;
+  // Resolução única da malha municipal (artefato gitignored, gerado por
+  // `scripts/malha.py` no CI): a Home resolve via `loadMalha` e passa as
+  // features prontas ao `MapaBrasil` (sem refetch). Com malha válida, mapa
+  // clicável; sem malha (ausente OU vazia/inválida — HTTP 200 não basta), o
+  // fallback único e honesto na lista v1. Qualquer erro → null (fail-closed,
+  // nunca canvas quebrado). Sucesso é cacheado no estado (sem refetch ao
+  // re-elegibilizar); falha tenta de novo (a malha pode ter surgido).
+  useEffect(() => {
+    if (!elegivelMapa || malhaFeatures) return;
+    let vivo = true;
+    void (async () => {
+      try {
+        const features = await loadMalha(MALHA_MUNICIPIOS_URL);
+        if (vivo) setMalhaFeatures(features);
+      } catch {
+        if (vivo) setMalhaFeatures(null);
+      }
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [elegivelMapa, malhaFeatures]);
   const badge = <SealSlot seal={seal} />;
   const candidatoAtivo = (f.candidato ?? "").trim() !== "";
   // Alerta honesto sem depender de CSS externo (M4-web): fundo/borda inline.
@@ -161,13 +210,24 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
       </section>
 
       <section aria-label="Mapa por UF">
-        <h2>Mapa por UF (lista v1 — TopoJSON fora do escopo YAGNI)</h2>
+        <h2>Mapa por UF</h2>
         {candidatoAtivo && <p role="note">{NOTA_CANDIDATO_GLOBAL}</p>}
         {badge}
         {carregando ? (
           <p role="status">a carregar…</p>
         ) : semProva || ufs.length === 0 ? (
           <p>{SEM_DADO}</p>
+        ) : malhaFeatures ? (
+          <MapaBrasil
+            malhaUrl={MALHA_MUNICIPIOS_URL}
+            nivel="uf"
+            features={malhaFeatures}
+            ocultarExterior
+            onSelectIbge={(sel) => {
+              const uf = ufDeSelecaoMapa(sel);
+              if (uf) setF((prev) => ({ ...prev, uf }));
+            }}
+          />
         ) : (
           <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Votos por UF">
           <table>

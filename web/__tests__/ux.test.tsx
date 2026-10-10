@@ -3,7 +3,6 @@ import React from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { act } from "react-dom/test-utils";
-import { createRoot, type Root } from "react-dom/client";
 import RootLayout from "../app/layout";
 import PainelRegiao, { type FatoRegiao } from "../components/PainelRegiao";
 import { HomeContent } from "../components/HomeContent";
@@ -16,6 +15,18 @@ import { ExplorarConteudo, type ExplorarSelecao } from "../components/Explorar";
 import { CuradaConteudo, type PerguntaCurada } from "../app/perguntas/Curada";
 import type { SealState } from "../lib/data";
 import type { MunRow } from "../lib/motor";
+import {
+  SEM_DADO,
+  MANIFEST_OK,
+  responderBasico,
+  renderJsdom,
+  rerenderJsdom,
+  teardownJsdom,
+  secao,
+  CANDIDATOS_LULA as CANDIDATOS,
+  demoBase,
+  municipios40Linear,
+} from "./helpers";
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => ({ get: (_k: string) => null }),
@@ -23,49 +34,19 @@ vi.mock("next/navigation", () => ({
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
-const SEM_DADO = "sem dado oficial";
-
 const SEAL_OK: SealState = {
   official: { hash: "a".repeat(64), url: "https://cdn.tse.jus.br/x.zip", date: "2026-01-01" },
   hasFixture: false,
   fixtureHash: "",
 };
 
-const CANDIDATOS = [
-  { id: "lula", nome: "Lula", partido: "PT" },
-  { id: "bol", nome: "Bolsonaro", partido: "PL" },
-];
-
 function demo(i: number) {
-  return {
-    esc_sup: 5 + i * 0.5,
-    esc_med: 30,
-    esc_fund: 50,
-    renda_media: 2000 + i * 10,
-    pobres_pct: 20,
-    idade_mediana: 35,
-    urbanizacao: 80,
-    pop: 10000,
-    eleitores: 1000,
-  };
+  return demoBase(5 + i * 0.5, 2000 + i * 10);
 }
 
 // 40 municípios, Lula vence todos; share cresce com esc_sup (n ≥ piso 30).
 function linhasValidas(): MunRow[] {
-  const rows: MunRow[] = [];
-  for (let i = 0; i < 40; i++) {
-    const lula = 500 + i * 10;
-    rows.push({
-      ibge: `355030${i}`,
-      uf: "SP",
-      nome: `Mun ${i}`,
-      votos: [lula, 1000 - lula],
-      total: 1000,
-      abst: 0,
-      demo: demo(i),
-    });
-  }
-  return rows;
+  return municipios40Linear({ nome: (i) => `Mun ${i}`, abst: 0, demo });
 }
 
 const FATO_NOMEADO: FatoRegiao = {
@@ -100,11 +81,6 @@ const PERGUNTA: PerguntaCurada = {
   blocos: { quem: "lula", onde: "venceu", cruzar: "esc_sup", ver: ["dispersao", "tabela", "ranking"] },
   texto_metodo: "método",
 };
-
-function secao(html: string, label: string): string {
-  const m = html.match(new RegExp(`<section aria-label="${label}">([\\s\\S]*?)</section>`));
-  return m ? m[1] : "";
-}
 
 function conta(hay: string, needle: string): number {
   return hay.split(needle).length - 1;
@@ -153,35 +129,12 @@ function wrappersSemNomeDom(container: HTMLElement): string[] {
 
 // ---------- fixtures de fetch ----------
 
-const RESUMO = { total_votos: 3000, total_linhas: 3, anos: [2022], tabelas: [] };
-const POR_UF = [
-  { ano: 2022, cargo: "presidente", uf: "SP", votos: 2000 },
-  { ano: 2022, cargo: "presidente", uf: "RJ", votos: 1000 },
-];
-const POR_CAND = [{ candidato_id: "a", nome_urna: "Cand A", partido: "PA", votos: 2500 }];
-const MANIFEST_OK = {
-  ingestions: [
-    {
-      tipo: "fato_municipal",
-      dataset: "fato_2022_1_presidente",
-      sha256: "a".repeat(64),
-      source_url: "https://cdn.tse.jus.br/x.zip",
-      date: "2026-01-01",
-    },
-  ],
-};
 const FATO_JSON = { candidatos: CANDIDATOS, municipios: linhasValidas() };
 
 function mockFetchOk() {
-  (globalThis as Record<string, unknown>).fetch = vi.fn(async (url: string) => {
-    if (String(url).endsWith("/data/resumo.json")) return { ok: true, json: async () => RESUMO };
-    if (String(url).endsWith("/data/por_uf.json")) return { ok: true, json: async () => POR_UF };
-    if (String(url).endsWith("/data/por_candidato.json"))
-      return { ok: true, json: async () => POR_CAND };
-    if (String(url).endsWith("/data/manifest.json")) return { ok: true, json: async () => MANIFEST_OK };
-    if (String(url).includes("/data/fato_")) return { ok: true, json: async () => FATO_JSON };
-    return { ok: false, json: async () => null };
-  });
+  (globalThis as Record<string, unknown>).fetch = vi.fn(async (url: string) =>
+    responderBasico(String(url), MANIFEST_OK, null, FATO_JSON),
+  );
 }
 
 function mockFetchErro() {
@@ -197,43 +150,7 @@ function mockFetchPendente() {
   );
 }
 
-const fetchOriginal = globalThis.fetch;
-let el: HTMLDivElement | null = null;
-let root: Root | null = null;
-
-afterEach(async () => {
-  await act(async () => {
-    root?.unmount();
-  });
-  root = null;
-  (el as HTMLDivElement | null)?.remove();
-  el = null;
-  globalThis.fetch = fetchOriginal;
-  vi.restoreAllMocks();
-});
-
-async function renderJsdom(node: React.ReactElement): Promise<HTMLDivElement> {
-  el = document.createElement("div");
-  document.body.appendChild(el);
-  await act(async () => {
-    root = createRoot(el!);
-    root.render(node);
-  });
-  // Drena a cadeia de fetches sequenciais dos effects (resumo → por_uf →
-  // por_candidato → manifest): cada await exige um ciclo de flush.
-  await act(async () => {});
-  await act(async () => {});
-  await act(async () => {});
-  return el!;
-}
-
-async function rerenderJsdom(node: React.ReactElement): Promise<HTMLDivElement> {
-  await act(async () => {
-    root!.render(node);
-  });
-  await act(async () => {});
-  return el!;
-}
+afterEach(teardownJsdom);
 
 // ---------- testes ----------
 
@@ -475,12 +392,7 @@ describe("ux CopyShare copia + fallback", () => {
     mockFetchOk();
     const divA = await renderJsdom(<Analisar />);
     expect(divA.innerHTML).toContain("Copiar link");
-    await act(async () => {
-      root?.unmount();
-    });
-    root = null;
-    (el as HTMLDivElement | null)?.remove();
-    el = null;
+    await teardownJsdom();
     // #3: ExplorarConteudo com selo oficial expõe o botão de copiar.
     const divE = await renderJsdom(
       <ExplorarConteudo
@@ -490,12 +402,7 @@ describe("ux CopyShare copia + fallback", () => {
       />,
     );
     expect(divE.innerHTML).toContain("Copiar link");
-    await act(async () => {
-      root?.unmount();
-    });
-    root = null;
-    (el as HTMLDivElement | null)?.remove();
-    el = null;
+    await teardownJsdom();
     const fatoCheio = { candidatos: CANDIDATOS, municipios: linhasValidas() };
     const htmlR = renderToStaticMarkup(
       <PainelRegiao ibge="SP" fato={fatoCheio} seal={SEAL_OK} manifestChecked />,

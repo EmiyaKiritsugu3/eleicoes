@@ -122,30 +122,57 @@ def test_censo_datasets_allowlisted_and_shaped():
 
     assert isinstance(CENSO_DATASETS, list) and CENSO_DATASETS
     for entry in CENSO_DATASETS:
-        for key in ("ano", "nome", "dataset"):
-            assert entry.get(key), f"missing {key} in {entry}"
+        for key in ("ano", "nome", "url", "dataset", "sha256"):
+            assert key in entry, f"missing {key} in {entry}"
+        assert entry.get("ano") == 2022
+        assert entry.get("nome") == "censo_demografico_2022_municipios"
+        # URL real confirmada no FTP (EVOLVE-4 T4) — nunca None adivinhada.
         url = entry.get("url")
-        if url is None:
-            continue  # PENDING: path real ainda não confirmado — nunca baixado
+        assert isinstance(url, str) and url, f"Censo url ausente: {entry}"
         host = (urlparse(url).hostname or "").lower()
         assert host in ALLOWED_HOSTS, f"Censo url fora da allowlist: {entry['url']}"
+        assert url.startswith(
+            "https://ftp.ibge.gov.br/Censos/Censo_Demografico_2022/"
+            "Agregados_por_Setores_Censitarios/Agregados_por_Municipio_csv/"
+        ), f"Censo url fora do path confirmado: {url}"
+        assert url.endswith(".zip")
 
 
-def test_censo_pending_url_never_downloads_or_registers(tmp_path):
+def test_censo_url_guard_bloqueia_pendente_e_registra_confirmada(tmp_path):
     from etl.censo import register_censo_ingest
     from etl.fetch import download_dataset
     from etl.sources import CENSO_DATASETS
 
-    assert CENSO_DATASETS[0].get("url") is None  # path real ainda pendente
+    assert CENSO_DATASETS[0].get("url")  # URL real confirmada (EVOLVE-4 T4)
     with pytest.raises(ValueError):
         download_dataset(None, str(tmp_path / "x.zip"))
     pending = {"url": None, "ano": 2022, "nome": "x", "dataset": "y"}
     with pytest.raises(ValueError):
         register_censo_ingest(str(tmp_path / "m.json"), rows=1,
                               sha256="ab" * 32, dataset=pending)
-    with pytest.raises(ValueError):
-        register_censo_ingest(str(tmp_path / "m.json"), rows=1, sha256="ab" * 32)
     assert not (tmp_path / "m.json").exists()
+    # Dataset default (URL confirmada) registra com a URL real como fonte.
+    entry = register_censo_ingest(
+        str(tmp_path / "m.json"), rows=1, sha256="ab" * 32)
+    assert entry["source_url"] == CENSO_DATASETS[0]["url"]
+
+
+def test_total_censo_2022_pinado():
+    """TOTAL_CENSO_2022 = soma de v0001 do CSV real (verificado 2026-10-10).
+
+    Gate passa exatamente no total e reprova em ±1 (fail-closed).
+    """
+    from etl.censo import check_censo_sum
+    from etl.sources import TOTAL_CENSO_2022
+
+    assert TOTAL_CENSO_2022 == 203080756
+    df = pd.DataFrame(
+        {"pop": pd.array([203080755, 1], dtype="Int64")}
+    )
+    assert check_censo_sum(df, TOTAL_CENSO_2022) == []
+    for vizinho in (TOTAL_CENSO_2022 - 1, TOTAL_CENSO_2022 + 1):
+        erros = check_censo_sum(df, vizinho)
+        assert erros and any("soma" in e for e in erros), vizinho
 
 
 def test_censo_manifest_registers_date_and_version(tmp_path):
@@ -205,3 +232,33 @@ def test_codigo_float_normaliza(tmp_path=None):
         warnings.simplefilter("error", UserWarning)
         out = normalize_censo(df)
     assert out["ibge7"].tolist() == ["3550308", "3304557"]
+
+
+def test_formato_real_basico_normaliza_sem_adaptacao():
+    """Formato real do FTP (CD_MUN + v0001 minúsculo, resto ausente).
+
+    Espelha o header de Agregados_por_municipios_basico_BR.csv
+    (confirmado em 2026-10-10): normalize_censo consome sem adaptação —
+    ibge7 + pop preenchidos, demais campos nulos fail-closed.
+    """
+    from etl.censo import normalize_censo
+
+    df = pd.DataFrame(
+        [
+            {"CD_MUN": "1100015", "NM_MUN": "Alta Floresta D'Oeste", "v0001": 21494},
+            {"CD_MUN": "1100023", "NM_MUN": "Ariquemes", "v0001": 96833},
+        ]
+    )
+    out = normalize_censo(df)
+    assert out["ibge7"].tolist() == ["1100015", "1100023"]
+    assert out["pop"].tolist() == [21494, 96833]
+    for field in (
+        "esc_sup",
+        "esc_med",
+        "esc_fund",
+        "renda_media",
+        "pobres_pct",
+        "idade_mediana",
+        "urbanizacao",
+    ):
+        assert out[field].isna().all(), field
