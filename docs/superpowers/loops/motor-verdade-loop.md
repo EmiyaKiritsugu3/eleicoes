@@ -13,8 +13,8 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 
 ## Estado atual
 
-- [ ] Fase PR-GREEN: CI vermelho (pip install quebra — setuptools discovery). cubic/CodeRabbit: ver status abaixo.
-- [ ] Merge PR #2 (motor-verdade → main).
+- [x] Fase PR-GREEN: CI verde (setuptools discovery corrigido iteração 1; Node 22 iteração 3); findings cubic/CodeRabbit das iterações 1–4 corrigidos; re-review final pendente.
+- [ ] Merge PR #2 (motor-verdade → main) — após checks verdes.
 - [ ] EVOLVE-1: (a definir após merge).
 
 ## Log de ciclos
