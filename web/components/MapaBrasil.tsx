@@ -191,15 +191,21 @@ export default function MapaBrasil({
     const canvas = e.currentTarget;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    // Transform corrupta (JSON inválido ou não-array) falha fechado: sem
-    // seleção, sem throw — o null-contract do resolver sozinho não basta
-    // (identidade [1,0,0] poderia acertar um município por acaso).
+    // Transform corrupta falha fechado: sem seleção, sem throw — exige
+    // tripla de números finitos (EVOLVE-8 T3); o null-contract do resolver
+    // sozinho não basta (identidade [1,0,0] poderia acertar um município
+    // por acaso), por isso a checagem é dupla (aqui + no resolver).
     let t: number[] | null = null;
     const raw = canvas.dataset.transform;
     if (raw) {
       try {
         const v: unknown = JSON.parse(raw);
-        if (!Array.isArray(v)) return;
+        if (
+          !Array.isArray(v) ||
+          v.length !== 3 ||
+          !v.every((n) => typeof n === "number" && Number.isFinite(n))
+        )
+          return;
         t = v as number[];
       } catch {
         return;

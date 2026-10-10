@@ -24,6 +24,7 @@ import {
   rerenderJsdom,
   teardownJsdom,
 } from "./helpers";
+import { SEM_DADO } from "../lib/textos";
 
 // Malha fixture mínima: quadrado único 3550308 (São Paulo-SP) — builder
 // compartilhado em helpers (a variante renomeada p/ rotação sai do mesmo).
@@ -118,6 +119,66 @@ describe("resolverCliqueMapa (escala CSS → backing store)", () => {
   });
 });
 
+// EVOLVE-8 T3 (RED): clique strict-shape — transform precisa ser tripla de
+// números finitos; ["x"]/[0]/null/NaN/Infinity → sem seleção (fail-closed).
+describe("resolverCliqueMapa strict-shape (EVOLVE-8 T3)", () => {
+  const feats = decodeTopojson(FIXTURE_TOPO as never);
+  const base = {
+    rect: { left: 0, top: 0, width: 400, height: 300 },
+    backingWidth: 800,
+    backingHeight: 600,
+    features: feats,
+    clientX: 200,
+    clientY: 150,
+  };
+  it.each([
+    ["string no lugar de número", ["x"]],
+    ["tripla curta", [0]],
+    ["par, não tripla", [60, 100]],
+    ["nulo (sem fallback p/ identidade)", null],
+    ["NaN", [Number.NaN, 0, 0]],
+    ["Infinity", [Number.POSITIVE_INFINITY, 0, 0]],
+    ["escala zero (divisão por zero)", [0, 100, 600]],
+    // Estes DOIS selecionam no código atual (destructure parcial confia nos
+    // 3 primeiros; string numérica coage no cálculo) — o guarda estrito
+    // deve recusar: RED genuíno pré-fix.
+    ["número em string coage no cálculo", [60, 100, "600"]],
+    ["quádrupla (length !== 3)", [60, 100, 600, 999]],
+  ])("shape inválido não seleciona: %s", (_rotulo, transform) => {
+    expect(
+      resolverCliqueMapa({ ...base, transform: transform as unknown as number[] | null }),
+    ).toBeNull();
+  });
+  it("tripla válida segue selecionando", () => {
+    expect(
+      resolverCliqueMapa({ ...base, transform: [60, 100, 600] }),
+    ).toBe("3550308");
+  });
+});
+
+// EVOLVE-8 T3 (RED): throws de loadMalha contêm a constante SEM_DADO
+// (fonte única em lib/textos.ts — zero literal S1192 em prod).
+describe("loadMalha usa SEM_DADO (EVOLVE-8 T3)", () => {
+  it("fetch não-ok rejeita com a constante", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 404 })));
+    await expect(loadMalha("/data/malha.topojson")).rejects.toThrow(SEM_DADO);
+  });
+  it("malha vazia rejeita com a constante", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          type: "Topology",
+          objects: { municipios: { type: "GeometryCollection", geometries: [] } },
+          arcs: [],
+        }),
+      })),
+    );
+    await expect(loadMalha("/data/malha.topojson")).rejects.toThrow(SEM_DADO);
+  });
+});
+
 describe("fiação do clique no <canvas> (jsdom)", () => {
   it("clicar no município chama onSelectIbge com o IBGE7", async () => {
     const restorePath = mockPath2D();
@@ -161,8 +222,9 @@ describe("fiação do clique no <canvas> (jsdom)", () => {
       expect(canvas).not.toBeNull();
       canvas!.getBoundingClientRect = () =>
         ({ left: 0, top: 0, width: 400, height: 300, right: 400, bottom: 300, x: 0, y: 0, toJSON: () => {} }) as DOMRect;
-      // Corrompe o dataset após o desenho (JSON inválido + JSON válido não-array).
-      for (const lixo of ["{corrompido", "123"]) {
+      // Corrompe o dataset após o desenho (JSON inválido + JSON válido não-array
+      // + shapes quase-válidos: EVOLVE-8 T3 exige tripla de números finitos).
+      for (const lixo of ["{corrompido", "123", '["x"]', "[0]", "null", "[60,100]"]) {
         canvas!.dataset.transform = lixo;
         await act(async () => {
           canvas!.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 200, clientY: 150 }));
