@@ -63,6 +63,11 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
     };
   }, [fatoParam]);
 
+  // Loading honesto (Task 5): manifest pendente mostra "a carregar"
+  // com role="status"; SEM_DADO do painel só após resolve.
+  if (!manifestChecked) {
+    return <p role="status">a carregar…</p>;
+  }
   return <PainelRegiao ibge={ibge} fato={fato} seal={seal} manifestChecked={manifestChecked} fatoDataset={dataset} />;
 }
 

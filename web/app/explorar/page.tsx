@@ -75,12 +75,16 @@ export default function Explorar() {
           hash da URL diverge do manifest atual — revalide a fonte antes de citar
         </p>
       )}
-      <ExplorarConteudo
-        fato={fato}
-        seal={seal}
-        initial={initial ?? SEL_VAZIA}
-        key={initial ? JSON.stringify(initial) : "vazio"}
-      />
+      {!manifestChecked ? (
+        <p role="status">a carregar…</p>
+      ) : (
+        <ExplorarConteudo
+          fato={fato}
+          seal={seal}
+          initial={initial ?? SEL_VAZIA}
+          key={initial ? JSON.stringify(initial) : "vazio"}
+        />
+      )}
     </>
   );
 }

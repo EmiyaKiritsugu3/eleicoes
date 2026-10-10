@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import SourceBadge from "../../components/SourceBadge";
 import SealSlot from "../../components/SealSlot";
+import CopyShare from "../../components/CopyShare";
 import Comparator, { type CompareSide } from "../../components/Comparator";
 import {
   evolucaoAnual,
@@ -251,6 +252,9 @@ export default function Analisar() {
   const hashDivergente = urlHash !== "" && hash !== "" && urlHash !== hash;
 
   const badge = <SealSlot seal={seal} />;
+  // Loading honesto (Task 5): fetch pendente mostra "a carregar" com
+  // role="status" nas seções de dados; SEM_DADO só após resolve.
+  const carregando = !manifestChecked;
 
   // Contexto de filtro junto dos dados (M13): cada linha carrega os 7
   // filtros ativos como colunas f_* para o CSV ser auto-descritivo.
@@ -345,7 +349,9 @@ export default function Analisar() {
         <h2>Resumo filtrado</h2>
         {badge}
         {partidoIgnoradoUF && !semCob && <p role="note">{NOTA_PARTIDO}</p>}
-        {!resumo || res.vazio || semCob ? (
+        {carregando ? (
+          <p role="status">a carregar…</p>
+        ) : !resumo || res.vazio || semCob ? (
           <p>{SEM_DADO}</p>
         ) : (
           <p>Total de votos no filtro: {formatVotes(res.totalVotos)}</p>
@@ -371,9 +377,12 @@ export default function Analisar() {
             </label>
           ))}
         </div>
-        {emptyStateFor(pivoRows) ? (
+        {carregando ? (
+          <p role="status">a carregar…</p>
+        ) : emptyStateFor(pivoRows) ? (
           <p>{emptyStateFor(pivoRows)}</p>
         ) : (
+          <div style={{ overflowX: "auto" }}>
           <table>
             <caption>Pivô por {pivo}</caption>
             <thead>
@@ -391,6 +400,7 @@ export default function Analisar() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
 
@@ -417,7 +427,9 @@ export default function Analisar() {
         {partidoIgnoradoUF && !semCob && compMode === "anos" && (
           <p role="note">{NOTA_PARTIDO}</p>
         )}
-        {compMode === "municipios" ? (
+        {carregando ? (
+          <p role="status">a carregar…</p>
+        ) : compMode === "municipios" ? (
           <>
             <p>
               <label>
@@ -464,11 +476,14 @@ export default function Analisar() {
       <section aria-label="Dispersão votos x financiamento">
         <h2>Dispersão votos × financiamento</h2>
         {badge}
-        {emptyStateFor(dispersao) ? (
+        {carregando ? (
+          <p role="status">a carregar…</p>
+        ) : emptyStateFor(dispersao) ? (
           <p>
             {SEM_DADO} — financiamento sem fonte no V1 (só votação nominal)
           </p>
         ) : (
+          <div style={{ overflowX: "auto" }}>
           <table>
             <caption>Dispersão votos × financiamento</caption>
             <thead>
@@ -488,6 +503,7 @@ export default function Analisar() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
 
@@ -495,9 +511,12 @@ export default function Analisar() {
         <h2>Série histórica</h2>
         {badge}
         {partidoIgnoradoUF && !semCob && <p role="note">{NOTA_PARTIDO}</p>}
-        {emptyStateFor(ev) ? (
+        {carregando ? (
+          <p role="status">a carregar…</p>
+        ) : emptyStateFor(ev) ? (
           <p>{SEM_DADO}</p>
         ) : (
+          <div style={{ overflowX: "auto" }}>
           <table>
             <caption>Série histórica de votos por ano</caption>
             <thead>
@@ -515,6 +534,7 @@ export default function Analisar() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
 
@@ -522,7 +542,7 @@ export default function Analisar() {
         <h2>Export reproduzível</h2>
         {badge}
         <p>
-          URL compartilhável: <code>{shareUrl}</code>
+          <CopyShare url={shareUrl} />
         </p>
         <p>
           <button
@@ -561,7 +581,11 @@ export default function Analisar() {
             O CSV inclui header de proveniência <code>fonte,url,hash,data</code>.
           </small>
         </p>
-        {emptyStateFor(csvRows) ? <p>{SEM_DADO}</p> : null}
+        {carregando ? (
+          <p role="status">a carregar…</p>
+        ) : emptyStateFor(csvRows) ? (
+          <p>{SEM_DADO}</p>
+        ) : null}
       </section>
     </>
   );

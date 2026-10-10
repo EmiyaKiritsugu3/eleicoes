@@ -13,6 +13,7 @@
 import React from "react";
 import SourceBadge from "./SourceBadge";
 import SealSlot from "./SealSlot";
+import CopyShare from "./CopyShare";
 import { formatVotes, type SealState } from "../lib/data";
 import { isFatoDataset } from "../lib/regiao";
 import {
@@ -311,7 +312,7 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
             <li><a href={`/verificar?regiao=${encodeURIComponent(cod)}`}>Verificar</a></li>
           </ul>
           {seal.official && (
-            <p><small>URL compartilhável: <code>/regiao/{cod}?hash={seal.official.hash}</code></small></p>
+            <p><CopyShare url={`/regiao/${cod}?hash=${seal.official.hash}`} /></p>
           )}
         </section>
       </>
@@ -359,10 +360,14 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
   // em `checksParaRegiao`; IBGE7 nunca casa lá).
   const ufLinha = String(row?.uf ?? "").trim().toUpperCase();
   const regiaoQ = encodeURIComponent(/^[A-Z]{2}$/.test(ufLinha) ? ufLinha : String(ibge));
+  // H1 legível (Task 5): nome do município + UF; IBGE em <small>.
+  // Sem nome no fato, mantém o rótulo legado com o código.
+  const nomeMun = String(row?.nome ?? "").trim();
+  const ufMun = String(row?.uf ?? "").trim().toUpperCase();
 
   return (
     <>
-      <h1>Painel da região — {ibge}</h1>
+      <h1>{nomeMun ? `${nomeMun} (${ufMun})` : `Painel da região — ${ibge}`} <small>IBGE {ibge}</small></h1>
       {topo}
       <section aria-label="Resultado">
         <h2>Resultado — {res.vencedorNome} ({res.vencedorPartido})</h2>
@@ -398,7 +403,7 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
           <li><a href={`/verificar?regiao=${regiaoQ}`}>Verificar</a></li>
         </ul>
         {seal.official && (
-          <p><small>URL compartilhável: <code>/regiao/{ibge}?hash={seal.official.hash}</code></small></p>
+          <p><CopyShare url={`/regiao/${ibge}?hash=${seal.official.hash}`} /></p>
         )}
       </section>
     </>
