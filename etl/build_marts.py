@@ -173,6 +173,8 @@ def _write_partitioned_parquet(df: pd.DataFrame, curated_dir: Path) -> None:
     for child in sorted(curated_dir.iterdir()):
         if not child.name.startswith("ano="):
             continue
+        # Guarda S8707: o prune só remove dentro do curated declarado.
+        _dentro_de(child, curated_dir)
         if child.is_symlink() or child.is_file():
             child.unlink()
         elif child.is_dir():
@@ -370,11 +372,7 @@ def _register_sources(df: pd.DataFrame, manifest_path, source_shas=None) -> None
     deduped = list(by_key.values())
     legacy = [item for item in merged if not isinstance(item, dict)]
     manifest_file = Path(manifest_path)
-    tmp_path = f"{manifest_file}.tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump({"ingestions": deduped + legacy}, f, ensure_ascii=False,
-                  indent=2)
-    os.replace(tmp_path, manifest_file)
+    _write_json_atomico(manifest_file, {"ingestions": deduped + legacy})
 
 
 _SERVED_AGG_NAMES = ("resumo.json", "por_uf.json", "por_candidato.json")
@@ -410,6 +408,9 @@ def _artifact_entries_for(web_data_dir: Path, sources: list[dict],
     by_pair = {(s["ano"], str(s["cargo"]).upper()): s for s in sources}
     entries = []
     for path in _served_files(web_data_dir):
+        # Guarda S8707: só lê bytes servidos de dentro do dir declarado
+        # (bloqueia symlink p/ fora). Antes de qualquer `read_bytes`.
+        _dentro_de(path, web_data_dir)
         raw = path.read_bytes()
         sha = hashlib.sha256(raw).hexdigest()
         if path.name.startswith("fato_"):
@@ -459,14 +460,13 @@ def register_served_artifacts(manifest_path, web_data_dir,
     for entry in entries:
         _validate_entry(entry)  # fail-closed antes de escrever
     manifest_file = Path(manifest_path)
+    # Guarda S8707: leitura confinada ao parent declarado, antes do read.
+    _dentro_de(manifest_file, manifest_file.parent)
     manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
     if not isinstance(manifest, dict):
         manifest = {"ingestions": []}
     manifest["artifacts"] = entries
-    tmp_path = f"{manifest_file}.tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(manifest, f, ensure_ascii=False, indent=2)
-    os.replace(tmp_path, manifest_file)
+    _write_json_atomico(manifest_file, manifest)
     return entries
 
 
@@ -493,6 +493,14 @@ def _relocated_staging(target, dir_publics) -> Path:
     alvo externo mais externo (mesmo parent → mesmo fs, rename atômico).
     Sem aninhamento, é o próprio `<alvo>.tmp`.
     """
+    # Guarda S8707: `..` no alvo é bloqueado AQUI — antes de qualquer
+    # toque no fs (`_abs`/abspath normalizaria a travessia e a herança
+    # `<alvo>.tmp` a espalharia p/ discard/stage/promote). Fail-closed.
+    if ".." in Path(target).parts:
+        raise ValueError(
+            "build_marts: caminho com '..' bloqueado "
+            f"(alvo={os.fspath(target)!r})"
+        )
     target_abs = _abs(target)
     st = Path(f"{target_abs}.tmp")
     for _ in range(10):
@@ -511,8 +519,53 @@ def _prev_for(target) -> Path:
     return Path(f"{Path(target)}.prev")
 
 
-def _remove_path(path) -> None:
-    """Remove arquivo/symlink/dir; ausente é ok (limpeza de staging)."""
+def _dentro_de(path, root) -> Path:
+    """Resolve `path` e exige continência ESTRITA sob `root` (fail-closed).
+
+    Bloqueia path traversal (`..` lexical, absoluto fora da raiz ou
+    escape via symlink): levanta `ValueError` ANTES de qualquer mutação
+    no fs. Precedente: sandbox `RAW_ROOT` em `etl/fetch.py`. Devolve o
+    caminho resolvido.
+    """
+    bruto = os.fspath(path)
+    raiz = os.fspath(root)
+    if ".." in Path(bruto).parts or ".." in Path(raiz).parts:
+        raise ValueError(
+            "build_marts: caminho com '..' bloqueado "
+            f"(path={bruto!r}, raiz={raiz!r})"
+        )
+    p = Path(bruto).resolve()
+    r = Path(raiz).resolve()
+    if r not in p.parents:
+        raise ValueError(
+            "build_marts: caminho fora da raiz esperada "
+            f"(path={bruto!r}, raiz={raiz!r})"
+        )
+    return p
+
+
+def _write_json_atomico(dest, payload) -> None:
+    """Escreve JSON de forma atômica via `<dest>.tmp` + rename (mesmo fs).
+
+    Guarda S8707: o `.tmp` precisa resolver estritamente sob o parent
+    declarado de `dest` (`_dentro_de`) — `..`/escape levanta `ValueError`
+    antes de qualquer escrita.
+    """
+    dest = Path(dest)
+    tmp = Path(f"{dest}.tmp")
+    _dentro_de(tmp, dest.parent)
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, dest)
+
+
+def _remove_path(path, root) -> None:
+    """Remove arquivo/symlink/dir sob `root`; ausente é ok (limpeza de staging).
+
+    Guarda S8707: `path` precisa resolver estritamente sob `root`
+    (`_dentro_de`) — `..`/escape levanta `ValueError` antes de deletar.
+    """
+    _dentro_de(path, root)
     p = Path(path)
     if p.is_symlink() or p.is_file():
         p.unlink()
@@ -569,7 +622,13 @@ def _promote(staging, target) -> None:
     """
     staging, target = Path(staging), Path(target)
     prev = _prev_for(target)
-    _remove_path(prev)
+    # Guardas S8707 (fail-closed, antes de qualquer rename/unlink): os
+    # alvos derivados ficam ao lado do parent declarado; `..`/escape
+    # levanta ValueError com os públicos intactos.
+    _dentro_de(prev, target.parent)
+    _dentro_de(staging, staging.parent)
+    _dentro_de(target, target.parent)
+    _remove_path(prev, target.parent)
     if target.exists() or target.is_symlink():
         target.rename(prev)
     staging.rename(target)
@@ -578,7 +637,7 @@ def _promote(staging, target) -> None:
 def _discard_staging(paths) -> None:
     """Remove todos os stagings (falha de gate: só o staging morre)."""
     for p in paths:
-        _remove_path(p)
+        _remove_path(p, Path(p).parent)
 
 
 def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,

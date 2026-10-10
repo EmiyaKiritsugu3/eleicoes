@@ -286,12 +286,7 @@ def test_gate_failure_keeps_previous_outputs(tmp_path):
     o staging — Parquet particionado, DuckDB, JSONs e manifest anteriores
     seguem byte-idênticos.
     """
-    curated = tmp_path / "curated"
-    curated.mkdir()
-    _seed(curated)
-    webdata = tmp_path / "webdata"
-    db = tmp_path / "t.duckdb"
-    manifest = tmp_path / "m.json"
+    curated, db, manifest, webdata = _novo_caso(tmp_path)
     build_all(curated, db, manifest, web_data_dir=webdata)
     assert _total_votos(db) == 15
     snap = _snapshot_public(curated, db, manifest, webdata)
@@ -309,12 +304,7 @@ def test_stale_staging_cleaned(tmp_path):
     Build bom sucede, o staging obsoleto é descartado (sem restos `.tmp`)
     e as saídas refletem só os dados atuais.
     """
-    curated = tmp_path / "curated"
-    curated.mkdir()
-    _seed(curated)
-    webdata = tmp_path / "webdata"
-    db = tmp_path / "t.duckdb"
-    manifest = tmp_path / "m.json"
+    curated, db, manifest, webdata = _novo_caso(tmp_path)
     for stale in _staging_paths(curated, db, manifest, webdata):
         if stale.name.endswith(".duckdb.tmp") or stale.name.endswith(".json.tmp"):
             stale.parent.mkdir(parents=True, exist_ok=True)
@@ -330,3 +320,58 @@ def test_stale_staging_cleaned(tmp_path):
     _assert_no_staging(curated, db, manifest, webdata)
     assert list(curated.rglob("junk.txt")) == []
     assert list(webdata.rglob("junk.txt")) == []
+
+
+# --- Guarda S8707 (path traversal): alvos derivados confinados à raiz declarada ---
+
+def _novo_caso(tmp_path, csv=_CSV):
+    """Setup padrão dos testes de stage-then-promote (sem duplicar boilerplate)."""
+    curated = tmp_path / "curated"
+    curated.mkdir()
+    (curated / "raw.csv").write_text(csv, encoding="utf-8")
+    return curated, tmp_path / "t.duckdb", tmp_path / "m.json", tmp_path / "webdata"
+
+
+def test_remove_path_fora_da_raiz_levanta(tmp_path):
+    """_remove_path fora da raiz declarada levanta ValueError sem deletar (S8707)."""
+    from etl.build_marts import _remove_path
+
+    alvo = tmp_path / "canario.txt"
+    alvo.write_text("intacto", encoding="utf-8")
+    with pytest.raises(ValueError, match="fora da raiz"):
+        _remove_path(alvo, tmp_path / "outra-raiz")
+    assert alvo.read_text(encoding="utf-8") == "intacto"
+
+
+def test_remove_path_com_dotdot_levanta(tmp_path):
+    """`..` no alvo é bloqueado antes de qualquer unlink (fail-closed, S8707)."""
+    from etl.build_marts import _remove_path
+
+    with pytest.raises(ValueError, match="bloqueado"):
+        _remove_path(tmp_path / "a" / ".." / "evil.txt", tmp_path)
+
+
+def test_promote_com_dotdot_levanta_e_preserva(tmp_path):
+    """_promote com `..` no staging levanta sem renomear nada (S8707)."""
+    from etl.build_marts import _promote
+
+    alvo = tmp_path / "alvo.txt"
+    alvo.write_text("publico", encoding="utf-8")
+    with pytest.raises(ValueError, match="bloqueado"):
+        _promote(tmp_path / "sub" / ".." / "evil.tmp", alvo)
+    assert alvo.read_text(encoding="utf-8") == "publico"
+    assert not (tmp_path / "alvo.txt.prev").exists()
+
+
+def test_build_all_com_dotdot_no_curated_levanta_sem_efeito(tmp_path):
+    """curated com `..` levanta ValueError antes de criar/deletar (S8707)."""
+    canario = tmp_path / "canario.txt"
+    canario.write_text("intacto", encoding="utf-8")
+    travessia = tmp_path / "a" / ".." / "evil"
+    with pytest.raises(ValueError, match="bloqueado"):
+        build_all(travessia, tmp_path / "t.duckdb", tmp_path / "m.json",
+                  web_data_dir=tmp_path / "webdata")
+    assert not (tmp_path / "evil").exists()
+    assert [p for p in tmp_path.rglob("*.tmp")] == []
+    assert [p for p in tmp_path.rglob("*.prev")] == []
+    assert canario.read_text(encoding="utf-8") == "intacto"

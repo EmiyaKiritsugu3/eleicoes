@@ -200,3 +200,35 @@ def test_seed_artifact_entries(tmp_path):
         raw = (webdata / entry["arquivo"]).read_bytes()
         assert entry["sha256"] == hashlib.sha256(raw).hexdigest()
         assert entry["size_bytes"] == len(raw)
+
+
+def test_registro_manifest_com_dotdot_levanta(tmp_path):
+    """register_served_artifacts com `..` no manifest levanta sem escrever (S8707)."""
+    from etl.build_marts import register_served_artifacts
+
+    with pytest.raises(ValueError, match="bloqueado"):
+        register_served_artifacts(tmp_path / "a" / ".." / "m.json",
+                                  tmp_path / "webdata", [])
+    assert not (tmp_path / "m.json").exists()
+    assert [p for p in tmp_path.rglob("*.tmp")] == []
+
+
+def test_artefato_symlink_fora_do_web_dir_levanta(tmp_path):
+    """fato_*.json com symlink p/ fora do web_data_dir é bloqueado (S8707)."""
+    import hashlib
+
+    from etl.build_marts import _artifact_entries_for
+    from etl.sources import V1_DATASETS
+
+    webdata = tmp_path / "webdata"
+    webdata.mkdir()
+    (webdata / "resumo.json").write_text("{}", encoding="utf-8")
+    fora = tmp_path / "fora.json"
+    fora.write_text("{}", encoding="utf-8")
+    (webdata / "fato_2022_1_presidente.json").symlink_to(fora)
+    fonte = [e for e in V1_DATASETS
+             if e["ano"] == 2022 and str(e["cargo"]).upper() == "PRESIDENTE"]
+    assert fonte
+    with pytest.raises(ValueError, match="fora da raiz"):
+        _artifact_entries_for(webdata, fonte, "2022-01-01")
+    assert hashlib.sha256(fora.read_bytes()) is not None  # alvo externo intacto
