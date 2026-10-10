@@ -411,3 +411,24 @@ def test_fato_com_proveniencia_promove_com_hash(tmp_path):
         "artifacts", [])
     arquivos = {e.get("arquivo") for e in entries}
     assert "fato_2022_1_presidente.json" in arquivos
+
+
+def test_fato_triple_valido_sem_ingestion_no_mirror_reprova(tmp_path):
+    """EVOLVE-4 T2: fato de triple válido sem ingestão no mirror reprova.
+
+    Fail-closed intencional: bytes sem proveniência de ingestão nunca
+    promovem (o caminho legítimo é via `build_fato`/seed, que escreve a
+    ingestão junto). O build levanta `RuntimeError` (gate "fato", não
+    filtrado como "manifest*") e os públicos seguem byte-idênticos —
+    só o staging morre.
+    """
+    curated, db, manifest, webdata = _novo_caso(tmp_path)
+    build_all(curated, db, manifest, web_data_dir=webdata)
+    (webdata / "fato_2022_1_presidente.json").write_text(
+        '{"candidatos": [], "municipios": []}', encoding="utf-8")
+    snap = _snapshot_public(curated, db, manifest, webdata)
+    with pytest.raises(RuntimeError, match="gates reprovados") as excinfo:
+        build_all(curated, db, manifest, web_data_dir=webdata)
+    assert "fato" in str(excinfo.value), f"esperava erro de fato, veio: {excinfo.value}"
+    _assert_public_intact(snap, curated, db, manifest, webdata)
+    _assert_no_staging(curated, db, manifest, webdata)
