@@ -15,7 +15,7 @@ import SourceBadge from "./SourceBadge";
 import SealSlot from "./SealSlot";
 import CopyShare from "./CopyShare";
 import { formatVotes, type SealState } from "../lib/data";
-import { censoTemProva, isFatoDataset } from "../lib/regiao";
+import { isFatoDataset } from "../lib/regiao";
 import { SEM_DADO } from "../lib/textos";
 import {
   indiceVencedor,
@@ -300,11 +300,13 @@ interface PainelRegiaoProps {
    *  link "Por quê?" para analisar o pleito exibido, não o default. */
   fatoDataset?: string | null;
   /** Mapa `{ibge7: pop}` do Censo (artefato servido, dado pós-gate: a
-   *  página só repassa o mapa com entry `artifacts` auditada no manifest).
-   *  `undefined` (omitido) → busca client-side de `CENSO_URL` com selo
-   *  runtime (`censoTemProva`); `null`/mapa → valor resolvido
-   *  (determinístico p/ SSR/testes, sem fetch). A pop NUNCA vem de
-   *  `demo.pop` do fato (fixture). */
+   *  página `/regiao/[ibge]` detém o mapa e o repassa (null inicial =
+   *  fail-closed, SEM_DADO transitório). `undefined` (omitido) → SEM_DADO
+   *  sem nenhum fetch: o self-fetch client-side foi removido (EVOLVE-9
+   *  Task 3 — morto em prod: o único call site produtivo sempre passa a
+   *  prop, então `censo===undefined` nunca ocorria fora de testes; o
+   *  artefato segue buscado uma única vez pela página via `fetchJson`).
+   *  A pop NUNCA vem de `demo.pop` do fato (fixture). */
   censo?: CensoMapa | null;
 }
 
@@ -313,33 +315,11 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
   const cod = String(ibge ?? "").trim().toUpperCase();
   const ehExterior = cod === "EXTERIOR";
   const ehUF = /^[A-Z]{2}$/.test(cod);
-  // Censo fato-independente COM selo runtime (EVOLVE-8 Task 1): resolve
-  // da prop (SSR/testes, dado pós-gate da página) ou do fetch client-side
-  // do artefato servido — que exige a entry `artifacts` do Censo no
-  // manifest antes de aceitar os bytes (fail-closed: erro/rede/sem entry
-  // → null, a linha exibe SEM_DADO, nunca throw nem número forjado).
-  const [censoFetch, setCensoFetch] = React.useState<CensoMapa | null>(null);
-  React.useEffect(() => {
-    if (censo !== undefined) return;
-    let vivo = true;
-    void (async () => {
-      try {
-        const resM = await fetch("/data/manifest.json", { cache: "no-store" });
-        const manifest: unknown = resM.ok ? await resM.json() : null;
-        if (!censoTemProva(manifest)) return;
-        const res = await fetch(CENSO_URL, { cache: "no-store" });
-        if (!res.ok) return;
-        const json = await res.json();
-        if (vivo) setCensoFetch(parseCensoMapa(json));
-      } catch {
-        // fail-closed: sem mapa, a linha exibe SEM_DADO (nunca throw)
-      }
-    })();
-    return () => {
-      vivo = false;
-    };
-  }, [censo]);
-  const mapa = censo !== undefined ? censo : censoFetch;
+  // Censo fato-independente COM selo runtime (EVOLVE-8 Task 1): resolve SÓ
+  // da prop (dado pós-gate da página; determinístico p/ SSR/testes, sem
+  // fetch no Painel). `undefined`/null → mapa ausente e a linha exibe
+  // SEM_DADO (fail-closed: nunca throw nem número forjado).
+  const mapa = censo;
   // Linha da pop real (ramo município + fallbacks fato-independentes; o
   // agregado UF usa `popUFNoCenso` + mesma linha pt-BR — Task 3).
   // Baseline Brasil inline, padrão das demais linhas.

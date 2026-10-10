@@ -11,7 +11,7 @@
  * não computa nenhum número (sem fato carregado aqui).
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import SealSlot from "../../components/SealSlot";
 import { getSealState, type SealState } from "../../lib/data";
 import { fetchJson } from "../../lib/fetchJson";
@@ -58,16 +58,71 @@ function lerRegiaoDaUrl(): string {
 function PaginaVerificarIndice() {
   const [regiao, setRegiao] = useState("");
   const [seal, setSeal] = useState<SealState>({ official: null, hasFixture: false, fixtureHash: "" });
+  // Trigger vivo de rotação (paridade Home/regiao, EVOLVE-9 Task 3):
+  // `seloRef` é a verdade comparável fora do closure (o effect de foco
+  // monta uma vez); `ocupadoRef` evita fetch duplicado com um load em voo;
+  // `geracaoRef` barra publish de run stale.
+  const seloRef = useRef<string | null>(null);
+  const ocupadoRef = useRef(false);
+  const geracaoRef = useRef(0);
+
+  // Núcleo único de leitura (mount + rotação partilham — sem fork).
+  const carregarSelo = useCallback(async () => {
+    return getSealState((await fetchJson("/data/manifest.json")).data);
+  }, []);
 
   useEffect(() => {
     // ?regiao= lido ANTES do fetch do manifest: com manifest lento, o filtro
     // regional aplica de imediato em vez de exibir a biblioteca inteira.
     setRegiao(lerRegiaoDaUrl());
+    const minha = ++geracaoRef.current;
+    ocupadoRef.current = true;
     (async () => {
-      const manifest = (await fetchJson("/data/manifest.json")).data;
-      setSeal(getSealState(manifest));
+      try {
+        const novoSeal = await carregarSelo();
+        if (geracaoRef.current !== minha) return;
+        seloRef.current = JSON.stringify(novoSeal);
+        setSeal(novoSeal);
+      } finally {
+        if (geracaoRef.current === minha) ocupadoRef.current = false;
+      }
     })();
-  }, []);
+    return () => {
+      ocupadoRef.current = false;
+    };
+  }, [carregarSelo]);
+
+  // Rotação de manifest (paridade Home/regiao): no foco da janela ou na
+  // volta de visibilidade, re-lê o manifest e só publica quando o selo
+  // mudou — sem selo stale após rotação, sem set duplicado quando inalterado.
+  useEffect(() => {
+    const aoRetomar = async () => {
+      if (ocupadoRef.current) return;
+      ocupadoRef.current = true;
+      const minha = ++geracaoRef.current;
+      try {
+        const novoSeal = await carregarSelo();
+        if (geracaoRef.current !== minha) return;
+        if (JSON.stringify(novoSeal) === seloRef.current) return;
+        seloRef.current = JSON.stringify(novoSeal);
+        setSeal(novoSeal);
+      } finally {
+        if (geracaoRef.current === minha) ocupadoRef.current = false;
+      }
+    };
+    const aoFocar = () => {
+      void aoRetomar();
+    };
+    const aoVisibilidade = () => {
+      if (document.visibilityState === "visible") void aoRetomar();
+    };
+    window.addEventListener("focus", aoFocar);
+    document.addEventListener("visibilitychange", aoVisibilidade);
+    return () => {
+      window.removeEventListener("focus", aoFocar);
+      document.removeEventListener("visibilitychange", aoVisibilidade);
+    };
+  }, [carregarSelo]);
 
   const badge = <SealSlot seal={seal} />;
   const filtro = normalizarRegiao(regiao);

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import SourceBadge from "../../components/SourceBadge";
 import SealSlot from "../../components/SealSlot";
 import CopyShare from "../../components/CopyShare";
@@ -82,6 +82,26 @@ export default function Analisar() {
   const [compA, setCompA] = useState("");
   const [compB, setCompB] = useState("");
   const [urlHash, setUrlHash] = useState("");
+  // Trigger vivo de rotação (paridade Home/regiao, EVOLVE-9 Task 3):
+  // `seloRef` é a verdade comparável fora do closure (o effect de foco
+  // monta uma vez); `ocupadoRef` evita fetch duplicado com um load em voo;
+  // `geracaoRef` barra publish de run stale.
+  const seloRef = useRef<string | null>(null);
+  const ocupadoRef = useRef(false);
+  const geracaoRef = useRef(0);
+
+  // Núcleo único de leitura pesada (paridade com `carregarPesados` da Home,
+  // webfix Finding 6): mount (`effect` abaixo) e rotação (`aoRetomar`)
+  // partilham este helper — a sequência de fetches existe UMA vez (sem
+  // fork). Devolve o selo lido; cada chamador aplica o seu epílogo.
+  const carregarPesados = useCallback(async () => {
+    setResumo((await fetchJson<ResumoJson>("/data/resumo.json")).data);
+    setPorUf((await fetchJson<PorUfRow[]>("/data/por_uf.json")).data ?? []);
+    setPorCand(
+      (await fetchJson<PorCandidatoRow[]>("/data/por_candidato.json")).data ?? [],
+    );
+    return getSealState((await fetchJson("/data/manifest.json")).data);
+  }, []);
 
   useEffect(() => {
     // Hidrata só chaves do allowlist (parseAnalisarSearchParams): ?modoX=1
@@ -109,16 +129,59 @@ export default function Analisar() {
     setCompA(q.a ?? "");
     setCompB(q.b ?? "");
     setUrlHash(q.hash ?? "");
+    const minha = ++geracaoRef.current;
+    ocupadoRef.current = true;
     (async () => {
-      setResumo((await fetchJson<ResumoJson>("/data/resumo.json")).data);
-      setPorUf((await fetchJson<PorUfRow[]>("/data/por_uf.json")).data ?? []);
-      setPorCand(
-        (await fetchJson<PorCandidatoRow[]>("/data/por_candidato.json")).data ?? [],
-      );
-      setSeal(getSealState((await fetchJson("/data/manifest.json")).data));
-      setManifestChecked(true);
+      try {
+        const novoSeal = await carregarPesados();
+        if (geracaoRef.current !== minha) return;
+        seloRef.current = JSON.stringify(novoSeal);
+        setSeal(novoSeal);
+        setManifestChecked(true);
+      } finally {
+        if (geracaoRef.current === minha) ocupadoRef.current = false;
+      }
     })();
-  }, []);
+    return () => {
+      ocupadoRef.current = false;
+    };
+  }, [carregarPesados]);
+
+  // Rotação de manifest (paridade Home/regiao): no foco da janela ou na
+  // volta de visibilidade, re-lê SÓ o manifest (barato) e só refaz o fetch
+  // pesado quando o selo mudou — sem fetch duplicado quando inalterado, sem
+  // números stale após rotação. Troca silenciosa: sem "a carregar", sem
+  // tocar nos filtros — só selo + dados assentam juntos.
+  useEffect(() => {
+    const aoRetomar = async () => {
+      if (ocupadoRef.current) return;
+      ocupadoRef.current = true;
+      const minha = ++geracaoRef.current;
+      try {
+        const conferido = getSealState((await fetchJson("/data/manifest.json")).data);
+        if (geracaoRef.current !== minha) return;
+        if (JSON.stringify(conferido) === seloRef.current) return;
+        const novoSeal = await carregarPesados();
+        if (geracaoRef.current !== minha) return;
+        seloRef.current = JSON.stringify(novoSeal);
+        setSeal(novoSeal);
+      } finally {
+        if (geracaoRef.current === minha) ocupadoRef.current = false;
+      }
+    };
+    const aoFocar = () => {
+      void aoRetomar();
+    };
+    const aoVisibilidade = () => {
+      if (document.visibilityState === "visible") void aoRetomar();
+    };
+    window.addEventListener("focus", aoFocar);
+    document.addEventListener("visibilitychange", aoVisibilidade);
+    return () => {
+      window.removeEventListener("focus", aoFocar);
+      document.removeEventListener("visibilitychange", aoVisibilidade);
+    };
+  }, [carregarPesados]);
 
   const set =
     (k: keyof AnalisarFiltros) => (e: React.ChangeEvent<HTMLInputElement>) =>
