@@ -57,11 +57,18 @@ function Bar({ value, max }: { value: number; max: number }) {
  *  `Home()` sem args que delega para cá. Em produção monta com `{}`.
  */
 
-// Manifest legível: objeto não-nulo (200 com corpo null/array/texto não é
-// manifest — `getSealState` derivaria selo vazio e o wipe apagaria os
-// números validados; ver guard da rotação abaixo).
+// Manifest legível: objeto com `ingestions` array (`200` com corpo
+// null/array/texto OU `{}` sem ingestions não é manifest — `getSealState`
+// derivaria selo vazio e o wipe apagaria os números validados; ver guard
+// da rotação abaixo). Vazio (`[]`) É válido: atesta nada e suprime por
+// fail-closed.
 function manifestoValido(d: unknown): d is Record<string, unknown> {
-  return typeof d === "object" && d !== null && !Array.isArray(d);
+  return (
+    typeof d === "object" &&
+    d !== null &&
+    !Array.isArray(d) &&
+    Array.isArray((d as { ingestions?: unknown }).ingestions)
+  );
 }export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   const [resumo, setResumo] = useState<ResumoJson | null>(null);
   const [porUf, setPorUf] = useState<PorUfRow[]>([]);

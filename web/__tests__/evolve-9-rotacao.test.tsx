@@ -80,6 +80,11 @@ let falharManifest = false;
 // Buraco 200+null: fetch OK mas corpo JSON null — passa no `status==="ok"`
 // e derivava selo vazio (wipe). Também deve manter o último válido.
 let manifestNulo = false;
+// Buraco R3: 200 `{}` passa no object-check e derivava selo vazio (wipe).
+// `{ingestions:[]}` é estruturalmente válido → rotação prossegue e suprime
+// (fail-closed: vazio atesta nada — pinado abaixo).
+let corpoForjado: unknown = undefined;
+let forjarCorpo = false;
 const chamadas: string[] = [];
 
 function instalarRotacao() {
@@ -88,10 +93,13 @@ function instalarRotacao() {
   porUfAtual = POR_UF;
   falharManifest = false;
   manifestNulo = false;
+  corpoForjado = undefined;
+  forjarCorpo = false;
   instalarFetchRoteado(chamadas, (u) => {
     if (u.endsWith("/data/manifest.json")) {
       if (falharManifest) throw new TypeError("fetch failed");
       if (manifestNulo) return { ok: true, json: async () => null };
+      if (forjarCorpo) return { ok: true, json: async () => corpoForjado };
       return { ok: true, json: async () => manifestAtual };
     }
     if (u.endsWith("/data/resumo.json")) return { ok: true, json: async () => RESUMO };
@@ -213,6 +221,31 @@ describe("/explorar: rotação de manifest (EVOLVE-9 Task 3b)", () => {
     expect(div.innerHTML).not.toContain("dado não auditado");
     expect(conta(`/data/${DS}.json`)).toBe(1);
   });
+
+  it("manifest 200 `{}` → dado válido mantido (sem ingestions não é manifest)", async () => {
+    instalarRotacao();
+    const div = await montar(<ExplorarPage />);
+    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
+    corpoForjado = {};
+    forjarCorpo = true;
+    await focarRotacao();
+    expect(conta("/data/manifest.json")).toBe(2); // foco retentou a leitura
+    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
+    expect(div.innerHTML).not.toContain("dado não auditado");
+    expect(conta(`/data/${DS}.json`)).toBe(1);
+  });
+
+  it("manifest 200 `{ingestions:[]}` → suprime (vazio atesta nada, fail-closed)", async () => {
+    instalarRotacao();
+    const div = await montar(<ExplorarPage />);
+    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
+    corpoForjado = { ingestions: [] };
+    forjarCorpo = true;
+    await focarRotacao();
+    // Estruturalmente válido: rotação prossegue e o selo vazio suprime.
+    expect(div.innerHTML).not.toContain(`sha256: ${HASH_A}`);
+    expect(div.innerHTML).toContain("dado não auditado");
+  });
 });
 
 describe("/verificar: rotação de manifest (EVOLVE-9 Task 3b)", () => {
@@ -267,6 +300,30 @@ describe("/verificar: rotação de manifest (EVOLVE-9 Task 3b)", () => {
     expect(conta("/data/manifest.json")).toBe(2); // foco retentou a leitura
     expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
     expect(div.innerHTML).not.toContain("dado não auditado");
+  });
+
+  it("manifest 200 `{}` → selo válido mantido (sem ingestions não é manifest)", async () => {
+    instalarRotacao();
+    const div = await montar(<VerificarPage />);
+    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
+    corpoForjado = {};
+    forjarCorpo = true;
+    await focarRotacao();
+    expect(conta("/data/manifest.json")).toBe(2); // foco retentou a leitura
+    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
+    expect(div.innerHTML).not.toContain("dado não auditado");
+  });
+
+  it("manifest 200 `{ingestions:[]}` → suprime (vazio atesta nada, fail-closed)", async () => {
+    instalarRotacao();
+    const div = await montar(<VerificarPage />);
+    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
+    corpoForjado = { ingestions: [] };
+    forjarCorpo = true;
+    await focarRotacao();
+    // Estruturalmente válido: rotação prossegue e o selo vazio suprime.
+    expect(div.innerHTML).not.toContain(`sha256: ${HASH_A}`);
+    expect(div.innerHTML).toContain("dado não auditado");
   });
 });
 
@@ -330,5 +387,34 @@ describe("/analisar: rotação de manifest (EVOLVE-9 Task 3b)", () => {
     expect(div.innerHTML).toContain("Total de votos no filtro: 3.000");
     expect(div.innerHTML).not.toContain("dado não auditado");
     expect(conta("/data/resumo.json")).toBe(1);
+  });
+
+  it("manifest 200 `{}` → números mantidos (sem ingestions não é manifest)", async () => {
+    instalarRotacao();
+    const div = await montar(<AnalisarPage />);
+    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
+    expect(div.innerHTML).toContain("Total de votos no filtro: 3.000");
+    corpoForjado = {};
+    forjarCorpo = true;
+    await focarRotacao();
+    expect(conta("/data/manifest.json")).toBe(2); // foco retentou a leitura
+    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
+    expect(div.innerHTML).toContain("Total de votos no filtro: 3.000");
+    expect(div.innerHTML).not.toContain("dado não auditado");
+    expect(conta("/data/resumo.json")).toBe(1);
+  });
+
+  it("manifest 200 `{ingestions:[]}` → suprime (vazio atesta nada, fail-closed)", async () => {
+    instalarRotacao();
+    const div = await montar(<AnalisarPage />);
+    expect(div.innerHTML).toContain(`sha256: ${HASH_A}`);
+    expect(div.innerHTML).toContain("Total de votos no filtro: 3.000");
+    corpoForjado = { ingestions: [] };
+    forjarCorpo = true;
+    await focarRotacao();
+    // Estruturalmente válido: rotação prossegue e o selo vazio suprime.
+    expect(div.innerHTML).not.toContain(`sha256: ${HASH_A}`);
+    expect(div.innerHTML).not.toContain("Total de votos no filtro: 3.000");
+    expect(div.innerHTML).toContain("dado não auditado");
   });
 });
