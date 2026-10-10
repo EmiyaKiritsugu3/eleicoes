@@ -497,7 +497,7 @@ export default function Analisar() {
           <p role="status">a carregar…</p>
         ) : semProva ? (
           <p>
-            {SEM_DADO} — sem hash auditado no manifest; números exigem fato hash-verificado
+            {SEM_DADO} — {MOTIVO_SEM_HASH}
           </p>
         ) : emptyStateFor(dispersao) ? (
           <p>
