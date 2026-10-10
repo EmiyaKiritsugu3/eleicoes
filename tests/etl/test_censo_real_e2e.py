@@ -14,6 +14,9 @@ silenciosa — `pytest.skip` aparece no relatório; CI sem rede fica verde por
 skip, não por verde falso). Mecanismo: `SAD_SEM_REDE=1` força o skip
 instantâneo (CI hermético); senão, sonda `ftp.ibge.gov.br:443` com timeout
 curto (3 s) uma vez na coleta do módulo.
+
+EVOLVE-5 Task 6 estende este arquivo (sem fork): `test_censo_real_shape_travado`
+trava o shape do CSV real com o MESMO mecanismo de skip/convenções.
 """
 
 import os
@@ -41,9 +44,86 @@ def _rede_disponivel() -> bool:
     return True
 
 
-# Sem mark em nível de módulo: SÓ o teste de rede real leva skipif (ver
-# decorador em test_censo_real_zip_para_fato_verificavel) — os dois testes
-# offline abaixo rodam sempre, inclusive em CI sem rede.
+# Sem mark em nível de módulo: SÓ os testes de rede real levam skipif (ver
+# decoradores) — os dois testes offline acima rodam sempre, inclusive em CI
+# sem rede.
+
+
+@pytest.mark.skipif(not _rede_disponivel(), reason=_SKIP_REASON)
+def test_censo_real_shape_travado(tmp_path, monkeypatch):
+    """Shape do CSV real travado: `;`-sep, latin1, CD_MUN+v0001, 5570, Δ5101837.
+
+    Baixa o MESMO zip barato (326 KB) do teste de ingestão acima — sem
+    ingestão/DB/manifest aqui, só os bytes crus do FTP. Cada assert trava
+    uma premissa load-bearing de `etl.censo.ingerir_censo` (sep/encoding/
+    colunas lidos literais em `pd.read_csv` + aliases de `normalize_censo`).
+    """
+    import csv
+    import zipfile
+
+    from etl import fetch
+    from etl.sources import CENSO_DATASETS, TOTAL_CENSO_2022
+
+    monkeypatch.setattr(fetch, "RAW_ROOT", tmp_path)
+    url = CENSO_DATASETS[0]["url"]
+    dest = tmp_path / url.rsplit("/", 1)[-1]
+    fetch.download_dataset(url, dest)
+    payload = dest.read_bytes()
+    assert 300_000 <= len(payload) <= 350_000
+
+    with zipfile.ZipFile(dest) as zf:
+        csvs = [
+            i for i in zf.infolist()
+            if not i.is_dir() and i.filename.lower().endswith(".csv")
+        ]
+        assert len(csvs) == 1
+        assert csvs[0].filename == "Agregados_por_municipios_basico_BR.csv"
+        bruto = zf.read(csvs[0].filename)
+
+    # latin1 exigido: o byte 0xF4 (õ de "Rondônia") quebra decode utf-8
+    # estrito — ler como utf-8 corromperia os nomes, não só os acentos.
+    with pytest.raises(UnicodeDecodeError):
+        bruto.decode("utf-8")
+    linhas = bruto.decode("latin1").splitlines()
+
+    # `;` é load-bearing: com `,` o header vira 1 coluna só (join impossível).
+    assert ";" in linhas[0]
+    assert len(next(csv.reader([linhas[0]], delimiter=","))) == 1
+    rows = list(csv.reader(linhas, delimiter=";"))
+    hdr = rows[0]
+    assert "CD_MUN" in hdr  # alias de ibge7 em normalize_censo
+    assert "v0001" in hdr  # alias de pop (minúsculo no arquivo real)
+    assert len(hdr) == 26
+
+    dados = rows[1:]
+    assert len(dados) == 5570
+    i_cd = hdr.index("CD_MUN")
+    i_v = hdr.index("v0001")
+    cds = [r[i_cd] for r in dados]
+    assert len(set(cds)) == 5570
+    assert all(len(c) == 7 and c.isdigit() for c in cds)
+    # Delta 5101837 (Boa Esperança do Norte/MT, emancipado pós-Censo):
+    # existe na API de localidades mas NÃO no CSV — join sem par vira
+    # demo None ("sem dado oficial"), nunca linha fantasma.
+    assert "5101837" not in set(cds)
+    # v0001 é de fato a pop: a soma fecha no total oficial auditado.
+    assert sum(int(r[i_v]) for r in dados) == TOTAL_CENSO_2022
+
+
+# EVOLVE-6 hook — dimensionamento TSE (Task 6, medido 2026-10-10 via HEAD;
+# SEM download nacional ainda). O e2e fato-real full ancora AQUI (mesmo
+# skip SAD_SEM_REDE/sonda, gate de soma + manifest verde) e baixa os zips
+# `votacao_candidato_munzona_{ano}.zip` do CDN TSE (todos HTTP 200,
+# Content-Type application/zip, Accept-Ranges: bytes; Content-Length):
+#   2014:  494100168 B (~471 MiB) | 2016:  60594613 B (~58 MiB)
+#   2018:  395389280 B (~377 MiB) | 2020:  57815640 B (~55 MiB)
+#   2022:  596166602 B (~569 MiB) | 2024:  48047775 B (~46 MiB)
+# Total: 1652114078 B (~1,54 GiB). Catálogo CKAN
+# `package_show?id=resultados-{ano}` (200, 34 recursos p/ 2022) confirma o
+# recurso "Votação nominal por município e zona" → a MESMA url de
+# `etl.sources.V1_DATASETS` (padrão
+# `.../votacao_candidato_munzona_{ano}.zip`). Números completos no report
+# `.superpowers/sdd/2026-10-10-evolve-5/task-6-report.md`.
 
 
 def test_flag_sem_rede_forca_skip(monkeypatch):
