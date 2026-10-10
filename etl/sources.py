@@ -55,6 +55,21 @@ real é calculado por `etl.fetch.download_dataset` e registrado via
 # TOTAL_CENSO_2022). Escolaridade vive em
 # Agregados_por_municipios_alfabetizacao_BR.zip (V-codes sem mapeamento
 # p/ esc_* — esc_* seguem nulos fail-closed, "sem dado oficial").
+# BLOQUEIO VERIFICADO em 2026-10-10 (EVOLVE-6 Task 5 — sem chute de
+# mapeamento): o zip (HTTP 200, 3418671 bytes) tem 1 único membro CSV com
+# 364 colunas = CD_MUN + NM_MUN + V00644…V01005 (362 V-codes), nenhuma
+# casando com os aliases de esc_*; e o dicionário oficial no mesmo dir
+# do FTP (dicionario_de_dados_agregados_por_setores_censitarios_20260520.
+# xlsx, HTTP 200, 118369 bytes, 3407 linhas) documenta os 362 V-codes
+# TODOS no Tema "Alfabetização" (condição sabe-ler-escrever × idade ×
+# sexo × cor/raça — ex. V00900 = "15 anos ou mais, sabe ler e escrever")
+# com ZERO variáveis de nível de instrução (superior/médio/fundamental/
+# ensino/instrução/frequenta/escola/creche/graduação) em todas as abas.
+# Alfabetização ≠ escolaridade: taxa de alfabetizados nada diz sobre %
+# com superior/médio/fundamental completo — derivar esc_* disso seria
+# chute. Nenhum outro agregado por município da família tem tema de
+# escolaridade (ver dicionário). Evidência executável em
+# tests/etl/test_escolaridade_bloqueada.py (padrão T3).
 """
 
 _CENSO_CATALOG = (
