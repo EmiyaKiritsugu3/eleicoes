@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import MapaBrasil from "./MapaBrasil";
+import { MALHA_MUNICIPIOS_URL, UFS } from "../lib/malha";
 import SourceBadge from "./SourceBadge";
 import SealSlot from "./SealSlot";
 import perguntasJson from "../data/perguntas.json";
@@ -22,6 +24,27 @@ import {
 import { vereditoTemProva } from "../lib/regiao";
 
 const SEM_DADO = "sem dado oficial";
+
+/** Prefixo IBGE de 2 dígitos → sigla UF (códigos estáveis do IBGE).
+ *  Permite ao clique no canvas (que retorna IBGE7 do município) focar o
+ *  filtro UF da Home sem adivinhar: prefixo fora da tabela → null. */
+const UF_POR_CODIGO_IBGE: Record<string, string> = {
+  "11": "RO", "12": "AC", "13": "AM", "14": "RR", "15": "PA", "16": "AP", "17": "TO",
+  "21": "MA", "22": "PI", "23": "CE", "24": "RN", "25": "PB", "26": "PE", "27": "AL",
+  "28": "SE", "29": "BA", "31": "MG", "32": "ES", "33": "RJ", "35": "SP",
+  "41": "PR", "42": "SC", "43": "RS", "50": "MS", "51": "MT", "52": "GO", "53": "DF",
+};
+
+/** Seleção do mapa → sigla UF p/ focar o filtro (fail-closed: EXTERIOR e
+ *  seleções desconhecidas retornam null em vez de focar errado). Aceita
+ *  sigla UF (fallback em lista/teclado) ou IBGE7 (clique no canvas). */
+export function ufDeSelecaoMapa(sel: string): string | null {
+  const s = (sel ?? "").trim().toUpperCase();
+  if ((UFS as readonly string[]).includes(s)) return s;
+  const m = /^(\d{2})\d{5}$/.exec(s);
+  if (m) return UF_POR_CODIGO_IBGE[m[1]] ?? null;
+  return null;
+}
 
 async function fetchJson<T>(path: string): Promise<T | null> {
   try {
@@ -57,6 +80,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   const [porCand, setPorCand] = useState<PorCandidatoRow[]>([]);
   const [seal, setSeal] = useState<SealState>({ official: null, hasFixture: false, fixtureHash: "" });
   const [manifestChecked, setManifestChecked] = useState(false);
+  const [malhaOk, setMalhaOk] = useState(false);
   const [f, setF] = useState<Filtros>(initialFiltros ?? {});
 
   useEffect(() => {
@@ -67,6 +91,25 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
       setSeal(getSealState(await fetchJson("/data/manifest.json")));
       setManifestChecked(true);
     })();
+  }, []);
+
+  // Sonda HEAD da malha municipal (artefato gitignored, gerado por
+  // `scripts/malha.py` no CI): com artefato a seção mostra o mapa clicável;
+  // sem artefato, o fallback honesto na lista v1. Qualquer erro → false
+  // (fail-closed, nunca canvas quebrado).
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      try {
+        const res = await fetch(MALHA_MUNICIPIOS_URL, { method: "HEAD", cache: "no-store" });
+        if (vivo) setMalhaOk(res.ok);
+      } catch {
+        if (vivo) setMalhaOk(false);
+      }
+    })();
+    return () => {
+      vivo = false;
+    };
   }, []);
 
   const set = (k: keyof Filtros) => (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -161,13 +204,22 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
       </section>
 
       <section aria-label="Mapa por UF">
-        <h2>Mapa por UF (lista v1 — TopoJSON fora do escopo YAGNI)</h2>
+        <h2>Mapa por UF</h2>
         {candidatoAtivo && <p role="note">{NOTA_CANDIDATO_GLOBAL}</p>}
         {badge}
         {carregando ? (
           <p role="status">a carregar…</p>
         ) : semProva || ufs.length === 0 ? (
           <p>{SEM_DADO}</p>
+        ) : malhaOk ? (
+          <MapaBrasil
+            malhaUrl={MALHA_MUNICIPIOS_URL}
+            nivel="uf"
+            onSelectIbge={(sel) => {
+              const uf = ufDeSelecaoMapa(sel);
+              if (uf) setF((prev) => ({ ...prev, uf }));
+            }}
+          />
         ) : (
           <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Votos por UF">
           <table>
