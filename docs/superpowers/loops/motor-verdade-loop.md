@@ -45,3 +45,6 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 ## PR-GREEN iteração 3 (2026-10-10 ~02:55 UTC)
 - Push f0f2e0d: install OK, pytest 93 OK, vitest 238/238 OK — mas exit 1 por "unhandled error" (P2 cubic confirmado): jsdom 30 exige Node 22+, CI rodava Node 20 (EOL).
 - Fix: ci.yml node-version 20 → 22 + teste de piso (tomllib/regex). Local é Node 26 (não reproduz; CI é a prova).
+
+## PR-GREEN iteração 3 (2026-10-10 ~03:00 UTC)
+- CI VERDE ×2 (1m15s). Resta: cubic + CodeRabbit re-review dos novos pushes.
