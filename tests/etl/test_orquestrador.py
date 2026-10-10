@@ -150,3 +150,46 @@ def test_run_sintetico_emite_censo_servido_atestado(tmp_path):
     assert entries[0]["sha256"] == hashlib.sha256(raw).hexdigest()
     assert entries[0]["size_bytes"] == len(raw)
     assert entries[0]["source_url"] == CENSO_DATASETS[0]["url"]
+
+
+def test_run_sintetico_sem_total_nao_serve_censo(tmp_path):
+    """Gatefix (cubic P2): `--censo-csv` SEM `--censo-total-esperado` não
+    emite bytes no servido (sem total auditado, nunca servido) — emissão
+    local (irmã do manifest, atestada no canônico) em vez disso."""
+    import hashlib
+
+    from etl.__main__ import main
+
+    argv, webdata = _argv_base(tmp_path)
+    assert main(argv) == 0  # sem total: chain ok, dim+ingestão escritas
+    assert not (webdata / "censo_municipios.json").exists()
+    mirror = json.loads((webdata / "manifest.json").read_text(encoding="utf-8"))
+    assert [a for a in mirror.get("artifacts", [])
+            if a.get("arquivo") == "censo_municipios.json"] == []
+    # Comportamento documentado: artefato local (não servido), auditável.
+    manifest = tmp_path / "manifest.json"
+    irmao = tmp_path / "censo_municipios.json"
+    raw = irmao.read_bytes()
+    assert json.loads(raw.decode("utf-8")) == {
+        "3550308": 10000, "3304557": 12000}
+    doc = json.loads(manifest.read_text(encoding="utf-8"))
+    entries = [a for a in doc.get("artifacts", [])
+               if a.get("arquivo") == "censo_municipios.json"]
+    assert len(entries) == 1
+    assert entries[0]["sha256"] == hashlib.sha256(raw).hexdigest()
+    assert entries[0]["size_bytes"] == len(raw)
+
+
+def test_sem_fato_com_total_retem_censo_do_servido(tmp_path):
+    """Gatefix (cubic P2): com `--sem-fato` não há recalc de served
+    artifacts adiante — o artefato é retido do servido (withhold) em vez
+    de servido sem atestação; o trio segue servido/atstado."""
+    from etl.__main__ import main
+
+    argv, webdata = _argv_base(tmp_path)
+    assert main([*argv, "--censo-total-esperado", "22000", "--sem-fato"]) == 0
+    assert not (webdata / "censo_municipios.json").exists()
+    assert (webdata / "resumo.json").is_file()
+    irmao = json.loads(
+        (tmp_path / "censo_municipios.json").read_text(encoding="utf-8"))
+    assert irmao == {"3550308": 10000, "3304557": 12000}

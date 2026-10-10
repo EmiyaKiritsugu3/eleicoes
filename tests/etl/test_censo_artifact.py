@@ -188,3 +188,28 @@ def test_artifact_out_path_com_dotdot_levanta_sem_criar(tmp_path):
     assert not (tmp_path / "evil.json").exists()
     assert not (tmp_path / "sub").exists()
     assert [p for p in tmp_path.rglob("*.tmp")] == []
+
+
+def test_artifact_path_fora_do_dir_do_manifest_levanta(tmp_path, monkeypatch):
+    """Gatefix (cubic P2): `artifact_path` fora do dir do manifest é
+    rejeitado fail-closed em pt-BR — a entry grava basename e o verify
+    resolve irmãos (atenderia o arquivo errado). Nada é criado."""
+    import pytest
+
+    import etl.censo as censo_mod
+    from etl import fetch
+    from etl.censo import ingerir_censo
+
+    monkeypatch.setattr(fetch, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(fetch, "download_dataset",
+                        _fake_download(_zip_bytes()))
+    monkeypatch.setattr(censo_mod, "TOTAL_CENSO_2022", _FAKE_TOTAL)
+    db = tmp_path / "censo.duckdb"
+    manifest = tmp_path / "manifest.json"
+    fora = tmp_path / "outro" / "censo_municipios.json"
+    with pytest.raises(ValueError, match="irm.o do manifest"):
+        ingerir_censo(str(db), str(manifest), artifact_path=str(fora))
+    assert not db.exists()
+    assert not manifest.exists()
+    assert not fora.exists()
+    assert not (tmp_path / "outro").exists()

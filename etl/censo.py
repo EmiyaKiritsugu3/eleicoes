@@ -466,7 +466,9 @@ def ingerir_censo(duckdb_path, manifest_path, url=None, raw_dir=None,
     `duckdb_path`/`manifest_path`/artefato intocados (nunca dim nem
     `{ibge7: pop}` sem total auditado). `artifact_path` default =
     `<dir do manifest>/censo_municipios.json` (irmão do manifest, único
-    que `verify_manifest` atesta byte a byte); `data` é repassado à
+    que `verify_manifest` atesta byte a byte); explícito fora do dir do
+    manifest levanta `ValueError` fail-closed (a entry grava basename e
+    o verify resolve irmãos). `data` é repassado à
     ingestão e ao artefato (mesmo dia, sem flake de meia-noite).
     Custo zero: só stdlib + deps já declaradas (requests/pandas/duckdb).
     """
@@ -477,6 +479,21 @@ def ingerir_censo(duckdb_path, manifest_path, url=None, raw_dir=None,
             "ingerir_censo: url pendente/ausente, ingestão bloqueada "
             "(sem dado oficial)"
         )
+    manifest_p = Path(manifest_path)
+    if artifact_path is not None:
+        # Fail-closed (gatefix PR#9): a entry grava só o basename e o
+        # verify resolve irmãos do manifest — artefato fora do dir seria
+        # atestado contra o arquivo errado. Comparação canônica
+        # (`resolve`): `..` que permanece dentro continua válido.
+        alvo = Path(artifact_path)
+        if alvo.resolve().parent != manifest_p.resolve().parent:
+            raise ValueError(
+                "ingerir_censo: artifact_path fora do dir do manifest "
+                f"bloqueado (artifact_path={os.fspath(artifact_path)!r}, "
+                f"manifest={os.fspath(manifest_path)!r}) — o artefato precisa "
+                "ser irmão do manifest p/ `verify_manifest` atestá-lo "
+                "(sem dado oficial)"
+            )
     base = Path(raw_dir) if raw_dir is not None else fetch.RAW_ROOT
     nome_zip = (
         unquote(urlparse(src_url).path.rsplit("/", 1)[-1])
@@ -514,7 +531,6 @@ def ingerir_censo(duckdb_path, manifest_path, url=None, raw_dir=None,
         )
     finally:
         con.close()
-    manifest_p = Path(manifest_path)
     manifest_p.parent.mkdir(parents=True, exist_ok=True)
     entry = register_censo_ingest(
         str(manifest_p), rows=len(df), sha256=sha, dataset=entry_meta,
