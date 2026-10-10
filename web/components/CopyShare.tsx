@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 /** Botão copiar p/ URLs compartilháveis (Task 5, UX).
  *
@@ -16,15 +16,21 @@ export default function CopyShare({ url }: { url: string }) {
   // URL exibida/copiada: SSR renderiza `url` como veio (sem window no
   // servidor); no cliente, o efeito abaixo absolutiza contra o origin.
   const [exibida, setExibida] = useState(url);
+  // Identidade da última solicitação de cópia: se `url` mudar com um
+  // writeText pendente, a escrita obsoleta não atualiza o estado.
+  const reqRef = useRef(0);
 
   // Estado stale se `url` mudar após uma cópia: volta a ocioso (e
   // re-resolve a URL absoluta) a cada `url` nova.
   useEffect(() => {
+    reqRef.current++;
     setEstado("ocioso");
     setExibida(paraAbsoluta(url));
   }, [url]);
 
   async function copiar() {
+    const alvo = paraAbsoluta(url);
+    const minhaVez = ++reqRef.current;
     try {
       const clip =
         typeof navigator !== "undefined"
@@ -32,13 +38,15 @@ export default function CopyShare({ url }: { url: string }) {
               .clipboard
           : undefined;
       if (clip?.writeText) {
-        await clip.writeText(paraAbsoluta(url));
+        await clip.writeText(alvo);
+        if (reqRef.current !== minhaVez) return;
         setEstado("copiado");
         return;
       }
     } catch {
       // Queda p/ cópia manual abaixo (fallback select).
     }
+    if (reqRef.current !== minhaVez) return;
     setEstado("manual");
   }
 

@@ -17,6 +17,14 @@ import warnings
 
 _PESOS = (1, 2, 1, 2, 1, 2)
 
+# Exceções oficiais ao DV mod-10 (9 reais, o resto rejeita).
+# Fonte: IBGE API servicodados.ibge.gov.br/api/v1/localidades/municipios.
+# Método: 5571 municípios baixados em 2026-10-10; DV recalculado pela regra.
+_EXCECOES_OFICIAIS = frozenset({
+    "2201919", "2201988", "2202251", "2611533", "3117836",
+    "3152131", "4305871", "5203939", "5203962",
+})
+
 
 def calcular_dv(base6: str) -> str:
     """Devolve o DV mod-10 da base de 6 dígitos (string de 1 dígito)."""
@@ -28,9 +36,11 @@ def calcular_dv(base6: str) -> str:
 
 
 def dv_ok(code) -> bool:
-    """Verdadeiro se `code` é IBGE7 com DV mod-10 válido; resto é falso."""
+    """Verdadeiro se `code` é IBGE7 com DV mod-10 válido ou uma das 9 exceções oficiais; resto é falso."""
     if not isinstance(code, str) or len(code) != 7 or not code.isdigit():
         return False
+    if code in _EXCECOES_OFICIAIS:
+        return True
     return calcular_dv(code[:6]) == code[6]
 
 

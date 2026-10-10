@@ -406,6 +406,35 @@ describe("ux CopyShare copia + fallback", () => {
       Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
     }
   });
+  it("writeText obsoleto não marca copiado da url nova", async () => {
+    const { default: CopyShare } = await import("../components/CopyShare");
+    let resolver!: (_v: void) => void;
+    const writeText = vi.fn(
+      (_s: string) => new Promise<void>((res) => void (resolver = res)),
+    );
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    try {
+      const div = await renderJsdom(<CopyShare url="/analisar?hash=aaa" />);
+      let pendente!: Promise<void>;
+      await act(async () => {
+        pendente = (async () => {
+          div.querySelector("button")!.click();
+        })();
+      });
+      // URL muda com a escrita pendente; ao resolver, nada de "copiado".
+      await rerenderJsdom(<CopyShare url="/analisar?hash=bbb" />);
+      await act(async () => {
+        resolver();
+        await pendente;
+      });
+      expect(div.querySelector('[role="status"]')).toBeNull();
+    } finally {
+      Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    }
+  });
   it("share spots usam CopyShare (analisar/explorar/regiao)", async () => {
     mockFetchOk();
     const divA = await renderJsdom(<Analisar />);
