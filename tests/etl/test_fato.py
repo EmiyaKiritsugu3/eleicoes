@@ -37,16 +37,7 @@ _DEMO_FIELDS = [
 ]
 
 
-def _dv(base: str) -> str:
-    # Dígito verificador IBGE mod-10 (espelha a regra de etl/normalize.py e
-    # etl/censo.py: pesos 1,2,1,2,1,2 esq->dir, DV=(10-soma%10)%10).
-    # Replicado aqui (não importado) porque o helper de produção é privado
-    # e produção está fora de escopo desta correção de fixtures.
-    total = sum(
-        (int(d) * w) // 10 + (int(d) * w) % 10
-        for d, w in zip(base, (1, 2, 1, 2, 1, 2))
-    )
-    return str((10 - total % 10) % 10)
+from etl.ibge_dv import calcular_dv as _dv  # fonte única (era réplica local)
 
 
 def _ibge(i: int) -> str:

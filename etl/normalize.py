@@ -14,9 +14,10 @@ Schema canônico (ordem exata):
 
 from __future__ import annotations
 
-import warnings
-
 import pandas as pd
+
+from etl.ibge_dv import dv_ok as _dv_ok  # re-export p/ compat + teste de deduplicação
+from etl.ibge_dv import validar_serie_ibge
 
 CANONICAL_COLUMNS = [
     "ano",
@@ -124,39 +125,8 @@ def normalize_resultados(df: pd.DataFrame) -> pd.DataFrame:
     digits = ibge_raw.map(_fix_text).str.strip().str.replace(r"\D", "", regex=True)
     # M1: só 7 dígitos é IBGE válido; valida os dígitos crus (antes do
     # zfill, que mascararia "123" como "0000123") e descarta o resto p/ "".
-    # DV (EVOLVE-1 T3): o 7º dígito é verificador mod-10 da base (6
-    # primeiros): pesos 1,2,1,2,1,2 esq->dir, soma os dígitos dos produtos,
-    # DV=(10-soma%10)%10. Ex.: "3550308" DV 8 ok; transposto "5350308"
-    # (DV 1≠8) rejeitado. (Regra duplicada em etl/censo.py — sem módulo
-    # geo comum; contra abstração prematura.)
-    def _dv_ok(code) -> bool:
-        if not isinstance(code, str) or len(code) != 7 or not code.isdigit():
-            return False
-        total = sum(
-            (int(d) * w) // 10 + (int(d) * w) % 10
-            for d, w in zip(code[:6], (1, 2, 1, 2, 1, 2))
-        )
-        return (10 - total % 10) % 10 == int(code[6])
-
-    bad_shape = ~digits.str.fullmatch(r"\d{7}").fillna(False)
-    n_bad = int(bad_shape.sum())
-    if n_bad:
-        warnings.warn(
-            f"normalize_resultados: {n_bad} codigo(s) IBGE fora do padrao "
-            "de 7 digitos descartados (vazio)",
-            UserWarning,
-            stacklevel=2,
-        )
-    dv_bad = ~bad_shape & ~digits.map(_dv_ok)
-    n_dv = int(dv_bad.sum())
-    if n_dv:
-        warnings.warn(
-            f"normalize_resultados: {n_dv} codigo(s) IBGE com digito "
-            "verificador invalido descartados (vazio)",
-            UserWarning,
-            stacklevel=2,
-        )
-    bad = bad_shape | dv_bad
+    # DV (ver etl/ibge_dv.py — fonte única; regra mod-10 no 7º dígito).
+    bad = validar_serie_ibge(digits, "normalize_resultados")
     ibge = digits.where(~bad, "").str.zfill(7)
     out["municipio_ibge"] = ibge.replace("0000000", "")
 
