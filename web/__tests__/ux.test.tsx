@@ -617,11 +617,11 @@ describe("copy pt-BR (EVOLVE-3 Task 5: rótulos, hash nomeado, baixar)", () => {
       />,
     );
     const perfil = perfilDe(html);
-    expect(perfil).toContain("(peso: eleitorado)");
+    expect(perfil).toContain("eleitores (peso: eleitorado)");
     expect(perfil).not.toContain("(peso: eleitores)");
     expect(perfil).not.toContain("(peso: misto)");
   });
-  it("explorar perfil misto: cadeia de fallback em pt-BR, sem 'misto' cru", () => {
+  it("explorar perfil misto: peso efetivo, sem rótulo 'eleitores' (nEleitores inclui fallback)", () => {
     const html = renderToStaticMarkup(
       <ExplorarConteudo
         fato={{ candidatos: CANDIDATOS, municipios: linhasPesoMisto() }}
@@ -630,7 +630,8 @@ describe("copy pt-BR (EVOLVE-3 Task 5: rótulos, hash nomeado, baixar)", () => {
       />,
     );
     const perfil = perfilDe(html);
-    expect(perfil).toContain("(peso: eleitorado, total ou população)");
+    expect(perfil).toContain("de peso efetivo (eleitorado, total ou população)");
+    expect(perfil).not.toContain("eleitores (peso:");
     expect(perfil).not.toContain("(peso: misto)");
   });
   it("curada perfil: peso efetivo no modo misto, eleitores no puro", () => {

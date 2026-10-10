@@ -717,8 +717,10 @@ export function ExplorarConteudo({
             <>
               {(perfil.pesoFonte === "misto") && <p role="note">{NOTA_PESO_MISTO}</p>}
               <p>
-                n = {formatVotes(perfil.nMun)} municípios · {formatVotes(perfil.nEleitores)} eleitores (peso:{" "}
-                {perfil.pesoFonte === "misto" ? "eleitorado, total ou população" : "eleitorado"})
+                n = {formatVotes(perfil.nMun)} municípios · {formatVotes(perfil.nEleitores)}{" "}
+                {perfil.pesoFonte === "misto"
+                  ? "de peso efetivo (eleitorado, total ou população)"
+                  : "eleitores (peso: eleitorado)"}
               </p>
               <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Médias ponderadas vs Brasil">
               <table>
