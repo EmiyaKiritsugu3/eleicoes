@@ -61,6 +61,7 @@ import pandas as pd
 
 from etl import ETL_VERSION
 from etl.build_marts import register_served_artifacts
+from etl.build_marts import _prune_fato_sem_proveniencia
 from etl.censo import check_censo_sum
 from etl.manifest import write_manifest
 from etl.sources import CENSO_DATASETS, V1_DATASETS
@@ -121,7 +122,12 @@ def _atualizar_manifest_servido(out_dir, ingestion: dict, v1_entry: dict) -> Non
     fato atual + as já atestadas nas ingestões do mirror (só V1 com
     cargo; Censo-type sem cargo nunca gera artifact e é ignorado): sem
     a reconstrução, o replace integral colapsaria a atribuição do trio
-    em dir servido multi-par para a fonte única do fato atual.
+    em dir servido multi-par para a fonte única do fato atual. Antes do
+    recalc, fatos stray sem proveniência são podados do out_dir com o
+    mesmo predicado do build_all (`_prune_fato_sem_proveniencia`,
+    reutilizado por import — precedente: `_validate_entry`/`_artifact_entries_for`
+    cruzam módulos `etl`): triple que não casa com as fontes atestadas
+    nunca é servido hashless; só fato_*.json é tocado, nunca não-fato.
     """
     served_path = Path(out_dir) / "manifest.json"
     try:
@@ -165,6 +171,9 @@ def _atualizar_manifest_servido(out_dir, ingestion: dict, v1_entry: dict) -> Non
                     "dataset": e["dataset"],
                     "tipo": e["tipo"],
                 })
+    # Fail-closed: fato sem fonte atestada seria servido sem hash
+    # (`_artifact_entries_for` o ignora) — podar antes do recalc.
+    _prune_fato_sem_proveniencia(Path(out_dir), sources)
     register_served_artifacts(served_path, Path(out_dir), sources)
 
 

@@ -332,3 +332,30 @@ def test_standalone_build_fato_atualiza_sha_nos_artifacts(tmp_path):
     assert entries2[0]["size_bytes"] == len(raw2)
     assert len(manifest2["ingestions"]) == 1  # upsert idempotente
     assert verify_manifest(str(served_path)) is True
+
+
+def test_standalone_poda_fato_sem_proveniencia(tmp_path):
+    """Standalone nunca serve fato hashless: stray sem fonte atestada é podado.
+
+    Espelha `_prune_fato_sem_proveniencia` do build_all: fato_*.json cujo
+    triple não casa com as fontes atestadas no mirror é removido do
+    out_dir; não-fato segue intacto; o fato atual segue com artifact.
+    """
+    from etl.build_fato import build_fato
+    from etl.manifest import verify_manifest
+
+    db = tmp_path / "t.duckdb"
+    _seed_fato_db(db)
+    out_dir = tmp_path / "out"
+    build_fato(str(db), str(out_dir), 2022, 1, "PRESIDENTE")
+
+    stray = out_dir / "fato_2010_2_presidente.json"  # parseável, sem fonte V1
+    stray.write_text('{"forjado": true}', encoding="utf-8")
+    nota = out_dir / "nota.txt"
+    nota.write_text("humano", encoding="utf-8")
+
+    build_fato(str(db), str(out_dir), 2022, 1, "PRESIDENTE")
+    assert not stray.exists()  # podado: sem proveniência, nunca servido
+    assert nota.read_text(encoding="utf-8") == "humano"  # não-fato intacto
+    assert (out_dir / "fato_2022_1_presidente.json").is_file()
+    assert verify_manifest(str(out_dir / "manifest.json")) is True
