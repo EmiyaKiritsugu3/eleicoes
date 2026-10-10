@@ -512,7 +512,7 @@ export function ExplorarConteudo({
         </h2>
         {badge}
         {!fato || !hashAuditado ? (
-          <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}{!fato ? "" : " — sem hash auditado no manifest; números exigem fato hash-verificado"}</p>
+          <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}{!hashAuditado ? " — sem hash auditado no manifest; números exigem fato hash-verificado" : ""}</p>
         ) : !coberto ? (
           <p role="alert" style={ALERTA_STYLE}>
             {SEM_DADO} — combinação sem cobertura nos blocos; ajuste quem · onde · cruzar com
@@ -712,7 +712,7 @@ export function ExplorarConteudo({
               média de derrota não descreve onde venceu.
             </p>
           ) : !perfil || !base || perfil.nMun === 0 ? (
-            <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}{!fato || hashAuditado ? "" : " — sem hash auditado no manifest; números exigem fato hash-verificado"}</p>
+            <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}{!hashAuditado ? " — sem hash auditado no manifest; números exigem fato hash-verificado" : ""}</p>
           ) : (
             <>
               {(perfil.pesoFonte === "misto") && <p role="note">{NOTA_PESO_MISTO}</p>}
@@ -761,7 +761,7 @@ export function ExplorarConteudo({
           <h2>Mapa — vencedor por município</h2>
           {badge}
           {!fato || !hashAuditado ? (
-            <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}{!fato ? "" : " — sem hash auditado no manifest; números exigem fato hash-verificado"}</p>
+            <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}{!hashAuditado ? " — sem hash auditado no manifest; números exigem fato hash-verificado" : ""}</p>
           ) : (
             <MapaBrasil
               malhaUrl={MALHA_MUNICIPIOS_URL}

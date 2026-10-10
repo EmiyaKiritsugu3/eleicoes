@@ -225,3 +225,74 @@ describe("gating-paridade Task 4: controle — manifest válido segue com númer
     expect(disp).not.toContain(SEM_DADO);
   });
 });
+
+describe("task 6: paridade de motivos de supressão (reason correta, não só SEM_DADO)", () => {
+  const HASH_REASON = "sem hash auditado no manifest";
+  const PERG_CORR = {
+    slug: "t6-corr", titulo: "t6",
+    blocos: { quem: "@vencedor", onde: "venceu", cruzar: "esc_sup", ver: ["dispersao"] },
+    texto_metodo: "m",
+  };
+  const PERG_RANK = {
+    slug: "t6-rank", titulo: "t6",
+    blocos: { quem: "@vencedor", onde: "venceu", cruzar: "esc_sup", ver: ["ranking"] },
+    texto_metodo: "m",
+  };
+  function secaoEstatica(html: string, label: string): string {
+    return html.split(`aria-label="${label}"`)[1].split("<section")[0];
+  }
+  it("/analisar Dispersão semProva nomeia o hash (não 'financiamento sem fonte')", async () => {
+    mockFetch(MANIFEST_INVALIDO);
+    const div = await renderJsdom(<Analisar />);
+    const disp = secao(div.innerHTML, "Dispersão votos x financiamento");
+    expect(disp).toContain(SEM_DADO);
+    expect(disp).toContain(HASH_REASON);
+    expect(disp).not.toContain("financiamento sem fonte");
+  });
+  it("Curada Correlação sem hash nomeia o hash (paridade Resultado :283)", () => {
+    const seal = getSealState(MANIFEST_INVALIDO);
+    const html = renderToStaticMarkup(
+      <CuradaConteudo pergunta={PERG_CORR} fato={fato40()} seal={seal} manifestChecked />,
+    );
+    const corr = secaoEstatica(html, "Correlação");
+    expect(corr).toContain(SEM_DADO);
+    expect(corr).toContain(HASH_REASON);
+  });
+  it("Curada Por quê sem hash nomeia o hash (supressão vence escopo)", () => {
+    const seal = getSealState(MANIFEST_INVALIDO);
+    const html = renderToStaticMarkup(
+      <CuradaConteudo pergunta={PERG_CORR} fato={fato40()} seal={seal} manifestChecked />,
+    );
+    const pq = secaoEstatica(html, "Por quê");
+    expect(pq).toContain(SEM_DADO);
+    expect(pq).toContain(HASH_REASON);
+  });
+  it("Curada Ranking sem hash nomeia o hash (não 'sem cobertura')", () => {
+    const seal = getSealState(MANIFEST_INVALIDO);
+    const html = renderToStaticMarkup(
+      <CuradaConteudo pergunta={PERG_RANK} fato={fato40()} seal={seal} manifestChecked />,
+    );
+    const rank = secaoEstatica(html, "Ranking");
+    expect(rank).toContain(SEM_DADO);
+    expect(rank).toContain(HASH_REASON);
+    expect(rank).not.toContain("sem cobertura neste recorte");
+  });
+  it("Explorar Resultado fato null sem hash nomeia o hash (paridade Curada :283)", () => {
+    const seal = getSealState(MANIFEST_INVALIDO);
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo fato={null} seal={seal} initial={SEL_VALIDA} />,
+    );
+    const resultado = secaoEstatica(html, "Resultado");
+    expect(resultado).toContain(SEM_DADO);
+    expect(resultado).toContain(HASH_REASON);
+  });
+  it("Explorar Mapa fato null sem hash nomeia o hash", () => {
+    const seal = getSealState(MANIFEST_INVALIDO);
+    const html = renderToStaticMarkup(
+      <ExplorarConteudo fato={null} seal={seal} initial={{ ...SEL_VALIDA, ver: ["mapa"] }} />,
+    );
+    const mapa = secaoEstatica(html, "Mapa");
+    expect(mapa).toContain(SEM_DADO);
+    expect(mapa).toContain(HASH_REASON);
+  });
+});
