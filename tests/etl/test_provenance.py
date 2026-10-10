@@ -311,6 +311,12 @@ def test_standalone_build_fato_atualiza_sha_nos_artifacts(tmp_path):
     assert entries[0]["sha256"] == hashlib.sha256(raw).hexdigest()
     assert entries[0]["size_bytes"] == len(raw)
     assert verify_manifest(str(served_path)) is True
+    # EVOLVE-4 T2 (motivo do freeze): o manifest do `<db dir>` segue
+    # SÓ-ingestions por contrato legado — a prova dos bytes do standalone
+    # vive no mirror servido (`artifacts`) + no gate bytes-aware
+    # (`run_gates(..., fato_paths=...)`); registrar `artifacts: []` aqui
+    # quebraria `verify_manifest` (`_artifacts_ok` exige lista não-vazia)
+    # e os testes de upsert que pinam `verify_manifest(...) is True`.
     db_manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
     assert "artifacts" not in db_manifest
     assert len(db_manifest["ingestions"]) == 1
@@ -332,6 +338,35 @@ def test_standalone_build_fato_atualiza_sha_nos_artifacts(tmp_path):
     assert entries2[0]["size_bytes"] == len(raw2)
     assert len(manifest2["ingestions"]) == 1  # upsert idempotente
     assert verify_manifest(str(served_path)) is True
+
+
+def test_dedupe_key_unificada_sem_fork():
+    """EVOLVE-4 T2: `_dedupe_key` única vive em `etl.manifest` (sem fork).
+
+    `build_marts` (antigo 3-tuple) e `build_fato` (antigo 5-tuple
+    `_ingestion_dedupe_key`) importam o MESMO objeto — lógicas de
+    idempotência divergentes reprovam aqui. `verificar_fato_manifest`
+    também vive no módulo-folha (importável de `etl.build_fato` por
+    compatibilidade, sem redefinição).
+    """
+    from etl import build_fato, build_marts, manifest
+
+    assert build_marts._dedupe_key is manifest._dedupe_key
+    assert build_fato._dedupe_key is manifest._dedupe_key
+    assert manifest.verificar_fato_manifest is build_fato.verificar_fato_manifest
+    # Folha do DAG: manifest.py não importa nada de `etl` (sem ciclo
+    # validate→build_fato; ver também a checagem de imports no relatório).
+    import inspect
+
+    src = inspect.getsource(manifest)
+    assert "from etl" not in src and "import etl" not in src
+    # O superset preserva o fluxo TSE (turno None, dataset 1:1) e
+    # distingue triples do fluxo fato (turno/dataset load-bearing).
+    tse = {"dataset": "votacao_2022", "ano": 2022, "cargo": "presidente",
+           "source_url": "https://cdn.tse.jus.br/x.zip"}
+    assert manifest._dedupe_key(tse) == (
+        "votacao_2022", 2022, None, "PRESIDENTE",
+        "https://cdn.tse.jus.br/x.zip")
 
 
 def test_standalone_poda_fato_sem_proveniencia(tmp_path):

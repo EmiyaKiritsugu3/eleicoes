@@ -33,8 +33,8 @@ Regras fail-closed (nunca zero silencioso / número sem hash):
   oficial não há proveniência a registrar).
 
 Proveniência: upsert no `<db dir>/manifest.json` com o MESMO predicado
-de idempotência do mirror (`_ingestion_dedupe_key`, reutilizado por
-chamada — sem fork): reruns atualizam o `sha256` sem duplicar a
+de idempotência do mirror (`_dedupe_key` única de `etl.manifest`,
+importada — sem fork): reruns atualizam o `sha256` sem duplicar a
 ingestão. A entry leva `source_url` do TSE (par ano/cargo do V1),
 `sha256` do payload JSON produzido, e `fontes: [url TSE, página do
 catálogo IBGE]` como fonte dupla. `abst`/`eleitores` vêm de
@@ -80,7 +80,8 @@ from etl.build_marts import register_served_artifacts
 from etl.build_marts import _dentro_de, _prune_fato_sem_proveniencia
 from etl.build_marts import _write_json_atomico
 from etl.censo import check_censo_sum
-from etl.manifest import _validate_entry
+from etl.manifest import _dedupe_key, _validate_entry
+from etl.manifest import verificar_fato_manifest
 from etl.sources import CENSO_DATASETS, V1_DATASETS
 
 DEMO_FIELDS = [
@@ -115,22 +116,11 @@ def _served_source_shape(v1_entry: dict) -> dict:
     }
 
 
-def _ingestion_dedupe_key(entry: dict) -> tuple:
-    """Idempotência do mirror servido: 1 ingestão por (dataset, triple, fonte)."""
-    return (
-        entry.get("dataset"),
-        entry.get("ano"),
-        entry.get("turno"),
-        str(entry.get("cargo", "")).upper(),
-        entry.get("source_url"),
-    )
-
-
 def _atualizar_manifest_db(db_manifest_path, ingestion: dict) -> None:
     """Upsert da ingestão no manifest do `<db dir>` (EVOLVE-3 Task 2).
 
     DECISÃO: mesmo predicado de idempotência do mirror servido
-    (`_ingestion_dedupe_key`, reutilizado por chamada — sem fork): a
+    (`_dedupe_key` única de `etl.manifest`, importada — sem fork): a
     entry nova substitui a de mesma chave `(dataset, ano, turno, cargo,
     source_url)`; chaves distintas (outro triple/fonte) preservam o
     histórico. Reruns atualizam o `sha256` sem duplicar. Validação
@@ -157,60 +147,13 @@ def _atualizar_manifest_db(db_manifest_path, ingestion: dict) -> None:
     ingestions = manifest.get("ingestions")
     if not isinstance(ingestions, list):
         ingestions = []
-    key = _ingestion_dedupe_key(ingestion)
+    key = _dedupe_key(ingestion)
     ingestions = [
         e for e in ingestions
-        if not (isinstance(e, dict) and _ingestion_dedupe_key(e) == key)
+        if not (isinstance(e, dict) and _dedupe_key(e) == key)
     ] + [ingestion]
     manifest["ingestions"] = ingestions
     _write_json_atomico(db_manifest_path, manifest)  # guarda S8707 inclusa
-
-
-def verificar_fato_manifest(db_manifest_path, fato_path) -> bool:
-    """True iff a ingestão do `<db dir>` confere com os bytes do fato.
-
-    Predicado anti-crash-entre-passos (EVOLVE-3 Task 2): compara o
-    `sha256` da entry (última com `dataset` == stem do fato — tolera
-    histórico append-only legado com duplicatas) com o sha dos bytes
-    atuais do arquivo. Fato novo + manifest velho (crash após o fato,
-    antes do manifest) REPROVA; ausência, corrupção ou divergência
-    qualquer também reprova (fail-closed, nunca verde falso).
-    Estrito (CodeRabbit PR#5 F1): a lista inteira precisa ser válida —
-    item não-dict ou entry malformada reprova mesmo com match válido
-    adiante. O writer preserva o legado sem apagar; o VERIFICADOR nunca
-    dá verde no malformado (coerente com `verify_manifest`, que também
-    reprova ali).
-    """
-    try:
-        raw = Path(fato_path).read_bytes()
-    except OSError:
-        return False
-    try:
-        manifest = json.loads(Path(db_manifest_path).read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError, OSError,
-            UnicodeDecodeError):
-        return False
-    if not isinstance(manifest, dict):
-        return False
-    ingestions = manifest.get("ingestions")
-    if not isinstance(ingestions, list):
-        return False
-    for e in ingestions:
-        try:
-            _validate_entry(e)  # não-dict e malformada reprovam aqui
-        except ValueError:
-            return False
-    stem = Path(fato_path).stem
-    match = None
-    for e in ingestions:
-        if isinstance(e, dict) and e.get("dataset") == stem:
-            match = e  # última vence (legado append-only duplicava)
-    if match is None:
-        return False
-    sha = match.get("sha256")
-    if not isinstance(sha, str) or not sha:
-        return False
-    return hashlib.sha256(raw).hexdigest() == sha.lower()
 
 
 def _atualizar_manifest_servido(out_dir, ingestion: dict, v1_entry: dict) -> None:
@@ -256,10 +199,10 @@ def _atualizar_manifest_servido(out_dir, ingestion: dict, v1_entry: dict) -> Non
     ingestions = served.get("ingestions")
     if not isinstance(ingestions, list):
         ingestions = []
-    key = _ingestion_dedupe_key(ingestion)
+    key = _dedupe_key(ingestion)
     ingestions = [
         e for e in ingestions
-        if not (isinstance(e, dict) and _ingestion_dedupe_key(e) == key)
+        if not (isinstance(e, dict) and _dedupe_key(e) == key)
     ] + [ingestion]
     served["ingestions"] = ingestions
     _write_json_atomico(served_path, served)  # guarda S8707 inclusa

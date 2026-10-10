@@ -196,3 +196,42 @@ def test_garbage_votes_fail_gates_e2e(tmp_path):
     assert not manifest.exists()
     assert not (tmp_path / "webdata" / "resumo.json").exists()
     assert not (tmp_path / "webdata" / "manifest.json").exists()
+
+
+def test_gate_fato_novo_manifest_velho_reprova(tmp_path):
+    """EVOLVE-4 T2 bytes-aware: fato reescrito após o manifest reprova via run_gates.
+
+    Crash entre passos (fato novo + manifest velho): com `fato_paths`, o
+    gate compara o sha dos bytes com a ingestão e devolve erro iniciado
+    por "fato" (nunca filtrado como "manifest*"); sem `fato_paths`
+    (default) o comportamento é preservado — o mesmo estado passa.
+    """
+    import hashlib
+    import json
+
+    from etl.validate import run_gates
+
+    db = tmp_path / "t.duckdb"
+    _make_db(db, [_fato_row()], [("1", "X", "P")])
+    fato = tmp_path / "fato_2022_1_presidente.json"
+    raw = b'{"candidatos": [], "municipios": []}'
+    fato.write_bytes(raw)
+    manifest = tmp_path / "m.json"
+    manifest.write_text(json.dumps({"ingestions": [{
+        "source_url": "https://cdn.tse.jus.br/x.zip",
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "dataset": "fato_2022_1_presidente",
+        "ano": 2022,
+        "turno": 1,
+        "cargo": "presidente",
+        "tipo": "fato_municipal",
+    }]}), encoding="utf-8")
+    assert run_gates(db, manifest_path=manifest, fato_paths=[fato]) == []
+
+    # Simula o crash: bytes do fato avançam, manifest fica no sha velho.
+    fato.write_bytes(b'{"candidatos": [], "municipios": [{"x": 1}]}')
+    errors = run_gates(db, manifest_path=manifest, fato_paths=[fato])
+    assert any(e.startswith("fato") for e in errors), f"esperava erro de fato, veio: {errors}"
+
+    # Default preserva comportamento: sem fato_paths, o estado passa.
+    assert run_gates(db, manifest_path=manifest) == []

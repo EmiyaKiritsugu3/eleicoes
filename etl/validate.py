@@ -1,7 +1,8 @@
 """Quality gates + quarentena (offline-first, custo zero).
 
-`run_gates(db_path, manifest_path=None, totais_oficiais=None) -> list[str]`:
-lista de erros (vazia = ok).
+`run_gates(db_path, manifest_path=None, totais_oficiais=None, fato_paths=None) -> list[str]`:
+lista de erros (vazia = ok). Com `fato_paths`, cada fato precisa
+conferir com o manifest resolvido (bytes-aware, EVOLVE-4 T2).
 
 Contrato do chamador (orquestrador ETL, fora do escopo v1): se a lista
 for não vazia, o ETL DEVE falhar a ingestão e manter a versão anterior
@@ -46,7 +47,7 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 
-from etl.manifest import verify_manifest
+from etl.manifest import verificar_fato_manifest, verify_manifest
 
 ORPHAN_THRESHOLD = 0.001  # spec: reprova "acima de 0,1%"
 
@@ -175,12 +176,45 @@ def _gate_orphans(con, tables: set[str]) -> list[str]:
     return []
 
 
-def run_gates(db_path, manifest_path=None, totais_oficiais=None) -> list[str]:
+def _gate_fatos(manifest, fato_paths) -> list[str]:
+    """Erros bytes-aware: cada fato precisa conferir com o manifest (EVOLVE-4 T2).
+
+    Delega ao predicado `verificar_fato_manifest` (módulo-folha
+    `etl.manifest` — sem ciclo de import): fato novo + manifest velho
+    (crash entre passos) reprova fail-closed em pt-BR. Sem manifest
+    localizável não há baseline p/ comparar bytes — nesse caso o gate
+    de manifest já reprovou, e o primeiro build (sem mirror anterior)
+    é coberto pela atestação fresca de `register_served_artifacts`;
+    então ausente aqui é `[]`, nunca verde silencioso do gate total.
+    Erros começam por "fato" (nunca "manifest") para sobreviverem ao
+    filtro do `build_all`, que só exclui o gate de forma.
+    """
+    if isinstance(fato_paths, (str, Path)):
+        fato_paths = [fato_paths]
+    errors: list[str] = []
+    if manifest is None or not Path(manifest).is_file():
+        return errors
+    for fato_path in fato_paths:
+        if verificar_fato_manifest(manifest, fato_path):
+            continue
+        errors.append(
+            f"fato inconsistente com o manifest: {fato_path} (sha dos "
+            "bytes diverge da ingestão — possível crash entre fato e "
+            "manifest; o rerun repara)"
+        )
+    return errors
+
+
+def run_gates(db_path, manifest_path=None, totais_oficiais=None,
+              fato_paths=None) -> list[str]:
     """Roda os quality gates sobre o DuckDB; devolve erros (vazia = ok).
 
     Nunca levanta por problema nos dados: qualquer falha vira item da
     lista (contrato `-> list[str]`). Sem `totais_oficiais`, emite
-    `UserWarning` e checa só integridade interna.
+    `UserWarning` e checa só integridade interna. `fato_paths=None`
+    (default) preserva o comportamento anterior; com uma lista de
+    fatos, cada um precisa conferir com o manifest resolvido
+    (`_gate_fatos`, bytes-aware fail-closed).
     """
     db_path = Path(db_path)
     errors: list[str] = []
@@ -210,6 +244,8 @@ def run_gates(db_path, manifest_path=None, totais_oficiais=None) -> list[str]:
         errors.append("manifest ausente: nenhum manifest.json localizado para validar")
     elif not verify_manifest(manifest):
         errors.append(f"manifest invalido: {manifest} reprovado em verify_manifest")
+    if fato_paths is not None:
+        errors.extend(_gate_fatos(manifest, fato_paths))
     return errors
 
 
