@@ -21,7 +21,8 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 - [x] EVOLVE-5: mergeado 140f8fa (PR #7) — primeiro dado REAL fluindo (Censo 2022 e2e).
 - [x] EVOLVE-6: mergeado 145de27 (PR #8).
 - [x] EVOLVE-7: mergeado eb96878 (PR #9) — primeiro pixel real na UI (pop Censo).
-- [x] EVOLVE-8: completo na branch `evolve-8` — 6/6 tasks + revisão final limpa (PR #10 aberto p/ merge).
+- [x] EVOLVE-8: mergeado 3f46b89 (PR #10).
+- [ ] EVOLVE-9: em progresso na branch `evolve-9` — Tasks 1–5 completas; Task 6 (processo, docs-only) em execução.
 - (Histórico original deste bloco preservado abaixo por valor de auditoria.)
 
 ## Log de ciclos
@@ -148,3 +149,10 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 ## EVOLVE-8 mergeado (2026-10-10 ~22:15 UTC)
 - Merge PR #10 (merge commit 3f46b89): tudo verde — CI ×2, GitGuardian, CodeRabbit, cubic, Sonar. Branch evolve-8 deletada.
 - Total: 6 tasks + R1/R2/R3/R4 com re-reviews limpos. Suítes finais: pytest 202 + vitest 454 + tsc clean + build.
+
+## EVOLVE-9 em progresso — timings das suítes (2026-10-10, Task 6)
+- Tasks 1–5 completas; Task 6 (processo, docs-only) em execução na branch `evolve-9`.
+- Medição Task 6 (comandos a partir da raiz do repo; `npm test` roda em `web/`):
+  - `pytest tests/ -q` → 202 passed, 1 skipped em 15.38s (wall ~15s).
+  - `(cd web && npm test)` → 29 arquivos, 473/473 passed, vitest Duration 2.79s (wall ~4s).
+- (Futuros ciclos: anexar novas linhas abaixo neste formato — comando, resultado, wall.)
