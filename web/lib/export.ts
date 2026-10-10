@@ -101,6 +101,8 @@ export function semCoberturaTurnoZona(
 }
 
 function csvEscape(v: unknown): string {
+  // Contrato blank-cell (deliberado): null/undefined viram célula vazia "" —
+  // nunca os literais "null"/"undefined" (planilha lê como vazio honesto).
   const s = v === null || v === undefined ? "" : String(v);
   const q = /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   // Neutraliza fórmula de planilha (M12): célula que começa com =,+,-,@
@@ -126,7 +128,7 @@ export function buildCsvExport(
       if (!dataKeys.includes(k)) dataKeys.push(k);
     }
   }
-  const header = [...dataKeys, "fonte", "url", "hash", "data"].join(",");
+  const header = [...dataKeys.map(csvEscape), "fonte", "url", "hash", "data"].join(",");
   const fonte = "tse";
   const url = audit?.url ?? "";
   const hash = audit?.hash ?? "";
