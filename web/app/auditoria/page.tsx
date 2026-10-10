@@ -28,8 +28,6 @@ async function fetchJson<T>(path: string): Promise<T | null> {
   }
 }
 
-/** Data da ingestão (ISO validada, cf. `entryDate` em `lib/data`). */
-
 /** Selo de amostra sintética compartilhado (components/FixtureBadge):
  *  tratamento de aviso, NUNCA o selo oficial — mesmo com hash presente.
  *  O hash segue visível na tabela (transparência).
