@@ -101,3 +101,9 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 ## EVOLVE-4 mergeado (2026-10-10 ~18:15 UTC)
 - Merge PR #6 (merge commit 9bada45): tudo verde — CI ×2, GitGuardian, CodeRabbit, cubic, Sonar (pós won't-fix justificado). Branch evolve-4 deletada.
 - Total: 6 tasks + R1 (Sonar gate + cubic 10) + R2 (cubic 2 P2) com re-reviews limpos. Suítes finais: pytest 158 + vitest 361 + tsc clean + build.
+
+## EVOLVE-5 completo (final review: Merge Yes)
+- 6/6 tasks + revisão final limpa; nenhum MUST-FIX; minors → EVOLVE-6 backlog.
+
+## EVOLVE-5 round PR#7-R1 (2026-10-10 ~19:00 UTC)
+- Sonar: 2 S8707 novos (AaEnIcVKAr7Y89NJiOCA :118, AaEnIcVKAr7Y89NJiOB_ :152 — reads read-only de CSV/JSON de args do operador em `etl/__main__.py`, zero mutação fs) won't-fix: ETL batch local, só auto-ataque; motor não reconhece sanitizers custom.

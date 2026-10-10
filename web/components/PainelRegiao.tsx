@@ -16,6 +16,7 @@ import SealSlot from "./SealSlot";
 import CopyShare from "./CopyShare";
 import { formatVotes, type SealState } from "../lib/data";
 import { isFatoDataset } from "../lib/regiao";
+import { SEM_DADO } from "../lib/textos";
 import {
   indiceVencedor,
   perfilOndeVenceu,
@@ -32,7 +33,9 @@ export const NOTA_PESO_MISTO =
   "nota: pesos mistos — parte dos municípios usa total/pop como aproximação " +
   "de eleitores; médias aproximadas, não contagem censitária";
 
-export const SEM_DADO = "sem dado oficial";
+// Fonte única vive em `lib/textos` (EVOLVE-5 Task 4, S1192); re-export por
+// compatibilidade com os importadores existentes (sem fork).
+export { SEM_DADO };
 
 export interface FatoRegiao {
   candidatos: FatoCandidato[];

@@ -125,6 +125,16 @@ export function isFixtureEntry(obj: unknown): boolean {
   return (obj as Record<string, unknown>).fixture === true;
 }
 
+export function fontesDaEntrada(e: ManifestIngestion): string[] {
+  const raw = (e as Record<string, unknown>).fontes;
+  if (Array.isArray(raw)) {
+    const urls = raw.map(safeUrl).filter((u) => u !== "");
+    if (urls.length > 0) return urls;
+  }
+  const url = safeUrl(typeof e.source_url === "string" ? e.source_url : "");
+  return url ? [url] : [];
+}
+
 /** Exibição como oficial: hash válido E não-fixture. */
 export function isOfficialDisplay(obj: unknown): boolean {
   return isAudited(obj) && !isFixtureEntry(obj);

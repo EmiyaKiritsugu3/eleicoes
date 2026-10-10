@@ -101,6 +101,30 @@ describe.skipIf(!HAS_SEED)("auditoria data path (CI seed via real build_all)", (
   });
 });
 
+describe("auditoria fontes (EVOLVE-5 Task 5)", () => {
+  const TSE = "https://dadosabertos.tse.jus.br/dataset-x";
+  const IBGE =
+    "https://www.ibge.gov.br/estatisticas/sociais/populacao/22827-censo-demografico-2022.html";
+  it("entry fato com fontes duplas expõe dois links (TSE+IBGE)", async () => {
+    const { fontesDaEntrada } = await import("../lib/data");
+    expect(
+      fontesDaEntrada({ source_url: TSE, fontes: [TSE, IBGE] }),
+    ).toEqual([TSE, IBGE]);
+  });
+  it("entry single-source sem fontes mostra um link (source_url)", async () => {
+    const { fontesDaEntrada } = await import("../lib/data");
+    expect(fontesDaEntrada({ source_url: TSE })).toEqual([TSE]);
+  });
+  it("fail-closed: fontes inválidas caem para source_url; sem nada, vazio", async () => {
+    const { fontesDaEntrada } = await import("../lib/data");
+    expect(
+      fontesDaEntrada({ source_url: TSE, fontes: ["javascript:alert(1)", 42] }),
+    ).toEqual([TSE]);
+    expect(fontesDaEntrada({})).toEqual([]);
+    expect(fontesDaEntrada({ fontes: ["relativo/x"] })).toEqual([]);
+  });
+});
+
 describe("auditoria artifacts (EVOLVE-2 Task 1)", () => {
   it("getArtifacts devolve só entries com arquivo+hash, na ordem do manifest", async () => {
     const { getArtifacts } = await import("../lib/data");

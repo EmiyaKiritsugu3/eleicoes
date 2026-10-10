@@ -57,7 +57,6 @@ real é calculado por `etl.fetch.download_dataset` e registrado via
 # p/ esc_* — esc_* seguem nulos fail-closed, "sem dado oficial").
 """
 
-_CENSO_FTP = "https://ftp.ibge.gov.br/Censos/Censo_Demografico_2022"
 _CENSO_CATALOG = (
     "https://www.ibge.gov.br/estatisticas/sociais/populacao/"
     "22827-censo-demografico-2022.html"

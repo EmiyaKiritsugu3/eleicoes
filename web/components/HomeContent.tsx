@@ -22,8 +22,7 @@ import {
   type SealState,
 } from "../lib/data";
 import { vereditoTemProva } from "../lib/regiao";
-
-const SEM_DADO = "sem dado oficial";
+import { SEM_DADO } from "../lib/textos";
 
 /** Prefixo IBGE de 2 dígitos → sigla UF (códigos estáveis do IBGE).
  *  Permite ao clique no canvas (que retorna IBGE7 do município) focar o
@@ -140,6 +139,12 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   }, [elegivelMapa, malhaFeatures]);
   const badge = <SealSlot seal={seal} />;
   const candidatoAtivo = (f.candidato ?? "").trim() !== "";
+  // Slice-2 (EVOLVE-5 Task 3): UF em foco aproxima o mapa p/ os municípios
+  // da UF (zoom via `nivel="municipio"` + `ufSelecionada`, reuse do filtro
+  // do `MapaBrasil`); sem foco válido, nível UF. EXTERIOR nunca foca
+  // (fail-closed em `ufDeSelecaoMapa`), então nunca há zoom p/ ele.
+  const ufFoco = (f.uf ?? "").trim().toUpperCase();
+  const comZoom = (UFS as readonly string[]).includes(ufFoco);
   // Alerta honesto sem depender de CSS externo (M4-web): fundo/borda inline.
   const ALERTA_STYLE: React.CSSProperties = {
     background: "#fff3cd",
@@ -218,16 +223,27 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         ) : semProva || ufs.length === 0 ? (
           <p>{SEM_DADO}</p>
         ) : malhaFeatures ? (
-          <MapaBrasil
-            malhaUrl={MALHA_MUNICIPIOS_URL}
-            nivel="uf"
-            features={malhaFeatures}
-            ocultarExterior
-            onSelectIbge={(sel) => {
-              const uf = ufDeSelecaoMapa(sel);
-              if (uf) setF((prev) => ({ ...prev, uf }));
-            }}
-          />
+          <>
+            {comZoom && (
+              <div>
+                <p role="status">Mostrando municípios de {ufFoco}</p>
+                <button type="button" onClick={() => setF((prev) => ({ ...prev, uf: "" }))}>
+                  Voltar para todas as UFs
+                </button>
+              </div>
+            )}
+            <MapaBrasil
+              malhaUrl={MALHA_MUNICIPIOS_URL}
+              nivel={comZoom ? "municipio" : "uf"}
+              ufSelecionada={comZoom ? ufFoco : undefined}
+              features={malhaFeatures}
+              ocultarExterior
+              onSelectIbge={(sel) => {
+                const uf = ufDeSelecaoMapa(sel);
+                if (uf) setF((prev) => ({ ...prev, uf }));
+              }}
+            />
+          </>
         ) : (
           <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Votos por UF">
           <table>
