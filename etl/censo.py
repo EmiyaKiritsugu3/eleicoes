@@ -405,14 +405,22 @@ def register_censo_artifact(manifest_path, artifact_path, dataset=None,
     levantar `ValueError`; nada é escrito nesses casos. Guardas S8707
     de entrada (precedente `_atualizar_manifest_servido` em
     `etl.build_fato`: guarda primeiro, fs depois): o manifest precisa
-    resolver sob o próprio parent e o artefato como irmão do manifest
-    (o verify resolve irmãos) — `..`/escape levantam `ValueError` pt-BR
-    ANTES de qualquer read/rename/escrita.
+    resolver sob o próprio parent e o artefato ser IRMÃO ESTRITO do
+    manifest (parent resolvido igual — contenção não basta: subdir passa
+    em `_dentro_de` mas a entry grava basename e o verify resolve
+    irmãos) — `..`/escape/não-irmão levantam `ValueError` pt-BR ANTES de
+    qualquer read/rename/escrita.
     """
     manifest_file = Path(manifest_path)
     artefato = Path(artifact_path)
     _dentro_de(manifest_file, manifest_file.parent)
     _dentro_de(artefato, manifest_file.parent)
+    if artefato.resolve().parent != manifest_file.resolve().parent:
+        raise ValueError(
+            "censo: artefato fora do dir do manifest bloqueado "
+            f"(artifact_path={os.fspath(artifact_path)!r}) — a entry grava "
+            "basename e o verify resolve irmãos (sem dado oficial)"
+        )
     try:
         doc = json.loads(manifest_file.read_text(encoding="utf-8"))
     except FileNotFoundError:

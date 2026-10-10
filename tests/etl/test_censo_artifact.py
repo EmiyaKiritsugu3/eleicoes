@@ -241,3 +241,27 @@ def test_register_artifact_dotdot_levanta_antes_de_qualquer_fs(tmp_path):
     assert [p for p in tmp_path.rglob("*.corrupt.*")] == []
     assert [p for p in tmp_path.rglob("*.tmp")] == []
     assert not (tmp_path / "sub").exists()
+
+
+def test_register_artifact_subdir_levanta_exige_irmao_estrito(tmp_path):
+    """cubic P2 (PR#9): contenção não basta — artefato em SUBDIR do dir do
+    manifest passa em `_dentro_de` mas a entry grava basename e o verify
+    resolve irmãos (atestaria o arquivo errado). Exige irmão estrito."""
+    import pytest
+
+    from etl.censo import register_censo_artifact
+
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({"ingestions": [{
+        "source_url": "https://ftp.ibge.gov.br/x.zip",
+        "sha256": "ab" * 32}]}), encoding="utf-8")
+    antes = manifest.read_bytes()
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    (sub / "censo_municipios.json").write_bytes(b'{"3550308": 10000}')
+    with pytest.raises(ValueError, match="irm.o|fora do dir"):
+        register_censo_artifact(
+            str(manifest), str(sub / "censo_municipios.json"))
+    assert manifest.read_bytes() == antes
+    assert [p for p in tmp_path.rglob("*.corrupt.*")] == []
+    assert [p for p in tmp_path.rglob("*.tmp")] == []
