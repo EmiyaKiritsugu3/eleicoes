@@ -5,6 +5,7 @@ import { ArtifactsTable } from "../../components/ArtifactsTable";
 import SourceBadge from "../../components/SourceBadge";
 import FixtureBadge from "../../components/FixtureBadge";
 import {
+  fontesDaEntrada,
   getArtifacts,
   getOfficialAuditInfo,
   isAudited,
@@ -112,12 +113,13 @@ export default function Auditoria() {
         ) : ingestions.length === 0 ? (
           <p>{SEM_DADO} — nenhuma ingestão registrada no manifest</p>
         ) : (
-          <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Ingestões do manifest com fonte, hash, linhas e data">
+          <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Ingestões do manifest com fontes, hash, linhas e data">
           <table>
-            <caption>Ingestões do manifest com fonte, hash, linhas e data</caption>
+            <caption>Ingestões do manifest com fontes, hash, linhas e data</caption>
             <thead>
               <tr>
                 <th scope="col">Fonte oficial (TSE/IBGE)</th>
+                <th scope="col">Fontes</th>
                 <th scope="col">Conjunto (dataset/tipo)</th>
                 <th scope="col">Hash (sha256)</th>
                 <th scope="col">Linhas</th>
@@ -160,6 +162,23 @@ export default function Auditoria() {
                         SEM_DADO
                       )}
                       {isFixtureEntry(e) && <FixtureBadge />}
+                    </td>
+                    <td>
+                      {(() => {
+                        const fontes = fontesDaEntrada(e);
+                        if (fontes.length === 0) return SEM_DADO;
+                        return (
+                          <ul>
+                            {fontes.map((f) => (
+                              <li key={f}>
+                                <a href={f} target="_blank" rel="noreferrer">
+                                  {f}
+                                </a>
+                              </li>
+                            ))}
+                          </ul>
+                        );
+                      })()}
                     </td>
                     <td>{conjunto}</td>
                     <td>
