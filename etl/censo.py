@@ -225,7 +225,8 @@ def register_censo_ingest(manifest_path, rows=None, sha256=None, dataset=None,
     — nunca se registra proveniência sem fonte baixável.
     `data` é injetável p/ testes determinísticos (Task 4 EVOLVE-6):
     default None = hoje UTC (ISO yyyy-mm-dd, comportamento idêntico);
-    com valor, grava-o como está (str) ou o ISO da data/datetime.
+    str ISO yyyy-mm-dd, date ou datetime são gravados como ISO;
+    int/lixo levantam `ValueError` fail-closed (nunca persistem).
     """
     entry_meta = dataset if isinstance(dataset, dict) else CENSO_DATASETS[0]
     url = entry_meta.get("url")
@@ -245,8 +246,19 @@ def register_censo_ingest(manifest_path, rows=None, sha256=None, dataset=None,
             data_iso = data.date().isoformat()
     elif isinstance(data, date):
         data_iso = data.isoformat()
+    elif isinstance(data, str):
+        try:
+            data_iso = date.fromisoformat(data.strip()).isoformat()
+        except ValueError:
+            raise ValueError(
+                f"register_censo_ingest: data inválida ({data!r}) — "
+                "esperado ISO yyyy-mm-dd, date ou datetime (sem dado oficial)"
+            )
     else:
-        data_iso = str(data)
+        raise ValueError(
+            f"register_censo_ingest: data inválida ({data!r}) — "
+            "esperado ISO yyyy-mm-dd, date ou datetime (sem dado oficial)"
+        )
     entry = {
         "source_url": url,
         "sha256": sha256,
