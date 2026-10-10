@@ -5,7 +5,7 @@ RED-first: estes testes devem FALHAR contra o build_marts pré-Task 4
 """
 
 import json
-from datetime import date
+from datetime import date, datetime, timezone
 
 import pytest
 
@@ -118,5 +118,5 @@ def test_manifest_carries_date_and_version(tmp_path):
               web_data_dir=tmp_path / "webdata")
     entries = _manifest_entries(manifest)
     assert len(entries) == 1
-    assert date.fromisoformat(entries[0]["data"]) <= date.today()
+    assert date.fromisoformat(entries[0]["data"]) <= datetime.now(timezone.utc).date()
     assert entries[0]["etl_version"] == "1.1.0"

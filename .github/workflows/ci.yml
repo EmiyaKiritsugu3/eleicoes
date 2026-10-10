@@ -32,10 +32,15 @@ jobs:
       - name: Seed fixture data (real ETL path, no TSE download)
         run: python scripts/seed_fixture_data.py --force
 
+      - name: Assert motor fixtures (Censo + fato before web tests)
+        run: |
+          test -f web/public/data/fato_2022_1_presidente.json
+          python -c "import json; m=json.load(open('web/public/data/manifest.json')); ts={e.get('tipo') for e in m['ingestions']}; assert 'censo_ibge_2022' in ts and 'fato_municipal' in ts, ts"
+
       - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
 

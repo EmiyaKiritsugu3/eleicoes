@@ -33,3 +33,36 @@ V1_DATASETS: list[dict] = [
     *(_entry(ano, "governador") for ano in (2014, 2018, 2022)),
     *(_entry(ano, "prefeito") for ano in (2016, 2020, 2024)),
 ]
+
+
+"""Tabela do Censo Demográfico IBGE 2022 por município.
+
+Fonte (catálogo, rastreabilidade):
+https://www.ibge.gov.br/estatisticas/sociais/populacao/22827-censo-demografico-2022.html
+Os arquivos são servidos pelo FTP oficial do IBGE; `dataset` guarda a
+página do catálogo. `sha256` é `None` até a primeira ingestão — o hash
+real é calculado por `etl.fetch.download_dataset` e registrado via
+`etl.censo.register_censo_ingest`.
+
+# PENDING: confirmar path real no FTP — o nível
+# https://ftp.ibge.gov.br/Censos/Censo_Demografico_2022/ não contém um
+# agregados_por_municipios.zip, por isso `url` fica None até a confirmação,
+# para que nenhum arquivo errado possa ser baixado. Sem Censo auditado, as
+# seções de perfil exibem "sem dado oficial".
+"""
+
+_CENSO_FTP = "https://ftp.ibge.gov.br/Censos/Censo_Demografico_2022"
+_CENSO_CATALOG = (
+    "https://www.ibge.gov.br/estatisticas/sociais/populacao/"
+    "22827-censo-demografico-2022.html"
+)
+
+CENSO_DATASETS: list[dict] = [
+    {
+        "ano": 2022,
+        "nome": "censo_demografico_2022_municipios",
+        "url": None,  # PENDING: confirmar path real no FTP (ver nota acima)
+        "dataset": _CENSO_CATALOG,
+        "sha256": None,
+    },
+]

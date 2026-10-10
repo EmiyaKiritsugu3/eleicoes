@@ -114,7 +114,8 @@ export default function Auditoria() {
             <caption>Ingestões do manifest com fonte, hash, linhas e data</caption>
             <thead>
               <tr>
-                <th scope="col">Fonte oficial (TSE)</th>
+                <th scope="col">Fonte oficial (TSE/IBGE)</th>
+                <th scope="col">Conjunto (dataset/tipo)</th>
                 <th scope="col">Hash (sha256)</th>
                 <th scope="col">Linhas</th>
                 <th scope="col">Data</th>
@@ -126,6 +127,21 @@ export default function Auditoria() {
                 const rawUrl = typeof e.source_url === "string" ? e.source_url : "";
                 // Link só com esquema http(s) (M10): safeUrl barra javascript:/data:/relativo.
                 const url = safeUrl(rawUrl);
+                const conjunto = ((): string => {
+                  const d =
+                    typeof (e as Record<string, unknown>).dataset === "string"
+                      ? String((e as Record<string, unknown>).dataset)
+                      : "";
+                  const t =
+                    typeof (e as Record<string, unknown>).tipo === "string"
+                      ? String((e as Record<string, unknown>).tipo)
+                      : "";
+                  // Fato municipal (TSE × Censo) e ingestões do Censo IBGE
+                  // 2022 aparecem aqui pelo dataset/tipo — mesma tabela,
+                  // mesmo contrato de hash.
+                  if (d && t) return `${d} (${t})`;
+                  return d || t || SEM_DADO;
+                })();
                 const rows =
                   typeof (e as Record<string, unknown>).rows === "number"
                     ? String((e as Record<string, unknown>).rows)
@@ -142,6 +158,7 @@ export default function Auditoria() {
                       )}
                       {isFixtureEntry(e) && <FixtureBadge />}
                     </td>
+                    <td>{conjunto}</td>
                     <td>
                       {isOfficialDisplay(e) ? (
                         <code title={hash}>{hash}</code>
@@ -197,10 +214,13 @@ export default function Auditoria() {
       <section aria-label="Como auditar">
         <h2>Como auditar</h2>
         <p>
-          Cada ingestão registra a URL oficial do TSE e o sha256 do conteúdo. Um
+          Cada ingestão registra a URL oficial (TSE ou IBGE) e o sha256 do conteúdo. Um
           número só é apresentado como oficial quando há hash válido em ingestão
           não-sintética — sem hash, a página mostra “dado não auditado” e nunca
-          apresenta números como oficiais. Amostras sintéticas (<code>fixture:true</code>,
+          apresenta números como oficiais. O fato municipal (join TSE × Censo
+          IBGE 2022, <code>tipo: fato_municipal</code>) e as ingestões do Censo
+          aparecem na tabela acima pelo conjunto (dataset/tipo), com fonte
+          dupla registrada em <code>fontes</code>. Amostras sintéticas (<code>fixture:true</code>,
           geradas pelo seed de CI) exibem o hash para transparência, mas usam o
           selo “amostra sintética — não oficial”, nunca o selo oficial. Detalhes
           do pipeline em <a href="/metodologia">/metodologia</a>.

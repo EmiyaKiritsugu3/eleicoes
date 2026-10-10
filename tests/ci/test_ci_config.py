@@ -2,7 +2,7 @@ import pathlib
 
 
 def _ci():
-    import yaml
+    yaml = __import__("pytest").importorskip("yaml")
     return yaml.safe_load(pathlib.Path(".github/workflows/ci.yml").read_text())
 
 
@@ -26,7 +26,21 @@ def test_ci_caches_pip_and_pins_actions_by_sha():
         assert "@" in ref and len(ref.split("@")[1]) == 40  # SHA pin
 
 
+def test_ci_node_meets_jsdom_floor():
+    import re
+    text = pathlib.Path(".github/workflows/ci.yml").read_text()
+    m = re.search(r"node-version:\s*[\"']?(\d+)", text)
+    assert m and int(m.group(1)) >= 22  # jsdom 30 exige Node 22+ (Node 20 EOL)
+
+
 def test_root_gitignore_covers_generated():
     g = pathlib.Path(".gitignore").read_text()
-    for pat in ["__pycache__/", "*.duckdb", "data/manifest.json", "*.bak", "tsconfig.tsbuildinfo"]:
+    for pat in ["__pycache__/", "*.duckdb", "data/manifest.json", "*.bak", "tsconfig.tsbuildinfo", "node_modules/"]:
         assert pat in g
+
+
+def test_setuptools_packages_find_covers_etl_only():
+    import tomllib
+    with open("pyproject.toml", "rb") as f:
+        find = tomllib.load(f)["tool"]["setuptools"]["packages"]["find"]
+    assert find["include"] == ["etl*"]  # pip install . não tenta empacotar web/ ou data/

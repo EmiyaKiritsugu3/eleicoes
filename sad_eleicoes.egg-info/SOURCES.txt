@@ -1,0 +1,15 @@
+pyproject.toml
+etl/__init__.py
+etl/build_fato.py
+etl/build_marts.py
+etl/censo.py
+etl/fetch.py
+etl/manifest.py
+etl/normalize.py
+etl/sources.py
+etl/validate.py
+sad_eleicoes.egg-info/PKG-INFO
+sad_eleicoes.egg-info/SOURCES.txt
+sad_eleicoes.egg-info/dependency_links.txt
+sad_eleicoes.egg-info/requires.txt
+sad_eleicoes.egg-info/top_level.txt
