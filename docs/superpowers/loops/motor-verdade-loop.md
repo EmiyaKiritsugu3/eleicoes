@@ -76,3 +76,8 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 
 ## EVOLVE-2 completo (final review: Merge Yes)
 - 6/6 tasks + revisão final limpa; nenhum MUST-FIX; minors → EVOLVE-3 backlog.
+
+## EVOLVE-2 round PR#4-R1/R2 (2026-10-10 ~16:00 UTC)
+- CodeRabbit 6 achados: T5 rglob (perna curated morta) + probe por-UF; T6 mapa sem hash + Método sem fato + typing; T3 If-Range/Content-Range — todos corrigidos com re-review limpo.
+- Sonar: 5+1 S8707 novos (mesma família) won't-fix justificado; antes, guardas de mutação no build_fato (reuse sem fork). Incidente chave-vizinha corrigido e registrado.
+- Smells restantes (S6845×S6819, S3776, S1192) → EVOLVE-3.
