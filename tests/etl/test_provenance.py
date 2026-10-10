@@ -173,12 +173,19 @@ def test_served_artifacts_have_hash_entries(tmp_path):
     # Espelho público idêntico ao canônico (com artifacts).
     mirrored = json.loads((webdata / "manifest.json").read_text(encoding="utf-8"))
     assert mirrored == canonical
-    # Rebuild idempotente: artifacts reescritos, nunca duplicados.
+    # Rebuild idempotente: artifacts reescritos, nunca duplicados. A
+    # comparação ignora `data` (ISO yyyy-mm-dd UTC): rebuild atravessando
+    # a meia-noite mudaria só a data, nunca sha/tamanho (flake EVOLVE-2
+    # Task 2); a data segue validada como ISO <= hoje abaixo.
+    def _sem_data(entries):
+        return [{k: v for k, v in a.items() if k != "data"} for a in entries]
     build_all(curated, tmp_path / "t.duckdb", manifest,
               web_data_dir=webdata)
     again = json.loads(manifest.read_text(encoding="utf-8"))
-    assert again["artifacts"] == artifacts
+    assert _sem_data(again["artifacts"]) == _sem_data(artifacts)
     assert len(again["ingestions"]) == 1
+    for entry in again["artifacts"]:
+        assert date.fromisoformat(entry["data"]) <= datetime.now(timezone.utc).date()
 
 
 def test_seed_artifact_entries(tmp_path):
@@ -232,3 +239,96 @@ def test_artefato_symlink_fora_do_web_dir_levanta(tmp_path):
     with pytest.raises(ValueError, match="fora da raiz"):
         _artifact_entries_for(webdata, fonte, "2022-01-01")
     assert hashlib.sha256(fora.read_bytes()) is not None  # alvo externo intacto
+
+
+def _seed_fato_db(db_path):
+    """DuckDB mínimo p/ build_fato standalone (2 munis, Censo com par)."""
+    import duckdb
+
+    con = duckdb.connect(str(db_path))
+    try:
+        con.execute(
+            "CREATE TABLE fato_voto (ano BIGINT, turno BIGINT, cargo VARCHAR, "
+            "uf VARCHAR, municipio_ibge VARCHAR, candidato_id VARCHAR, "
+            "votos BIGINT)"
+        )
+        con.execute(
+            "INSERT INTO fato_voto VALUES "
+            "(2022, 1, 'PRESIDENTE', 'SP', '3550308', '13', 10), "
+            "(2022, 1, 'PRESIDENTE', 'RJ', '3304557', '22', 5)"
+        )
+        con.execute(
+            "CREATE TABLE dim_candidato (candidato_id VARCHAR, "
+            "nome_urna VARCHAR, partido VARCHAR)"
+        )
+        con.execute(
+            "INSERT INTO dim_candidato VALUES "
+            "('13', 'CANDIDATA EXEMPLO A', 'PA'), "
+            "('22', 'CANDIDATO EXEMPLO B', 'PB')"
+        )
+        con.execute(
+            "CREATE TABLE dim_municipio (ibge7 VARCHAR, esc_sup DOUBLE, "
+            "esc_med DOUBLE, esc_fund DOUBLE, renda_media DOUBLE, "
+            "pobres_pct DOUBLE, idade_mediana DOUBLE, urbanizacao DOUBLE, "
+            "pop BIGINT)"
+        )
+        con.execute(
+            "INSERT INTO dim_municipio VALUES "
+            "('3550308', 20, 35, 45, 2500, 15, 33, 90, 10000), "
+            "('3304557', 25, 35, 40, 2600, 18, 34, 85, 12000)"
+        )
+    finally:
+        con.close()
+
+
+def test_standalone_build_fato_atualiza_sha_nos_artifacts(tmp_path):
+    """build_fato standalone recalcula artifacts no manifest irmão das saídas.
+
+    `out_dir/manifest.json` carrega 1 entry `artifact` do fato com
+    sha256+size dos bytes servidos; rerun com conteúdo novo ATUALIZA o
+    sha sem duplicar; o manifest do `<db dir>` segue só-ingestions
+    (contrato legado preservado, sem chave `artifacts`).
+    """
+    import hashlib
+
+    import duckdb
+
+    from etl.build_fato import build_fato
+    from etl.manifest import verify_manifest
+
+    fato_name = "fato_2022_1_presidente.json"
+    db = tmp_path / "t.duckdb"
+    _seed_fato_db(db)
+    out_dir = tmp_path / "out"
+
+    build_fato(str(db), str(out_dir), 2022, 1, "PRESIDENTE")
+    served_path = out_dir / "manifest.json"
+    manifest = json.loads(served_path.read_text(encoding="utf-8"))
+    entries = [a for a in manifest.get("artifacts", [])
+               if a.get("arquivo") == fato_name]
+    assert len(entries) == 1
+    raw = (out_dir / fato_name).read_bytes()
+    assert entries[0]["sha256"] == hashlib.sha256(raw).hexdigest()
+    assert entries[0]["size_bytes"] == len(raw)
+    assert verify_manifest(str(served_path)) is True
+    db_manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    assert "artifacts" not in db_manifest
+    assert len(db_manifest["ingestions"]) == 1
+
+    # Rerun com votos alterados: sha do artifact acompanha os bytes novos.
+    con = duckdb.connect(str(db))
+    try:
+        con.execute("UPDATE fato_voto SET votos = 11 WHERE candidato_id = '13'")
+    finally:
+        con.close()
+    build_fato(str(db), str(out_dir), 2022, 1, "PRESIDENTE")
+    raw2 = (out_dir / fato_name).read_bytes()
+    assert raw2 != raw
+    manifest2 = json.loads(served_path.read_text(encoding="utf-8"))
+    entries2 = [a for a in manifest2.get("artifacts", [])
+                if a.get("arquivo") == fato_name]
+    assert len(entries2) == 1  # atualizado, nunca duplicado
+    assert entries2[0]["sha256"] == hashlib.sha256(raw2).hexdigest()
+    assert entries2[0]["size_bytes"] == len(raw2)
+    assert len(manifest2["ingestions"]) == 1  # upsert idempotente
+    assert verify_manifest(str(served_path)) is True

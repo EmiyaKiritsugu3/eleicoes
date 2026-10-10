@@ -40,12 +40,19 @@ página do catálogo IBGE]` como fonte dupla. `abst`/`eleitores` vêm de
 tem votação nominal). `nome` do município é `""`: nenhum schema
 canônico (TSE ou Censo) carrega nomes — a camada do mapa resolve nomes
 por IBGE7 a partir da malha.
+
+O manifest do `<db dir>` segue só-ingestions (contrato legado). Em
+adição, o manifest irmão das saídas (`<out_dir>/manifest.json`) recebe
+a ingestão (upsert idempotente) + `artifacts` recalculados sobre os
+bytes do fato via `register_served_artifacts` — reruns atualizam o sha
+sem duplicar, e `verify_manifest` desse mirror prova os bytes servidos.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -53,6 +60,7 @@ import duckdb
 import pandas as pd
 
 from etl import ETL_VERSION
+from etl.build_marts import register_served_artifacts
 from etl.censo import check_censo_sum
 from etl.manifest import write_manifest
 from etl.sources import CENSO_DATASETS, V1_DATASETS
@@ -69,13 +77,95 @@ DEMO_FIELDS = [
 ]
 
 
-def _v1_tse_url(ano: int, cargo_upper: str) -> str:
+def _v1_entry(ano: int, cargo_upper: str) -> dict:
     for entry in V1_DATASETS:
         if entry["ano"] == ano and str(entry["cargo"]).upper() == cargo_upper:
-            return entry["url"]
+            return entry
     raise ValueError(
         f"build_fato: par (ano, cargo) fora do escopo V1: ({ano}, {cargo_upper})"
     )
+
+
+def _served_source_shape(v1_entry: dict) -> dict:
+    """Subconjunto da entry V1 que `_artifact_entries_for` consome."""
+    return {
+        "url": v1_entry["url"],
+        "ano": v1_entry["ano"],
+        "cargo": v1_entry["cargo"],
+        "dataset": v1_entry["dataset"],
+        "tipo": v1_entry["tipo"],
+    }
+
+
+def _ingestion_dedupe_key(entry: dict) -> tuple:
+    """Idempotência do mirror servido: 1 ingestão por (dataset, triple, fonte)."""
+    return (
+        entry.get("dataset"),
+        entry.get("ano"),
+        entry.get("turno"),
+        str(entry.get("cargo", "")).upper(),
+        entry.get("source_url"),
+    )
+
+
+def _atualizar_manifest_servido(out_dir, ingestion: dict, v1_entry: dict) -> None:
+    """Recalcula `artifacts` do manifest irmão das saídas (EVOLVE-2 Task 2).
+
+    DECISÃO: o `out_dir` do standalone É o mirror servido — o fato acaba
+    de ser escrito ali, então o recalc sempre é possível (sem ramo de
+    erro fail-closed). O manifest do `<db dir>` segue só-ingestions
+    (contrato legado: ingestão antes de existirem bytes servidos). Aqui
+    o manifest `out_dir/manifest.json` ganha a ingestão (upsert
+    idempotente) + `artifacts` via `register_served_artifacts` — reruns
+    atualizam o sha do fato sem duplicar. As fontes do recalc são a do
+    fato atual + as já atestadas nas ingestões do mirror (só V1 com
+    cargo; Censo-type sem cargo nunca gera artifact e é ignorado): sem
+    a reconstrução, o replace integral colapsaria a atribuição do trio
+    em dir servido multi-par para a fonte única do fato atual.
+    """
+    served_path = Path(out_dir) / "manifest.json"
+    try:
+        served = json.loads(served_path.read_text(encoding="utf-8"))
+        if not isinstance(served, dict):
+            served = {"ingestions": []}
+    except FileNotFoundError:
+        served = {"ingestions": []}
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+        served_path.rename(f"{served_path}.corrupt.{stamp}")
+        served = {"ingestions": []}
+    ingestions = served.get("ingestions")
+    if not isinstance(ingestions, list):
+        ingestions = []
+    key = _ingestion_dedupe_key(ingestion)
+    ingestions = [
+        e for e in ingestions
+        if not (isinstance(e, dict) and _ingestion_dedupe_key(e) == key)
+    ] + [ingestion]
+    served["ingestions"] = ingestions
+    tmp_path = Path(f"{served_path}.tmp")
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(served, f, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, served_path)
+    sources = [_served_source_shape(v1_entry)]
+    seen = {(v1_entry["ano"], str(v1_entry["cargo"]).upper(), v1_entry["url"])}
+    for e in ingestions:
+        if (
+            isinstance(e, dict)
+            and e.get("source_url") and e.get("cargo") is not None
+            and e.get("ano") is not None and e.get("dataset") and e.get("tipo")
+        ):
+            pair = (e["ano"], str(e["cargo"]).upper(), e["source_url"])
+            if pair not in seen:
+                seen.add(pair)
+                sources.append({
+                    "url": e["source_url"],
+                    "ano": e["ano"],
+                    "cargo": e["cargo"],
+                    "dataset": e["dataset"],
+                    "tipo": e["tipo"],
+                })
+    register_served_artifacts(served_path, Path(out_dir), sources)
 
 
 def _tables(con) -> set[str]:
@@ -116,7 +206,8 @@ def build_fato(duckdb_path, out_dir, ano, turno, cargo,
     cargo_upper = cargo.strip().upper()
     cargo_slug = cargo.strip().lower()
 
-    tse_url = _v1_tse_url(ano, cargo_upper)  # fail-closed antes de qualquer IO
+    v1_entry = _v1_entry(ano, cargo_upper)  # fail-closed antes de qualquer IO
+    tse_url = v1_entry["url"]
 
     db_path = Path(duckdb_path)
     if not db_path.is_file():
@@ -278,21 +369,23 @@ def build_fato(duckdb_path, out_dir, ano, turno, cargo,
         json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     sha = hashlib.sha256(out_path.read_bytes()).hexdigest()
-    write_manifest(
-        db_path.parent / "manifest.json",
-        {
-            "source_url": tse_url,
-            "sha256": sha,
-            "sha_origin": "fato_json",
-            "data": datetime.now(timezone.utc).date().isoformat(),
-            "etl_version": ETL_VERSION,
-            "dataset": f"fato_{ano}_{turno}_{cargo_slug}",
-            "ano": ano,
-            "turno": turno,
-            "cargo": cargo_slug,
-            "tipo": "fato_municipal",
-            "rows": len(municipios),
-            "fontes": [tse_url, CENSO_DATASETS[0]["dataset"]],
-        },
-    )
+    ingestion = {
+        "source_url": tse_url,
+        "sha256": sha,
+        "sha_origin": "fato_json",
+        "data": datetime.now(timezone.utc).date().isoformat(),
+        "etl_version": ETL_VERSION,
+        "dataset": f"fato_{ano}_{turno}_{cargo_slug}",
+        "ano": ano,
+        "turno": turno,
+        "cargo": cargo_slug,
+        "tipo": "fato_municipal",
+        "rows": len(municipios),
+        "fontes": [tse_url, CENSO_DATASETS[0]["dataset"]],
+    }
+    write_manifest(db_path.parent / "manifest.json", ingestion)
+    # Mirror servido (Task 2): o manifest irmão das saídas recalcula
+    # `artifacts` sobre os bytes do fato; o do <db dir> acima segue
+    # só-ingestions (contrato legado preservado).
+    _atualizar_manifest_servido(out_dir_p, ingestion, v1_entry)
     return str(out_path)
