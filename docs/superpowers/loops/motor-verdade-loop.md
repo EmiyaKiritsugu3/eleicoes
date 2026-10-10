@@ -59,3 +59,6 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 
 ## EVOLVE-1: auditoria de melhorias (iniciada)
 - Conhecidos pendentes: mapa clicável na Home (gap spec §3); ingest real Censo (URL pendente); verificação com-fato-real; T2 dup/phantom-id; minors do ledger final.
+
+## EVOLVE-1 completo (final review: Merge Yes)
+- 6/6 tasks + revisão final limpa; nenhum MUST-FIX; minors → EVOLVE-2 backlog.
