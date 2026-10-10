@@ -36,6 +36,10 @@ export const ECO_SEAL = "dado de município, não de pessoa";
  *  `build_all` o preserva no staging e `register_served_artifacts` atesta
  *  os bytes com entry de fonte do Censo (nunca fan-out TSE) — a
  *  proveniência da pop vive nessa entry `artifacts`, não no gate do fato.
+ *  ASSUNÇÃO DE CONFIANÇA (build-time): o runtime NÃO revalida a entry —
+ *  vale enquanto `/data/` for imutável pós-`register_served_artifacts`
+ *  (qualquer JSON neste path renderiza como fato). Endurecimento futuro:
+ *  checar a entry do Censo no manifest (selo) antes de renderizar.
  *  Ausente → fetch fail-closed (null) e a linha exibe SEM_DADO. */
 export const CENSO_URL = "/data/censo_municipios.json";
 
