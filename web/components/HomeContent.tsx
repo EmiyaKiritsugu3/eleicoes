@@ -267,7 +267,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
           <>
             {comZoom && (
               <div>
-                <p role="status">Mostrando municípios de {ufFoco}</p>
+                <p role="status">Mostrando municípios de <a href={`/regiao/${ufFoco}`}>{ufFoco}</a></p>
                 <button type="button" onClick={() => setF((prev) => ({ ...prev, uf: "" }))}>
                   Voltar para todas as UFs
                 </button>
@@ -294,7 +294,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
             </thead>
             <tbody>
               {ufs.map((r) => (
-                <tr key={r.uf}><td>{r.uf}</td><td>{formatVotes(r.votos)}</td></tr>
+                <tr key={r.uf}><td><a href={`/regiao/${r.uf}`}>{r.uf}</a></td><td>{formatVotes(r.votos)}</td></tr>
               ))}
             </tbody>
           </table>
