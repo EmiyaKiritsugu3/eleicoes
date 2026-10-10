@@ -135,6 +135,31 @@ export function fontesDaEntrada(e: ManifestIngestion): string[] {
   return url ? [url] : [];
 }
 
+/** Data da ingestão p/ a tabela da /auditoria: só ISO (AAAA-MM-DD ou
+ *  datetime ISO) COM data de calendário real; raw fora do formato OU com
+ *  dia/mês inexistente cai p/ "" (fail-closed: a célula mostra SEM_DADO).
+ *  `Date.parse` sozinho transborda ("2026-02-30" → Mar 02), então o trecho
+ *  AAAA-MM-DD passa por round-trip via `Date.UTC` antes de aceitar.
+ *  Extraída p/ cá p/ ser testável (page não exporta). */
+export function entryDate(e: ManifestIngestion): string {
+  const raw =
+    (typeof e.date === "string" && e.date.trim()) ||
+    (typeof e.data === "string" && e.data.trim()) ||
+    "";
+  if (!raw) return "";
+  const m =
+    /^(\d{4})-(\d{2})-(\d{2})([T ]\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$/.exec(raw);
+  if (!m) return "";
+  const chk = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  if (
+    chk.getUTCFullYear() !== Number(m[1]) ||
+    chk.getUTCMonth() !== Number(m[2]) - 1 ||
+    chk.getUTCDate() !== Number(m[3])
+  )
+    return "";
+  return Number.isNaN(Date.parse(raw)) ? "" : raw;
+}
+
 /** Exibição como oficial: hash válido E não-fixture. */
 export function isOfficialDisplay(obj: unknown): boolean {
   return isAudited(obj) && !isFixtureEntry(obj);

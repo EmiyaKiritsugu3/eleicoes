@@ -198,6 +198,82 @@ def test_censo_manifest_registers_date_and_version(tmp_path):
     assert entries[0]["etl_version"] == "1.1.0"
 
 
+def test_register_censo_ingest_data_injetavel(tmp_path):
+    """EVOLVE-6 Task 4 (RED): `data=` injetável p/ testes determinísticos.
+
+    Default (sem `data`) = hoje UTC (comportamento idêntico ao legado);
+    com `data=` fixa, a entry e o manifest gravam exatamente ela.
+    """
+    from etl.censo import register_censo_ingest
+
+    confirmed = {
+        "url": "https://ftp.ibge.gov.br/Censos/Censo_Demografico_2022/confirmado.zip",
+        "ano": 2022,
+        "nome": "censo_demografico_2022_municipios",
+        "dataset": "https://www.ibge.gov.br/estatisticas/sociais/populacao/22827-censo-demografico-2022.html",
+    }
+    manifest = tmp_path / "m.json"
+    entry = register_censo_ingest(
+        str(manifest), rows=1, sha256="ab" * 32,
+        dataset=confirmed, data="2022-09-01")
+    assert entry["data"] == "2022-09-01"
+    import json
+
+    gravado = json.loads(manifest.read_text(encoding="utf-8"))["ingestions"]
+    assert gravado[0]["data"] == "2022-09-01"
+
+
+def test_register_censo_ingest_data_default_hoje_utc(tmp_path):
+    """EVOLVE-6 Task 4 (RED): sem `data=`, default = hoje UTC (idêntico)."""
+    from datetime import date, datetime, timezone
+
+    from etl.censo import register_censo_ingest
+
+    # Intervalo antes/depois: travessia de meia-noite UTC entre o default
+    # e a asserção não pode flakar (esperado lido depois do default).
+    antes = datetime.now(timezone.utc).date()
+    entry = register_censo_ingest(
+        str(tmp_path / "m.json"), rows=1, sha256="ab" * 32)
+    depois = datetime.now(timezone.utc).date()
+    assert antes <= date.fromisoformat(entry["data"]) <= depois
+
+
+def test_register_censo_ingest_data_datetime_naive_usa_data_local(tmp_path):
+    """datetime naive: sem tz, grava a data como está (sem conversão)."""
+    from datetime import datetime
+
+    from etl.censo import register_censo_ingest
+
+    entry = register_censo_ingest(
+        str(tmp_path / "m.json"), rows=1, sha256="ab" * 32,
+        dataset={"url": "https://x/y.zip", "dataset": "d",
+                 "ano": 2022, "nome": "n"},
+        data=datetime(2022, 9, 1, 23, 30))
+    assert entry["data"] == "2022-09-01"
+
+
+def test_register_censo_ingest_data_datetime_consciente_vira_utc(tmp_path):
+    """datetime aware não-UTC: converte p/ UTC antes de extrair a data."""
+    from datetime import datetime, timedelta, timezone
+
+    from etl.censo import register_censo_ingest
+
+    # 2022-09-01 23:30 em UTC-2 = 2022-09-02 01:30 UTC → dia UTC é 02.
+    data = datetime(2022, 9, 1, 23, 30,
+                    tzinfo=timezone(timedelta(hours=-2)))
+    entry = register_censo_ingest(
+        str(tmp_path / "m.json"), rows=1, sha256="ab" * 32,
+        data=data)
+    assert entry["data"] == "2022-09-02"
+    # Espelho positivo: 2022-09-02 00:30 em UTC+3 = 2022-09-01 UTC.
+    data2 = datetime(2022, 9, 2, 0, 30,
+                     tzinfo=timezone(timedelta(hours=3)))
+    entry2 = register_censo_ingest(
+        str(tmp_path / "m2.json"), rows=1, sha256="ab" * 32,
+        data=data2)
+    assert entry2["data"] == "2022-09-01"
+
+
 def test_idade_media_nao_vira_mediana():
     """IDADE_MEDIA (média) não pode alimentar idade_mediana (mediana)."""
     from etl.censo import normalize_censo

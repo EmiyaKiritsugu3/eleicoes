@@ -2,10 +2,11 @@
 
 import React, { useEffect, useState } from "react";
 import { ArtifactsTable } from "../../components/ArtifactsTable";
+import { FontesCell } from "../../components/FontesCell";
 import SourceBadge from "../../components/SourceBadge";
 import FixtureBadge from "../../components/FixtureBadge";
 import {
-  fontesDaEntrada,
+  entryDate,
   getArtifacts,
   getOfficialAuditInfo,
   isAudited,
@@ -14,7 +15,6 @@ import {
   safeUrl,
   type AuditInfo,
   type Manifest,
-  type ManifestIngestion,
 } from "../../lib/data";
 import { SEM_DADO } from "../../lib/textos";
 
@@ -26,12 +26,6 @@ async function fetchJson<T>(path: string): Promise<T | null> {
   } catch {
     return null;
   }
-}
-
-function entryDate(e: ManifestIngestion): string {
-  if (typeof e.date === "string" && e.date) return e.date;
-  if (typeof e.data === "string" && e.data) return e.data;
-  return "";
 }
 
 /** Selo de amostra sintética compartilhado (components/FixtureBadge):
@@ -164,21 +158,7 @@ export default function Auditoria() {
                       {isFixtureEntry(e) && <FixtureBadge />}
                     </td>
                     <td>
-                      {(() => {
-                        const fontes = fontesDaEntrada(e);
-                        if (fontes.length === 0) return SEM_DADO;
-                        return (
-                          <ul>
-                            {fontes.map((f, j) => (
-                              <li key={`${f}#${j}`}>
-                                <a href={f} target="_blank" rel="noreferrer">
-                                  {f}
-                                </a>
-                              </li>
-                            ))}
-                          </ul>
-                        );
-                      })()}
+                      <FontesCell entry={e} />
                     </td>
                     <td>{conjunto}</td>
                     <td>

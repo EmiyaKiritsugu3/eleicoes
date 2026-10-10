@@ -4,7 +4,6 @@ import fs from "node:fs";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { act } from "react-dom/test-utils";
-import { createRoot } from "react-dom/client";
 import MapaBrasil, { MapaFallback, precisaFallback } from "../components/MapaBrasil";
 import {
   EXTERIOR,
@@ -19,42 +18,20 @@ import {
   FIXTURE_TOPO_2UF as FIXTURE_2UF,
   mockPath2D,
   mockCanvas2d,
+  mockFetchMalhaAusente,
+  topoQuadradoUnico,
+  renderJsdom,
+  rerenderJsdom,
+  teardownJsdom,
 } from "./helpers";
 
-// Malha fixture mínima: um quadrado rotulado 3550308 (São Paulo-SP).
-// Coords de TELA (pós-flip Y): o quadrado geo (0,0)-(10,10) decodifica p/ y -10..0.
-const FIXTURE_TOPO = {
-  type: "Topology",
-  transform: { scale: [1, 1], translate: [0, 0] },
-  objects: {
-    municipios: {
-      type: "GeometryCollection",
-      geometries: [
-        {
-          type: "Polygon",
-          properties: { ibge7: "3550308", uf: "SP", nome: "São Paulo" },
-          arcs: [[0]],
-        },
-      ],
-    },
-  },
-  arcs: [
-    [
-      [0, 0],
-      [0, 10],
-      [10, 0],
-      [0, -10],
-      [-10, 0],
-    ],
-  ],
-};
+// Malha fixture mínima: quadrado único 3550308 (São Paulo-SP) — builder
+// compartilhado em helpers (a variante renomeada p/ rotação sai do mesmo).
+const FIXTURE_TOPO = topoQuadradoUnico("São Paulo");
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-  vi.restoreAllMocks();
-});
+afterEach(teardownJsdom);
 
 function mockFetchTopo() {
   vi.stubGlobal(
@@ -148,14 +125,9 @@ describe("fiação do clique no <canvas> (jsdom)", () => {
     mockFetchTopo();
     try {
       const onSelectIbge = vi.fn();
-      const div = document.createElement("div");
-      document.body.appendChild(div);
-      const root = createRoot(div);
-      await act(async () => {
-        root.render(
-          <MapaBrasil malhaUrl="/data/malha.topojson" nivel="uf" onSelectIbge={onSelectIbge} />,
-        );
-      });
+      const div = await renderJsdom(
+        <MapaBrasil malhaUrl="/data/malha.topojson" nivel="uf" onSelectIbge={onSelectIbge} />,
+      );
       const canvas = div.querySelector("canvas");
       expect(canvas).not.toBeNull();
       // CSS 400x300 sobre backing 800x600 (DPR 1 no jsdom).
@@ -171,8 +143,6 @@ describe("fiação do clique no <canvas> (jsdom)", () => {
         canvas!.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 390, clientY: 290 }));
       });
       expect(onSelectIbge).toHaveBeenCalledTimes(1);
-      root.unmount();
-      div.remove();
     } finally {
       restoreCtx();
       restorePath();
@@ -192,16 +162,11 @@ describe("malha indisponível usa o mesmo fallback", () => {
   });
   it("fetch rejeita -> renderiza lista de UFs + link TSE, sem <canvas>", async () => {
     const restorePath = mockPath2D();
-    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 404 })));
+    mockFetchMalhaAusente();
     try {
-      const div = document.createElement("div");
-      document.body.appendChild(div);
-      const root = createRoot(div);
-      await act(async () => {
-        root.render(
-          <MapaBrasil malhaUrl="/data/malha.topojson" nivel="uf" onSelectIbge={() => {}} />,
-        );
-      });
+      const div = await renderJsdom(
+        <MapaBrasil malhaUrl="/data/malha.topojson" nivel="uf" onSelectIbge={() => {}} />,
+      );
       expect(div.querySelector("canvas")).toBeNull();
       const linkTse = div.querySelector('a[href="https://resultados.tse.jus.br/"]');
       expect(linkTse).not.toBeNull();
@@ -209,8 +174,6 @@ describe("malha indisponível usa o mesmo fallback", () => {
         expect(div.textContent).toContain(uf);
       }
       expect(div.querySelector('[role="alert"]')).not.toBeNull();
-      root.unmount();
-      div.remove();
     } finally {
       restorePath();
     }
@@ -237,12 +200,7 @@ describe("contrato da seleção (IBGE7 | UF | EXTERIOR)", () => {
     mockFetchTopo();
     try {
       const onSelectIbge = vi.fn();
-      const div = document.createElement("div");
-      document.body.appendChild(div);
-      const root = createRoot(div);
-      await act(async () => {
-        root.render(<MapaFallback onSelectIbge={onSelectIbge} />);
-      });
+      const div = await renderJsdom(<MapaFallback onSelectIbge={onSelectIbge} />);
       const botoes = Array.from(div.querySelectorAll("button"));
       const botaoSP = botoes.find((b) => b.textContent === "SP");
       const botaoExt = botoes.find((b) => b.textContent === "Exterior");
@@ -252,8 +210,6 @@ describe("contrato da seleção (IBGE7 | UF | EXTERIOR)", () => {
       botaoExt!.click();
       expect(onSelectIbge).toHaveBeenNthCalledWith(1, "SP");
       expect(onSelectIbge).toHaveBeenNthCalledWith(2, "EXTERIOR");
-      root.unmount();
-      div.remove();
     } finally {
       restorePath();
     }
@@ -416,14 +372,9 @@ describe("zoom UF filtra o hit-test (só o desenhado)", () => {
     mockFetchTopo2();
     try {
       const onSelectIbge = vi.fn();
-      const div = document.createElement("div");
-      document.body.appendChild(div);
-      const root = createRoot(div);
-      await act(async () => {
-        root.render(
-          <MapaBrasil malhaUrl="/data/malha.topojson" nivel="municipio" ufSelecionada="SP" onSelectIbge={onSelectIbge} />,
-        );
-      });
+      const div = await renderJsdom(
+        <MapaBrasil malhaUrl="/data/malha.topojson" nivel="municipio" ufSelecionada="SP" onSelectIbge={onSelectIbge} />,
+      );
       const canvas = div.querySelector("canvas");
       expect(canvas).not.toBeNull();
       canvas!.getBoundingClientRect = () =>
@@ -443,11 +394,110 @@ describe("zoom UF filtra o hit-test (só o desenhado)", () => {
       });
       expect(onSelectIbge).toHaveBeenCalledTimes(1);
       expect(onSelectIbge).toHaveBeenCalledWith("3550308");
-      root.unmount();
-      div.remove();
     } finally {
       restoreCtx();
       restorePath();
+    }
+  });
+});
+
+describe("rotação de manifest não gruda no mapa velho (decisão EVOLVE-6 T6-b)", () => {
+  // Mesma geometria, município renomeado: só o sync featuresProp→estado
+  // atualiza o <select> de teclado (pré-fix: estado inicial gruda em A).
+  it("features novas do chamador substituem o estado (sem stale)", async () => {
+    const restorePath = mockPath2D();
+    const restoreCtx = mockCanvas2d();
+    try {
+      const featsA = decodeTopojson(FIXTURE_TOPO as never);
+      const featsB = decodeTopojson(topoQuadradoUnico("Campinas") as never);
+      const div = await renderJsdom(
+        <MapaBrasil malhaUrl="/data/malha.topojson" nivel="municipio" ufSelecionada="SP" features={featsA} onSelectIbge={() => {}} />,
+      );
+      expect(div.textContent).toContain("São Paulo");
+      // Rotação: chamador resolveu features novas e repassa.
+      await rerenderJsdom(
+        <MapaBrasil malhaUrl="/data/malha.topojson" nivel="municipio" ufSelecionada="SP" features={featsB} onSelectIbge={() => {}} />,
+      );
+      expect(div.textContent).toContain("Campinas");
+      expect(div.textContent).not.toContain("São Paulo");
+    } finally {
+      restoreCtx();
+      restorePath();
+    }
+  });
+  it("erro anterior limpa quando a malha chega (fallback não gruda)", async () => {
+    const restorePath = mockPath2D();
+    const restoreCtx = mockCanvas2d();
+    mockFetchMalhaAusente();
+    try {
+      const div = await renderJsdom(
+        <MapaBrasil malhaUrl="/data/malha.topojson" nivel="uf" onSelectIbge={() => {}} />,
+      );
+      // Falhou: fallback em lista, sem canvas.
+      expect(div.querySelector("canvas")).toBeNull();
+      // Rotação: chamador entrega as features (malha surgiu) — canvas volta.
+      const feats = decodeTopojson(FIXTURE_TOPO as never);
+      await rerenderJsdom(
+        <MapaBrasil malhaUrl="/data/malha.topojson" nivel="uf" features={feats} onSelectIbge={() => {}} />,
+      );
+      expect(div.querySelector("canvas")).not.toBeNull();
+    } finally {
+      restorePath();
+      restoreCtx();
+    }
+  });
+  it("nova malhaUrl tenta de novo após falha (refetch na rotação)", async () => {
+    const restorePath = mockPath2D();
+    const restoreCtx = mockCanvas2d();
+    mockFetchMalhaAusente();
+    try {
+      const div = await renderJsdom(
+        <MapaBrasil malhaUrl="/data/v1.topojson" nivel="uf" onSelectIbge={() => {}} />,
+      );
+      expect(div.querySelector("canvas")).toBeNull();
+      // Rotação: URL nova + malha disponível — refetch recupera o canvas.
+      vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => FIXTURE_TOPO })));
+      await rerenderJsdom(
+        <MapaBrasil malhaUrl="/data/v2.topojson" nivel="uf" onSelectIbge={() => {}} />,
+      );
+      expect(div.querySelector("canvas")).not.toBeNull();
+    } finally {
+      restorePath();
+      restoreCtx();
+    }
+  });
+  it("fallback segue visível durante o refetch pendente (só limpa no sucesso)", async () => {
+    const restorePath = mockPath2D();
+    const restoreCtx = mockCanvas2d();
+    mockFetchMalhaAusente();
+    try {
+      const div = await renderJsdom(
+        <MapaBrasil malhaUrl="/data/v1.topojson" nivel="uf" onSelectIbge={() => {}} />,
+      );
+      // Falhou: fallback em lista, sem canvas.
+      expect(div.querySelector("canvas")).toBeNull();
+      // Rotação com fetch ainda pendente: fallback mantido, sem canvas vazio.
+      let resolver!: (v: unknown) => void;
+      const pendente = new Promise((res) => {
+        resolver = res;
+      });
+      vi.stubGlobal("fetch", vi.fn(() => pendente));
+      await rerenderJsdom(
+        <MapaBrasil malhaUrl="/data/v2.topojson" nivel="uf" onSelectIbge={() => {}} />,
+      );
+      expect(div.querySelector("canvas")).toBeNull();
+      expect(div.querySelector('[role="alert"]')).not.toBeNull();
+      // Sucesso resolve: canvas volta.
+      await act(async () => {
+        resolver({ ok: true, json: async () => FIXTURE_TOPO });
+      });
+      for (let i = 0; i < 8; i++) {
+        await act(async () => {});
+      }
+      expect(div.querySelector("canvas")).not.toBeNull();
+    } finally {
+      restorePath();
+      restoreCtx();
     }
   });
 });
@@ -459,14 +509,9 @@ describe("operável por teclado (lista junto ao mapa)", () => {
     mockFetchTopo2();
     try {
       const onSelectIbge = vi.fn();
-      const div = document.createElement("div");
-      document.body.appendChild(div);
-      const root = createRoot(div);
-      await act(async () => {
-        root.render(
-          <MapaBrasil malhaUrl="/data/malha.topojson" nivel="municipio" ufSelecionada="SP" onSelectIbge={onSelectIbge} />,
-        );
-      });
+      const div = await renderJsdom(
+        <MapaBrasil malhaUrl="/data/malha.topojson" nivel="municipio" ufSelecionada="SP" onSelectIbge={onSelectIbge} />,
+      );
       const sel = div.querySelector('select[aria-label="Escolher município (teclado)"]') as HTMLSelectElement | null;
       expect(sel).not.toBeNull();
       await act(async () => {
@@ -474,8 +519,6 @@ describe("operável por teclado (lista junto ao mapa)", () => {
         sel!.dispatchEvent(new Event("change", { bubbles: true }));
       });
       expect(onSelectIbge).toHaveBeenCalledWith("3550308");
-      root.unmount();
-      div.remove();
     } finally {
       restoreCtx();
       restorePath();
@@ -487,14 +530,9 @@ describe("operável por teclado (lista junto ao mapa)", () => {
     mockFetchTopo2();
     try {
       const onSelectIbge = vi.fn();
-      const div = document.createElement("div");
-      document.body.appendChild(div);
-      const root = createRoot(div);
-      await act(async () => {
-        root.render(
-          <MapaBrasil malhaUrl="/data/malha.topojson" nivel="uf" onSelectIbge={onSelectIbge} />,
-        );
-      });
+      const div = await renderJsdom(
+        <MapaBrasil malhaUrl="/data/malha.topojson" nivel="uf" onSelectIbge={onSelectIbge} />,
+      );
       const sel = div.querySelector('select[aria-label="Escolher UF (teclado)"]') as HTMLSelectElement | null;
       expect(sel).not.toBeNull();
       await act(async () => {
@@ -502,8 +540,6 @@ describe("operável por teclado (lista junto ao mapa)", () => {
         sel!.dispatchEvent(new Event("change", { bubbles: true }));
       });
       expect(onSelectIbge).toHaveBeenCalledWith("SP");
-      root.unmount();
-      div.remove();
     } finally {
       restoreCtx();
       restorePath();

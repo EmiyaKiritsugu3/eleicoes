@@ -111,3 +111,7 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 ## EVOLVE-5 mergeado (2026-10-10 ~19:00 UTC)
 - Merge PR #7 (merge commit 140f8fa): tudo verde — CI, GitGuardian, CodeRabbit, cubic, Sonar (pós won't-fix justificado). Branch evolve-5 deletada.
 - Total: 6 tasks + R1 (Sonar + cubic P3) com re-reviews limpos. Primeiro dado REAL fluindo (Censo 2022 e2e). Suítes finais: pytest 168 + vitest 374 + tsc clean + build.
+
+## EVOLVE-6 completo (final review: Merge Yes)
+- 6/6 tasks (4 implemented + 2 documented blockages T1/T5) + revisão final limpa; nenhum MUST-FIX.
+- Achado direcional: TSE↔IBGE sem de-para oficial + alfabetização≠escolaridade; próximo win desbloqueado = perfil Censo na UI (EVOLVE-7).

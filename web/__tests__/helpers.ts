@@ -99,6 +99,38 @@ export const FIXTURE_TOPO_VAZIA = {
   arcs: [],
 };
 
+// Quadrado único (0,0)-(10,10) rotulado 3550308-SP, nome parametrizado: a
+// mesma geometria renomeada testa a rotação de manifest sem duplicar o
+// literal (gate Sonar duplication ≤3%). Coords de TELA (pós-flip Y):
+// o quadrado geo (0,0)-(10,10) decodifica p/ y -10..0.
+export function topoQuadradoUnico(nome: string) {
+  return {
+    type: "Topology",
+    transform: { scale: [1, 1], translate: [0, 0] },
+    objects: {
+      municipios: {
+        type: "GeometryCollection",
+        geometries: [
+          {
+            type: "Polygon",
+            properties: { ibge7: "3550308", uf: "SP", nome },
+            arcs: [[0]],
+          },
+        ],
+      },
+    },
+    arcs: [
+      [
+        [0, 0],
+        [0, 10],
+        [10, 0],
+        [0, -10],
+        [-10, 0],
+      ],
+    ],
+  };
+}
+
 export type ModoMalha = "ok" | "ausente" | "vazia";
 
 // ---------- canvas (jsdom não tem Path2D/getContext real) ----------
@@ -158,6 +190,12 @@ export function responderBasico(
   }
   if (fato !== null && url.includes("/data/fato_")) return okJson(fato);
   return errJson();
+}
+
+// Malha ausente (HTTP 404): o mapa cai no fallback honesto em lista
+// (fail-closed) — um stub por estado, sem repetir o literal do fetch.
+export function mockFetchMalhaAusente() {
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 404 })));
 }
 
 // Mock da Home (resumo/uf/cand/manifest + malha tri-estado); devolve o mock
