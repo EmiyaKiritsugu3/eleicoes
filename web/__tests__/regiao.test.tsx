@@ -530,3 +530,79 @@ describe("vereditoTemProva (portão de veredito da rota /verificar)", () => {
     expect(vereditoTemProva({ official: null, hasFixture: true, fixtureHash: "ef".repeat(32) })).toBe(true);
   });
 });
+
+describe("População real do Censo (EVOLVE-7 Task 2)", () => {
+  // Mapa mínimo no shape do artefato `censo_municipios.json` ({ibge7: pop}):
+  // 12345 + 6789 = 19134 de baseline Brasil.
+  const CENSO = { "3550308": 12345, "3550309": 6789 };
+  const FATO_POP_REAL: FatoRegiao = {
+    candidatos: CANDIDATOS,
+    municipios: [
+      mun(
+        "3550308",
+        "SP",
+        [600, 400],
+        {
+          ...demoCompleta(),
+          esc_sup: null,
+          esc_med: null,
+          esc_fund: null,
+          renda_media: null,
+          pobres_pct: null,
+          idade_mediana: null,
+          urbanizacao: null,
+        },
+        1000,
+      ),
+    ],
+  };
+  function linhaPop(perfil: string): string {
+    return (perfil.split("População (Censo 2022)")[1] ?? "").split("</li>")[0];
+  }
+  it("demo pop-real (esc_* null): número pop + SEM_DADO no resto + votos intactos", () => {
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="3550308" fato={FATO_POP_REAL} seal={SEAL_OFICIAL} manifestChecked censo={CENSO} />,
+    );
+    const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+    expect(perfil).toContain("População (Censo 2022)");
+    expect(perfil).toContain("12.345"); // pop do artefato, nunca demo fixture
+    expect(perfil).toContain("Brasil:");
+    expect(perfil).toContain("19.134"); // baseline = soma do mapa
+    expect(linhaPop(perfil)).not.toContain("sem dado oficial"); // sem SEM_DADO espúrio na pop
+    expect(perfil).toContain("sem dado oficial"); // SEM_DADO no resto (esc/renda/pobres)
+    expect(html).toContain("Cand A"); // votos intactos
+    expect(html).toContain("600");
+    expect(perfil).toContain(ECO_SEAL); // eco-seal mantido
+  });
+  it("fato-independent: sem fato, pop real renderiza com eco-seal", () => {
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="3550308" fato={null} seal={SEAL_NULO} manifestChecked censo={CENSO} />,
+    );
+    expect(html).toContain("População (Censo 2022)");
+    expect(html).toContain("12.345");
+    expect(html).toContain(ECO_SEAL);
+  });
+  it("censo ausente: pop em SEM_DADO (fail-closed, sem número inventado)", () => {
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="3550308" fato={FATO} seal={SEAL_OFICIAL} manifestChecked censo={null} />,
+    );
+    const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+    expect(perfil).toContain("População (Censo 2022)");
+    expect(linhaPop(perfil)).toContain("sem dado oficial");
+  });
+  it("helpers do artefato: parse fail-closed + baseline soma do mapa", async () => {
+    const { parseCensoMapa, popNoCenso, totalBrasilCenso } = await import(
+      "../components/PainelRegiao"
+    );
+    expect(parseCensoMapa({ "3550308": 12345 })).toEqual({ "3550308": 12345 });
+    expect(parseCensoMapa(null)).toBe(null);
+    expect(parseCensoMapa([])).toBe(null);
+    expect(parseCensoMapa("3550308")).toBe(null);
+    expect(popNoCenso({ "3550308": 12345 }, "3550308")).toBe(12345);
+    expect(popNoCenso(null, "3550308")).toBe(null);
+    expect(popNoCenso({ "3550308": 12345 }, "9999999")).toBe(null);
+    expect(totalBrasilCenso({ a: 10, b: 20 })).toBe(30);
+    expect(totalBrasilCenso(null)).toBe(null);
+    expect(totalBrasilCenso({})).toBe(null);
+  });
+});

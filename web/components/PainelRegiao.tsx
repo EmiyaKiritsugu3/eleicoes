@@ -28,6 +28,60 @@ import {
 /** Selo ecológico (spec §7): perfis são SEMPRE de município, nunca de pessoa. */
 export const ECO_SEAL = "dado de município, não de pessoa";
 
+/** Caminho canônico do artefato do Censo servido (EVOLVE-7 Task 2): mesmo
+ *  prefixo `/data/` de resumo/por_uf/fato (arquivo
+ *  `web/public/data/censo_municipios.json`, gitignore como os demais
+ *  servidos). Promoção: o operador/pipeline copia o artefato emitido por
+ *  `etl.censo.ingerir_censo` (irmão do manifest) para `web/public/data/`;
+ *  `build_all` o preserva no staging e `register_served_artifacts` atesta
+ *  os bytes com entry de fonte do Censo (nunca fan-out TSE) — a
+ *  proveniência da pop vive nessa entry `artifacts`, não no gate do fato.
+ *  Ausente → fetch fail-closed (null) e a linha exibe SEM_DADO. */
+export const CENSO_URL = "/data/censo_municipios.json";
+
+/** Rótulo pt-BR da linha de população real (Censo 2022). */
+export const CENSO_ROTULO = "População (Censo 2022)";
+
+/** Mapa `{ibge7: pop}` do artefato `censo_municipios.json` (Task 1). */
+export type CensoMapa = Record<string, number>;
+
+/** Valida o JSON do artefato: objeto plano com valores numéricos finitos.
+ *  Qualquer outro shape (null, array, string, fetch que devolveu fato) →
+ *  null fail-closed. Valores não-numéricos são descartados por chave
+ *  (nunca viram zero). */
+export function parseCensoMapa(json: unknown): CensoMapa | null {
+  if (!json || typeof json !== "object" || Array.isArray(json)) return null;
+  const mapa: CensoMapa = {};
+  for (const [k, v] of Object.entries(json as Record<string, unknown>)) {
+    if (typeof v === "number" && Number.isFinite(v)) mapa[k] = v;
+  }
+  return mapa;
+}
+
+/** Pop do IBGE no mapa; null sem par ou valor inválido (fail-closed:
+ *  nunca 0 inventado, nunca `demo.pop` fixture do fato). */
+export function popNoCenso(mapa: CensoMapa | null | undefined, ibge: string): number | null {
+  if (!mapa || typeof mapa !== "object") return null;
+  const v = (mapa as Record<string, unknown>)[String(ibge ?? "")];
+  return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null;
+}
+
+/** Baseline Brasil: soma das pops válidas do mapa (padrão das demais
+ *  seções: "(Brasil: …)" inline na mesma linha). Null sem nenhuma pop
+ *  válida — baseline nunca inventado. */
+export function totalBrasilCenso(mapa: CensoMapa | null | undefined): number | null {
+  if (!mapa || typeof mapa !== "object") return null;
+  let soma = 0;
+  let n = 0;
+  for (const v of Object.values(mapa)) {
+    if (typeof v === "number" && Number.isFinite(v) && v > 0) {
+      soma += v;
+      n++;
+    }
+  }
+  return n > 0 ? soma : null;
+}
+
 /** Nota honesta quando o motor usou pesos de fallback (ledger: pesoFonte). */
 export const NOTA_PESO_MISTO =
   "nota: pesos mistos — parte dos municípios usa total/pop como aproximação " +
@@ -183,13 +237,46 @@ interface PainelRegiaoProps {
   /** Dataset selecionado (`?fato=` resolvido pela página): preservado no
    *  link "Por quê?" para analisar o pleito exibido, não o default. */
   fatoDataset?: string | null;
+  /** Mapa `{ibge7: pop}` do Censo (artefato servido). `undefined`
+   *  (omitido) → busca client-side de `CENSO_URL` com fail-closed;
+   *  `null`/mapa → valor resolvido (determinístico p/ SSR/testes, sem
+   *  fetch). A pop NUNCA vem de `demo.pop` do fato (fixture). */
+  censo?: CensoMapa | null;
 }
 
-export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDataset }: PainelRegiaoProps) {
+export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDataset, censo }: PainelRegiaoProps) {
   const badge = <SealSlot seal={seal} />;
   const cod = String(ibge ?? "").trim().toUpperCase();
   const ehExterior = cod === "EXTERIOR";
   const ehUF = /^[A-Z]{2}$/.test(cod);
+  // Censo fato-independente: resolve da prop (SSR/testes) ou do fetch
+  // client-side do artefato servido (fail-closed: erro/rede → null).
+  const [censoFetch, setCensoFetch] = React.useState<CensoMapa | null>(null);
+  React.useEffect(() => {
+    if (censo !== undefined) return;
+    let vivo = true;
+    (async () => {
+      try {
+        const res = await fetch(CENSO_URL, { cache: "no-store" });
+        if (!res.ok) return;
+        const json = await res.json();
+        if (vivo) setCensoFetch(parseCensoMapa(json));
+      } catch {
+        // fail-closed: sem mapa, a linha exibe SEM_DADO (nunca throw)
+      }
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [censo]);
+  const mapa = censo !== undefined ? censo : censoFetch;
+  // Linha da pop real (ramo município + fallbacks fato-independentes; o
+  // ramo UF é da Task 3). Baseline Brasil inline, padrão das demais linhas.
+  const pop = popNoCenso(mapa, String(ibge ?? ""));
+  const brasilPop = totalBrasilCenso(mapa);
+  const liPop = (
+    <li>{CENSO_ROTULO}: {pop !== null ? formatVotes(pop) : SEM_DADO} (Brasil: {brasilPop !== null ? formatVotes(brasilPop) : SEM_DADO})</li>
+  );
   // Sufixo ?fato= validado pelo mesmo allowlist da rota (nunca traversal).
   const fatoQ =
     typeof fatoDataset === "string" && isFatoDataset(fatoDataset.trim())
@@ -227,6 +314,10 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
           <h2>Perfil do lugar</h2>
           {badge}
           <p role="note">{ECO_SEAL}</p>
+          {/* Pop fato-independente (proveniência na entry `artifacts` do Censo):
+              sem fato, só a pop real pode aparecer — resto segue SEM_DADO.
+              Exterior fora do Censo municipal: lookup falha → SEM_DADO. */}
+          {!ehExterior && <ul>{liPop}</ul>}
           <p>{SEM_DADO}</p>
         </section>
         <section aria-label="Ações">
@@ -338,6 +429,7 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
           <h2>Perfil do lugar</h2>
           {badge}
           <p role="note">{ECO_SEAL}</p>
+          <ul>{liPop}</ul>
           <p>{SEM_DADO}</p>
         </section>
         <section aria-label="Ações">
@@ -390,12 +482,16 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
         <p role="note">{ECO_SEAL} — médias do município, nunca de pessoas.</p>
         {(perfil.pesoFonte === "misto" || base.pesoFonte === "misto") && <p role="note">{NOTA_PESO_MISTO}</p>}
         {perfil.nMun === 0 ? (
-          <p>{SEM_DADO} — Censo sem par para este município; votos acima intactos</p>
+          <>
+            <ul>{liPop}</ul>
+            <p>{SEM_DADO} — perfil sem par para este município; votos acima intactos</p>
+          </>
         ) : (
           <ul>
             <li>Escolaridade superior: {num(perfil.medias.esc_sup)}% (Brasil: {num(base.vsBrasil.esc_sup)}%)</li>
             <li>Renda média: {renda(perfil.medias.renda_media)} (Brasil: {renda(base.vsBrasil.renda_media)})</li>
             <li>Pobres: {num(perfil.medias.pobres_pct)}% (Brasil: {num(base.vsBrasil.pobres_pct)}%)</li>
+            {liPop}
           </ul>
         )}
       </section>
