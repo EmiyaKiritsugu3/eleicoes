@@ -81,3 +81,7 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 - CodeRabbit 6 achados: T5 rglob (perna curated morta) + probe por-UF; T6 mapa sem hash + Método sem fato + typing; T3 If-Range/Content-Range — todos corrigidos com re-review limpo.
 - Sonar: 5+1 S8707 novos (mesma família) won't-fix justificado; antes, guardas de mutação no build_fato (reuse sem fork). Incidente chave-vizinha corrigido e registrado.
 - Smells restantes (S6845×S6819, S3776, S1192) → EVOLVE-3.
+
+## EVOLVE-2 mergeado (2026-10-10 ~16:10 UTC)
+- Merge PR #4 (merge commit 71aa4ff): tudo verde — CI, GitGuardian, CodeRabbit, Sonar (pós won't-fix justificado dos S8707 mesma-família). Branch evolve-2 deletada.
+- Total: 6 tasks + 3 fix rounds CodeRabbit + guardas build_fato + triagem Sonar 2 rounds. Suítes finais: pytest 143 + vitest 307 + build 52/52.
