@@ -4,9 +4,9 @@
 // (resumo/uf/candidatos) quando o selo mudou: sem números stale após rotação,
 // sem fetch duplicado quando inalterado, fallback intacto.
 import React from "react";
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { act } from "react-dom/test-utils";
-import { createRoot, type Root } from "react-dom/client";
+import type { Root } from "react-dom/client";
 import { HomeContent } from "../components/HomeContent";
 import {
   SEM_DADO,
@@ -17,6 +17,10 @@ import {
   RESUMO,
   teardownJsdom,
   secao,
+  instalarFetchRoteado,
+  contaChamadas,
+  focarRotacao,
+  montarRotacao,
 } from "./helpers";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -34,15 +38,12 @@ afterEach(async () => {
 // Roteador mutável: a rotação troca manifest/dados SEM remontar o componente.
 let manifestAtual: unknown = MANIFEST_OK;
 let porUfAtual: unknown = POR_UF;
-let chamadas: string[] = [];
+const chamadas: string[] = [];
 
 function instalarFetchMutavel() {
   manifestAtual = MANIFEST_OK;
   porUfAtual = POR_UF;
-  chamadas = [];
-  const mock = vi.fn(async (url: string) => {
-    chamadas.push(String(url));
-    const u = String(url);
+  instalarFetchRoteado(chamadas, (u) => {
     if (u.endsWith("/data/resumo.json")) return { ok: true, json: async () => RESUMO };
     if (u.endsWith("/data/por_uf.json")) return { ok: true, json: async () => porUfAtual };
     if (u.endsWith("/data/por_candidato.json")) return { ok: true, json: async () => POR_CAND };
@@ -52,38 +53,17 @@ function instalarFetchMutavel() {
     }
     return { ok: false, json: async () => null };
   });
-  (globalThis as Record<string, unknown>).fetch = mock;
 }
 
-function conta(sufixo: string): number {
-  return chamadas.filter((c) => c.endsWith(sufixo)).length;
-}
-
-async function flush(n = 10) {
-  for (let i = 0; i < n; i++) {
-    await act(async () => {});
-  }
-}
+const conta = (sufixo: string): number => contaChamadas(chamadas, sufixo);
+const focar = (): Promise<void> => focarRotacao();
 
 let el: HTMLDivElement | null = null;
 let root: Root | null = null;
 
 async function montar(): Promise<HTMLDivElement> {
-  el = document.createElement("div");
-  document.body.appendChild(el);
-  await act(async () => {
-    root = createRoot(el!);
-    root.render(<HomeContent />);
-  });
-  await flush();
+  ({ el, root } = await montarRotacao(<HomeContent />));
   return el!;
-}
-
-async function focar() {
-  await act(async () => {
-    window.dispatchEvent(new Event("focus"));
-  });
-  await flush();
 }
 
 const MANIFEST_GIRADO = {

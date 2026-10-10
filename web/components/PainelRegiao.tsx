@@ -279,7 +279,7 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
   React.useEffect(() => {
     if (censo !== undefined) return;
     let vivo = true;
-    (async () => {
+    void (async () => {
       try {
         const res = await fetch(CENSO_URL, { cache: "no-store" });
         if (!res.ok) return;

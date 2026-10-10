@@ -212,6 +212,55 @@ export function chamadasMalha(mock: { mock: { calls: unknown[][] } }): number {
   ).length;
 }
 
+// ---------- harness de rotação de manifest (Home + /regiao) ----------
+
+// Roteador mutável de rotação: a rotação troca manifest/dados SEM remontar
+// o componente. O resolvedor (rotas por sufixo) vive em cada teste — só o
+// boilerplate do mock (registro de chamadas + instalação) é compartilhado.
+export type ResolvedorRotacao = (url: string) => unknown | Promise<unknown>;
+
+export function instalarFetchRoteado(chamadas: string[], resolver: ResolvedorRotacao): void {
+  chamadas.length = 0;
+  const mock = vi.fn(async (url: string) => {
+    chamadas.push(String(url));
+    return resolver(String(url));
+  });
+  (globalThis as Record<string, unknown>).fetch = mock;
+}
+
+export function contaChamadas(chamadas: string[], sufixo: string): number {
+  return chamadas.filter((c) => c.endsWith(sufixo)).length;
+}
+
+export async function flushRotacao(n = 10): Promise<void> {
+  for (let i = 0; i < n; i++) {
+    await act(async () => {});
+  }
+}
+
+export async function focarRotacao(): Promise<void> {
+  await act(async () => {
+    window.dispatchEvent(new Event("focus"));
+  });
+  await flushRotacao();
+}
+
+// Monta o nó num host jsdom próprio e drena os effects; devolve el + root
+// p/ o teardown local de cada teste (hosts distintos por arquivo).
+export async function montarRotacao(
+  nodo: React.ReactElement,
+): Promise<{ el: HTMLDivElement; root: Root }> {
+  const el = document.createElement("div");
+  document.body.appendChild(el);
+  let root: Root | null = null;
+  await act(async () => {
+    root = createRoot(el);
+    root.render(nodo);
+  });
+  await flushRotacao();
+  return { el, root: root! };
+}
+
 // ---------- host jsdom (render + teardown únicos) ----------
 
 const fetchOriginal = globalThis.fetch;

@@ -8,9 +8,15 @@
 import React from "react";
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { act } from "react-dom/test-utils";
-import { createRoot, type Root } from "react-dom/client";
+import type { Root } from "react-dom/client";
 import PaginaRegiao from "../app/regiao/[ibge]/page";
-import { SEM_DADO } from "./helpers";
+import {
+  SEM_DADO,
+  instalarFetchRoteado,
+  contaChamadas,
+  focarRotacao,
+  montarRotacao,
+} from "./helpers";
 
 // eslint-disable-next-line prefer-const
 let fatoParamAtual = "";
@@ -59,52 +65,28 @@ const CENSO_B = { "3550308": 99999, "3550309": 6789 };
 // Roteador mutável: a rotação troca manifest/censo SEM remontar a página.
 let manifestAtual: unknown = MANIFEST_A;
 let censoAtual: unknown = CENSO_A;
-let chamadas: string[] = [];
+const chamadas: string[] = [];
 
 function instalarFetchMutavel() {
   manifestAtual = MANIFEST_A;
   censoAtual = CENSO_A;
-  chamadas = [];
-  const mock = vi.fn(async (url: string) => {
-    chamadas.push(String(url));
-    const u = String(url);
+  instalarFetchRoteado(chamadas, (u) => {
     if (u.endsWith("/data/manifest.json")) return { ok: true, json: async () => manifestAtual };
     if (u.endsWith("/data/censo_municipios.json")) return { ok: true, json: async () => censoAtual };
     if (u.includes("/data/fato_")) return { ok: true, json: async () => FATO };
     return { ok: false, json: async () => null };
   });
-  (globalThis as Record<string, unknown>).fetch = mock;
 }
 
-function conta(sufixo: string): number {
-  return chamadas.filter((c) => c.endsWith(sufixo)).length;
-}
-
-async function flush(n = 10) {
-  for (let i = 0; i < n; i++) {
-    await act(async () => {});
-  }
-}
+const conta = (sufixo: string): number => contaChamadas(chamadas, sufixo);
+const focar = (): Promise<void> => focarRotacao();
 
 let el: HTMLDivElement | null = null;
 let root: Root | null = null;
 
 async function montar(): Promise<HTMLDivElement> {
-  el = document.createElement("div");
-  document.body.appendChild(el);
-  await act(async () => {
-    root = createRoot(el!);
-    root.render(<PaginaRegiao params={{ ibge: "3550308" }} />);
-  });
-  await flush();
+  ({ el, root } = await montarRotacao(<PaginaRegiao params={{ ibge: "3550308" }} />));
   return el!;
-}
-
-async function focar() {
-  await act(async () => {
-    window.dispatchEvent(new Event("focus"));
-  });
-  await flush();
 }
 
 function perfil(html: string): string {
