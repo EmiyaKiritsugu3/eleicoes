@@ -45,7 +45,7 @@ def _rede_disponivel() -> bool:
 
 
 # Sem mark em nível de módulo: SÓ os testes de rede real levam skipif (ver
-# decoradores) — os dois testes offline acima rodam sempre, inclusive em CI
+# decoradores) — os dois testes offline abaixo rodam sempre, inclusive em CI
 # sem rede.
 
 
@@ -93,7 +93,7 @@ def test_censo_real_shape_travado(tmp_path, monkeypatch):
     hdr = rows[0]
     assert "CD_MUN" in hdr  # alias de ibge7 em normalize_censo
     assert "v0001" in hdr  # alias de pop (minúsculo no arquivo real)
-    assert len(hdr) == 26
+    assert len(hdr) == 26  # travas de shape: 26 cols observadas em 2026-10-10; coluna nova do IBGE deve falhar alto
 
     dados = rows[1:]
     assert len(dados) == 5570
