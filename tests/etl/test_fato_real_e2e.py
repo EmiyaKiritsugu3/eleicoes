@@ -109,6 +109,8 @@ def test_predicados_rede_separados_por_teste(monkeypatch):
     caidos = {"dadosabertos.tse.jus.br"}
     monkeypatch.setattr(
         modulo, "_alcancavel", lambda host: host not in caidos)
+    # Sem a flag o predicado consultaria o env antes dos hosts mocados.
+    monkeypatch.delenv("SAD_SEM_REDE", raising=False)
     assert _rede_disponivel(_TSE_CDN_HOST, _TSE_CKAN_HOST) is False
     assert _rede_disponivel(_TSE_CDN_HOST, _CENSO_HOST) is True
     assert _rede_disponivel() is False

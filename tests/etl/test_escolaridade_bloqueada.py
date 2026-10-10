@@ -101,19 +101,20 @@ def test_sonda_rede_cacheada_uma_vez(monkeypatch):
 
     modulo._sonda_ftp.cache_clear()
     chamadas = []
-    real = socket.create_connection
 
-    def _conta(*args, **kwargs):
+    class _FalsoSock:
+        def close(self):
+            pass
+
+    def _falso(*args, **kwargs):
         chamadas.append(args)
-        try:
-            return real(*args, **kwargs)
-        except OSError:
-            raise
+        return _FalsoSock()
 
-    monkeypatch.setattr(socket, "create_connection", _conta)
+    # Stub (nunca socket real): offline CI não sofre stall de DNS.
+    monkeypatch.setattr(socket, "create_connection", _falso)
     monkeypatch.delenv("SAD_SEM_REDE", raising=False)
     try:
-        assert _rede_disponivel() is True or _rede_disponivel() is False
+        assert _rede_disponivel() is True
         assert _rede_disponivel() is _rede_disponivel()
         assert len(chamadas) == 1
     finally:
