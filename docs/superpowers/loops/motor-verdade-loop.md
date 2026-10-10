@@ -144,3 +144,7 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 
 ## EVOLVE-8 completo (final review: Merge Yes)
 - 6/6 tasks + revisão final limpa; minors (PainelRegiao fetch cru, Verificar share) → EVOLVE-9 micros.
+
+## EVOLVE-8 mergeado (2026-10-10 ~22:15 UTC)
+- Merge PR #10 (merge commit 3f46b89): tudo verde — CI ×2, GitGuardian, CodeRabbit, cubic, Sonar. Branch evolve-8 deletada.
+- Total: 6 tasks + R1/R2/R3/R4 com re-reviews limpos. Suítes finais: pytest 202 + vitest 454 + tsc clean + build.
