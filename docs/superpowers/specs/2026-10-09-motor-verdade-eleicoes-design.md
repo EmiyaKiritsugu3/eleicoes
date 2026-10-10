@@ -63,3 +63,21 @@ Restrições duras: custo zero; só dado oficial verificável e auditável; voto
 ## 9. Próximo passo
 
 writing-plans gera o plano de implementação após aprovação do usuário. Conflito de precedência: este spec orienta o novo módulo; o spec do SAD v1 continua valendo para ETL/gates/manifest.
+
+## Emenda EVOLVE-8 — decisão-b: fallback em lista é o estado produtivo (2026-10-10)
+
+Texto original acima preservado na íntegra; esta emenda registra decisão, não reescreve.
+Ref. plano EVOLVE-8 Task 6 ("amendment §3/§8"); implementado e pinado em código desde
+EVOLVE-6 T6 (cf. `web/lib/malha.ts:1-19`, `web/components/MapaBrasil.tsx:45`).
+
+- Decisão-b (opção b): o fallback em lista (+ link TSE), previsto nos §§ 5–6 como
+  "degradação do reference", é o estado PRODUTIVO do mapa — não um placeholder quebrado.
+  Motivo: nenhuma malha IBGE municipal em formato pequeno/buscável existe no repo ou em
+  fonte oficial; gerar o TopoJSON real exigiria baixar a malha nacional (dezenas de MB,
+  shapefile, deps novas) ou chutar geometrias (PROIBIDO: nunca commitar malha adivinhada).
+- Consequência p/ §6 (canvas Path2D) e §8 (TopoJSON ~1-3MB): o canvas continua como
+  caminho feliz, mas SÓ ativa com deploy manual do artefato
+  `web/public/data/malha_municipios.topojson` gerado por `scripts/malha.py`
+  (artefato gerado, ignorado pelo git). Sem o artefato, o mapa cai no fallback honesto
+  por design (fail-closed) — comportamento testado, não regressão.
+- Sem mudança nos guardrails (§7): sem malha, "sem dado oficial", nunca geometria inventada.
