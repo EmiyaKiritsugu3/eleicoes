@@ -37,3 +37,7 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 - 5 frentes (A:ETL B:mapa C:selos D:vereditos E:docs) + F micro (?fato/?regiao) + fix CI direto (packages.find etl* + tomllib assert + node_modules/ ignore) + fix TZ flake (3 asserts data UTC).
 - Local: pytest 94 + vitest 259/14 + tsc + build OK. CI quebrou por `pip install .` (setuptools discovery) — verificado isolado em /tmp (só `etl` empacota agora).
 - Limpeza: build/ + egg-info/ (subprodutos da verificação pip) removidos, não commitados.
+
+## PR-GREEN iteração 2 (2026-10-10 ~02:45 UTC)
+- Push 2f1d4bd: CI avançou (install OK) mas 1 fail — teste CI importa `yaml` ausente no runner.
+- Fix: `pyyaml>=6` no extra test + `importorskip` no teste (Context7 não necessário — stdlib/pytest pattern; deps só free).

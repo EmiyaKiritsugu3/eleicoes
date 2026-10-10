@@ -2,7 +2,7 @@ import pathlib
 
 
 def _ci():
-    import yaml
+    yaml = __import__("pytest").importorskip("yaml")
     return yaml.safe_load(pathlib.Path(".github/workflows/ci.yml").read_text())
 
 
