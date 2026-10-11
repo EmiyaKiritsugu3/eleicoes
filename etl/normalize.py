@@ -79,7 +79,7 @@ def _pick_column(df: pd.DataFrame, field: str):
     return None
 
 
-def normalize_resultados(df: pd.DataFrame) -> pd.DataFrame:
+def normalize_resultados(df: pd.DataFrame, depara=None) -> pd.DataFrame:
     """Normaliza um DataFrame bruto do TSE para o schema canônico.
 
     Levanta `ValueError` se não houver coluna de ano (impossível particionar)
@@ -89,6 +89,11 @@ def normalize_resultados(df: pd.DataFrame) -> pd.DataFrame:
     `turno` ausente/não-numérico vira 1 (M7).
     Códigos IBGE com shape ou DV inválido viram `""` + `UserWarning`
     com contagem (ver módulo docstring).
+    `depara` (EVOLVE-15, opcional, default None = legado intacto):
+    mapeamento `{tse5: ibge7}` do CSV oficial (`etl.depara`) — códigos
+    que não são IBGE7 (ex. TSE 4–5 dígitos) são traduzidos antes da
+    validação; traduzido não avisa, sem par segue `""` + warning
+    (fail-closed). IBGE7 direto nunca passa pelo mapa.
     """
     if not isinstance(df, pd.DataFrame):
         raise TypeError(f"df must be a pandas DataFrame, got {type(df).__name__}")
@@ -122,6 +127,17 @@ def normalize_resultados(df: pd.DataFrame) -> pd.DataFrame:
     col = _pick_column(df, "municipio_ibge")
     ibge_raw = df[col].astype("string").fillna("") if col is not None else pd.Series("", index=df.index)
     digits = ibge_raw.map(_fix_text).str.strip().str.replace(r"\D", "", regex=True)
+    if depara is not None:
+        # EVOLVE-15: traduz códigos não-IBGE7 pelo de-para oficial antes
+        # de validar. Só o que não é IBGE7 consulta o mapa (IBGE7 direto
+        # nunca é remapeado); chave canônica zfill(5) — votos sem padding
+        # ("3018") casam com o oficial com padding ("03018"). Traduzido herda
+        # a validação abaixo, sem par cai no "" + warning existente
+        # (fail-closed).
+        mapa = dict(depara)
+        precisa = ~digits.str.fullmatch(r"\d{7}")
+        traduzidos = digits.str.zfill(5).map(mapa).fillna("")
+        digits = digits.where(~precisa, traduzidos)
     # M1: só 7 dígitos é IBGE válido; valida os dígitos crus (antes do
     # zfill, que mascararia "123" como "0000123") e descarta o resto p/ "".
     # DV (ver etl/ibge_dv.py — fonte única; regra mod-10 no 7º dígito).

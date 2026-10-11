@@ -114,7 +114,7 @@ def _is_generated(path: Path) -> bool:
     return any(part.startswith("ano=") for part in path.parts)
 
 
-def _load_canonical(curated_dir: Path) -> pd.DataFrame:
+def _load_canonical(curated_dir: Path, depara=None) -> pd.DataFrame:
     frames: list[pd.DataFrame] = []
     if curated_dir.is_dir():
         paths = sorted(
@@ -139,7 +139,7 @@ def _load_canonical(curated_dir: Path) -> pd.DataFrame:
                 )
                 continue
             try:
-                frames.append(df if _is_canonical(df) else normalize_resultados(df))
+                frames.append(df if _is_canonical(df) else normalize_resultados(df, depara=depara))
             except ValueError as exc:
                 warnings.warn(
                     f"build_marts: skipping file with drifted header {path.name}: {exc}",
@@ -150,7 +150,7 @@ def _load_canonical(curated_dir: Path) -> pd.DataFrame:
     if not frames:
         return _empty_canonical()
     out = pd.concat(frames, ignore_index=True)
-    out = out if _is_canonical(out) else normalize_resultados(out)
+    out = out if _is_canonical(out) else normalize_resultados(out, depara=depara)
     # E8: prefeito restrito às 27 capitais; demais cargos intactos.
     # Fail-closed: _load_capitais levanta sem escopo válido (nunca pula
     # o filtro).
@@ -908,7 +908,7 @@ def _verificar_geracao_integra(curated, db_file, manifest_file, web_dir) -> None
 
 
 def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
-              source_shas=None) -> None:
+              source_shas=None, depara=None) -> None:
     """Pipeline completo: Parquet particionado + DuckDB + JSONs + manifest.
 
     `web_data_dir` redireciona os agregados JSON (padrão: `web/public/data/`
@@ -917,7 +917,10 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
     `<web_data_dir>/manifest.json` para a frente pública ler `/data/manifest.json`
     (mesmo conteúdo, escrita única a partir do canônico — R2).
     `source_shas` mapeia `(ano, CARGO_MAIÚSCULO)` → sha256 do ZIP de origem
-    (threading E4; Tasks 5 e 7 consomem). Após as ingestões, os hashes dos
+    (threading E4; Tasks 5 e 7 consomem). `depara` (EVOLVE-15, opcional)
+    é o mapeamento `{tse5: ibge7}` do CSV oficial (`etl.depara`) repassado
+    a `normalize_resultados` — sem ele, códigos TSE viram `""` fail-closed
+    como antes. Após as ingestões, os hashes dos
     bytes servidos são registrados em `manifest["artifacts"]`
     (`register_served_artifacts`, EVOLVE-1 Task 2) — dentro do staging,
     junto com Parquet/DB/JSONs/espelho, para o swap publicar hashes
@@ -956,7 +959,7 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
     _verificar_geracao_integra(curated, db_file, manifest_file, web_dir)
     # Staging obsoleto de build anterior crashado: descarta (nunca promove).
     _discard_staging(stagings)
-    df = _load_canonical(curated)
+    df = _load_canonical(curated, depara=depara)
     fontes = _matched_entries(df)  # pré-checagem fail-closed: antes de qualquer escrita
     # Põ props públicos no staging: fontes (CSVs) + fato_* + histórico.
     # Curated/web por cópia (prune/overwrite operam no staging); manifest

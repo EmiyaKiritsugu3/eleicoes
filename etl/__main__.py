@@ -12,6 +12,11 @@ Códigos de saída (fail-closed):
   1 — gates reprovados (versão anterior dos marts mantida; nada publicado);
   2 — erro (exceção em qualquer passo; fail-closed antes de publicar).
 
+De-para TSE→IBGE7 (EVOLVE-15, opt-in `--depara-csv`): traduz
+`CD_MUNICIPIO` nos marts antes da validação (sem ele, códigos TSE viram
+`""` fail-closed como antes); a ingestão é registrada no manifest e a
+URL entra nas `fontes` do fato.
+
 Os gates finais validam o que será servido: o DuckDB + o mirror
 `<web-data-dir>/manifest.json` (irmão dos bytes servidos, único que
 `verify_manifest`/`_gate_fatos` atestam byte a byte — o canônico acumula
@@ -69,6 +74,12 @@ def _parse_args(argv=None):
                              "(gate fail-closed via check_censo_sum ANTES de "
                              "gravar dim_municipio; diverge → saída 1; "
                              "a ingestão via URL — ingerir_censo — sempre aplica)")
+    parser.add_argument("--depara-csv", type=Path, default=None,
+                        help="CSV oficial do de-para TSE→IBGE7 (membro .csv "
+                             "extraído de municipio_tse_ibge.zip, "
+                             "`;`-separado) p/ traduzir CD_MUNICIPIO nos "
+                             "marts (sem ele, códigos TSE viram \"\" "
+                             "fail-closed como antes)")
     parser.add_argument("--ano", type=int, default=2022,
                         help="ano do triple do fato (padrão: 2022)")
     parser.add_argument("--turno", type=int, default=1,
@@ -172,6 +183,24 @@ def _passo_censo(censo_csv: Path, db: Path, manifest: Path,
     return []
 
 
+def _passo_depara(depara_csv: Path, manifest: Path) -> dict:
+    """Lê o CSV oficial, valida (bijection fail-closed) e registra a ingestão.
+
+    Devolve o mapeamento `{tse5: ibge7}` p/ `build_all`. Bytes com sha
+    registrado no manifest (proveniência); CSV inválido levanta antes de
+    qualquer escrita downstream.
+    """
+    from etl.depara import DEPARA_URL, load_depara_csv, register_depara_ingest
+
+    bruto = Path(depara_csv).read_bytes()
+    mapa = load_depara_csv(Path(depara_csv))
+    entry = register_depara_ingest(
+        str(manifest), rows=len(mapa), sha256=hashlib.sha256(bruto).hexdigest())
+    print(f"de-para: {len(mapa)} pares TSE→IBGE7 ok "
+          f"(sha256={str(entry.get('sha256', ''))[:12]}…)")
+    return mapa
+
+
 def _carregar_totais(path) -> dict | None:
     if path is None:
         return None
@@ -193,8 +222,17 @@ def main(argv=None) -> int:
             print("fetch: pulado (offline; passe --fetch p/ baixar os zips V1)")
         from etl.build_marts import build_all
 
+        depara = None
+        depara_url = None
+        if args.depara_csv is not None:
+            depara = _passo_depara(Path(args.depara_csv), manifest)
+            from etl.depara import DEPARA_URL
+
+            depara_url = DEPARA_URL
+            print("de-para: join TSE→IBGE7 ativo nos marts")
         build_all(args.curated_dir, args.db, manifest,
-                  web_data_dir=args.web_data_dir, source_shas=source_shas)
+                  web_data_dir=args.web_data_dir, source_shas=source_shas,
+                  depara=depara)
         print("build: marts ok")
         if args.censo_csv is not None:
             # --sem-fato: sem build_fato não há recalc de served artifacts
@@ -212,7 +250,8 @@ def main(argv=None) -> int:
             from etl.build_fato import build_fato
 
             fato_path = build_fato(str(args.db), str(args.web_data_dir),
-                                   args.ano, args.turno, args.cargo)
+                                   args.ano, args.turno, args.cargo,
+                                   depara_url=depara_url)
             print(f"fato: {Path(fato_path).name} ok")
         totais = _carregar_totais(args.totais_oficiais)
         from etl.validate import run_gates
