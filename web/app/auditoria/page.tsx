@@ -251,7 +251,9 @@ export default function Auditoria() {
       <section aria-label="Arquivos servidos">
         <h2>Arquivos servidos</h2>
         {!checked ? (
-          <p role="status">carregando manifest…</p>
+          /* Placeholder comum (o anúncio vivo vive na seção Ingestões —
+             cubic R1: 2 status idênticos anunciam em duplicata). */
+          <p>carregando manifest…</p>
         ) : (
           <ArtifactsTable artifacts={artifacts} />
         )}

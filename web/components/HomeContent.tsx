@@ -299,6 +299,8 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         {carregando ? (
           <p role="status">a carregar…</p>
         ) : semDados || semProva ? (
+          /* Alerta vivo único do estado sem-prova (compartilhado pelas 4
+             seções — as demais anunciam como texto comum, cf. Mapa). */
           <p role="alert">{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
         ) : (
           <ul>
@@ -321,7 +323,10 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         {carregando ? (
           <p role="status">a carregar…</p>
         ) : semProva || ufs.length === 0 ? (
-          <p role="alert">{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
+          /* Um alerta vivo basta p/ o estado sem-prova (compartilhado pelas
+             4 seções — cubic R1: 4 alertas idênticos disparam juntos sem
+             contexto; as demais seções anunciam como texto comum). */
+          <p>{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
         ) : malhaFeatures ? (
           <>
             {comZoom && (
@@ -379,7 +384,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         {carregando ? (
           <p role="status">a carregar…</p>
         ) : semProva || cands.length === 0 ? (
-          <p role="alert">{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
+          <p>{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
         ) : (
           <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Ranking de candidatos por votos">
           <table>
@@ -405,7 +410,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         {carregando ? (
           <p role="status">a carregar…</p>
         ) : semProva || ev.length === 0 ? (
-          <p role="alert">{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
+          <p>{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
         ) : (
           <>
             <ul aria-hidden="true" style={{ listStyle: "none", padding: 0 }}>

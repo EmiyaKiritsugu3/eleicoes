@@ -58,27 +58,31 @@ describe("EVOLVE-13: live regions nas superfícies com estado", () => {
     expect(html).toContain("Diferença");
   });
 
-  it("auditoria anuncia o carregamento (role=status)", () => {
+  it("auditoria anuncia o carregamento uma vez (role=status único)", () => {
     // SSR: effects não rodam → checked=false → ramo "carregando manifest…".
+    // Só a seção Ingestões é live (cubic R1: 2 status idênticos duplicam).
     const html = renderToStaticMarkup(<Auditoria />);
-    expect(html).toContain('role="status"');
     expect(html).toContain("carregando manifest");
+    expect(html.split('role="status"').length - 1).toBe(1);
   });
 });
 
-describe("EVOLVE-13: SEM_DADO da Home é alerta anunciado", () => {
-  it("sem prova → SEM_DADO com role=alert nas seções de dados", async () => {
+describe("EVOLVE-13: SEM_DADO da Home anunciado uma vez (cubic R1)", () => {
+  it("sem prova → 1 alerta vivo (Resumo) + demais seções como texto comum", async () => {
     mockFetchHome(MANIFEST_INVALIDO, "ausente");
     const div = await renderJsdom(<HomeContent />);
     const alertas = [...div.querySelectorAll('[role="alert"]')].filter((el) =>
       (el.textContent ?? "").includes(SEM_DADO),
     );
-    // Resumo + Mapa + Ranking + Evolução (fail-closed sem prova).
-    expect(alertas.length).toBeGreaterThanOrEqual(4);
+    // Um alerta vivo basta p/ o estado sem-prova compartilhado; as demais
+    // seções anunciam o mesmo estado como texto comum (sem 4× assertive).
+    expect(alertas).toHaveLength(1);
+    const ocorrencias = div.innerHTML.split(SEM_DADO).length - 1;
+    expect(ocorrencias).toBeGreaterThanOrEqual(4);
   });
 });
 
-describe("EVOLVE-13: fontes únicas (dedupe)", () => {
+describe("EVOLVE-13: valores pinados da fonte única (cubic R1: pina valores, unicidade estrutural em review)", () => {
   it("ALERTA_STYLE fonte única em lib/textos com o valor M4-web", () => {
     expect(ALERTA_STYLE).toEqual({
       background: "#fff3cd",
