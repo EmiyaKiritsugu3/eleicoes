@@ -223,3 +223,11 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 ## Próxima sessão — Onda 2 (design pendente de aprovação final)
 - Direção: **movimento + carregamento percebido** na Home (transições, skeletons) — mudam o DOM, exigem testes novos.
 - Baseline main @77e5211 verde (pytest 221 + vitest 571).
+
+## Onda 2 mergeada (2026-10-11, PR #18, commit 768c5be) — movimento + loading
+- Escopo: tokens de movimento + Skeleton display-only (aria-hidden, reduced-motion) + skeletons nas 4 seções + fade-in via keyframes + hover nav/tabelas com gate reduced-motion. Invariantes intactos.
+- Execução subagent-driven (4 tasks + reviews + final + micro-round keyframes, todos clean).
+- Rounds no PR: ZERO — CI ×2 + Sonar + GitGuardian verdes + CodeRabbit sem threads no head. cubic skipping (quota, neutro, precedente PR #17).
+- Incidentes: fade escondia skeleton (fix: fade só no conteúdo resolvido); div-in-p inválido (fix: div role=status); fade morto em opacity 1 (micro: keyframes, hydration-safe por construção — SSR sempre loading).
+- Suítes finais: pytest 221 + vitest 579 + tsc + build.
+- Backlog: Onda 3 (demais superfícies herdam tokens) + row-hover transition (deferido) + style-hoist (parkado).
