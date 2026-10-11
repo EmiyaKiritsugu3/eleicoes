@@ -325,8 +325,20 @@ def _register_sources(df: pd.DataFrame, manifest_path, source_shas=None) -> None
     histórico.
     """
     if df.empty:
+        # E5 + cubic R3: df vazio escreve sem proveniência NOVA, mas
+        # preserva as ingestões já atestadas no staging (ex. de-para
+        # registrado antes do build) — rewrite cego apagaria proveniência.
+        # Manifest fresco/ausente segue {"ingestions": []} (contrato E5).
+        try:
+            staged = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+            herdadas = staged.get("ingestions") if isinstance(staged, dict) else None
+        except (OSError, ValueError, UnicodeDecodeError):
+            herdadas = None
         Path(manifest_path).write_text(
-            json.dumps({"ingestions": []}, ensure_ascii=False, indent=2),
+            json.dumps(
+                {"ingestions": herdadas if isinstance(herdadas, list) else []},
+                ensure_ascii=False, indent=2,
+            ),
             encoding="utf-8",
         )
         return

@@ -75,13 +75,38 @@ def test_normalize_com_depara_mapeia_sem_warning():
     mapa = parse_depara_csv(MINI_CSV.encode("latin-1"))
     df = pd.DataFrame([{
         "ANO_ELEICAO": 2024, "NR_TURNO": 1, "DS_CARGO": "PREFEITO",
-        "SG_UF": "RR", "CD_MUNICIPIO": "01007", "SQ_CANDIDATO": "1",
+        "SG_UF": "AC", "CD_MUNICIPIO": "01007", "SQ_CANDIDATO": "1",
         "NM_URNA_CANDIDATO": "X", "SG_PARTIDO": "PA", "QT_VOTOS_NOMINAIS": 10,
     }])
     with warnings.catch_warnings():
         warnings.simplefilter("error")  # mapeado não avisa
         out = normalize_resultados(df, depara=mapa)
     assert out["municipio_ibge"].tolist() == ["1200138"]
+
+
+def test_normalize_com_depara_codigo_curto_nao_mapeia():
+    """cubic R3: "12" nunca vira "00012" (lixo não casa com município)."""
+    import pandas as pd
+
+    from etl.normalize import normalize_resultados
+
+    df = pd.DataFrame([{
+        "ANO_ELEICAO": 2024, "NR_TURNO": 1, "DS_CARGO": "PREFEITO",
+        "SG_UF": "AC", "CD_MUNICIPIO": "12", "SQ_CANDIDATO": "1",
+        "NM_URNA_CANDIDATO": "X", "SG_PARTIDO": "PA", "QT_VOTOS_NOMINAIS": 10,
+    }])
+    with pytest.warns(UserWarning, match="IBGE"):
+        out = normalize_resultados(df, depara={"00012": "1200138"})
+    assert out["municipio_ibge"].tolist() == [""]
+
+
+def test_parse_aceita_bom_utf8():
+    """cubic R3: BOM não gruda na 1ª coluna (utf-8-sig antes de latin1)."""
+    from etl.depara import parse_depara_csv
+
+    payload = ("\ufeff" + MINI_CSV).encode("utf-8")
+    mapa = parse_depara_csv(payload)
+    assert mapa["01007"] == "1200138"
 
 
 def test_normalize_com_depara_desconhecido_fail_closed():
@@ -121,8 +146,40 @@ def test_register_depara_ingest_exige_fonte_e_sha(tmp_path):
         str(manifest), rows=5571, sha256="a" * 64, data="2026-10-11")
     assert entry["source_url"].startswith("https://cdn.tse.jus.br/")
     assert entry["rows"] == 5571
+    assert entry["sha_origin"] == "csv_extraido"  # cubic R3: sha do membro
     with pytest.raises(ValueError, match="sha256"):
         register_depara_ingest(str(manifest), rows=1, sha256="curto")
+
+
+def test_register_depara_ingest_cria_parent_e_grava_membro(tmp_path):
+    """cubic R3: manifest em dir novo + membro_csv registrado."""
+    from etl.depara import register_depara_ingest
+
+    manifest = tmp_path / "novo" / "manifest.json"
+    entry = register_depara_ingest(
+        str(manifest), rows=2, sha256="b" * 64, data="2026-10-11",
+        membro_csv="municipio_tse_ibge.csv")
+    assert manifest.is_file()
+    assert entry["membro_csv"] == "municipio_tse_ibge.csv"
+
+
+def test_build_all_vazio_preserva_proveniencia_depara(tmp_path):
+    """cubic R3: curated vazio não apaga ingestão já registrada."""
+    import json
+
+    from etl.build_marts import build_all
+    from etl.depara import register_depara_ingest
+
+    manifest = tmp_path / "m.json"
+    register_depara_ingest(
+        str(manifest), rows=5571, sha256="c" * 64, data="2026-10-11")
+    curated = tmp_path / "curated"
+    curated.mkdir()
+    build_all(curated, tmp_path / "t.duckdb", manifest,
+              web_data_dir=tmp_path / "web")
+    doc = json.loads(manifest.read_text(encoding="utf-8"))
+    tipos = [e.get("tipo") for e in doc["ingestions"]]
+    assert "depara_tse_ibge" in tipos
 
 
 _VOTOS_TSE = (

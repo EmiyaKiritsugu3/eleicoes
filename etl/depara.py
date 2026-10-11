@@ -40,12 +40,20 @@ _COL_IBGE = "CD_MUNICIPIO_IBGE"
 def _read_depara_frame(content):
     """Lê o CSV oficial p/ DataFrame (fail-closed em ilegível/vazio)."""
     if isinstance(content, str):
-        return pd.read_csv(io.StringIO(content), sep=";", dtype="string")
+        try:
+            return pd.read_csv(io.StringIO(content), sep=";", dtype="string")
+        except pd.errors.EmptyDataError:
+            raise ValueError("de-para: CSV vazio (sem dado oficial)")
+        except pd.errors.ParserError as exc:
+            raise ValueError(f"de-para: CSV ilegível ({exc}) (sem dado oficial)")
     if not isinstance(content, (bytes, bytearray)):
         raise TypeError(
             f"de-para: esperado bytes ou str, veio {type(content).__name__}")
     bruto = bytes(content)
-    for encoding in ("latin1", "utf-8-sig", "utf-8"):
+    # utf-8-sig primeiro (BOM-aware; falha fail-fast em bytes latin1) —
+    # latin1 decodifica tudo e nunca pode vir antes (cubic R3: BOM grudaria
+    # no nome da 1ª coluna). Mesma ordem do leitor do Censo (`__main__`).
+    for encoding in ("utf-8-sig", "utf-8", "latin1"):
         try:
             return pd.read_csv(io.BytesIO(bruto), sep=";", encoding=encoding,
                                dtype="string")
@@ -105,13 +113,17 @@ def load_depara_csv(path) -> dict[str, str]:
 
 
 def register_depara_ingest(manifest_path, rows=None, sha256=None,
-                           dataset=None, data=None) -> dict:
+                           dataset=None, data=None, membro_csv=None) -> dict:
     """Registra a ingestão do de-para no manifest; devolve a entry.
 
     Espelha `register_censo_ingest` (mesmo contrato mínimo que o
     `_validate_entry` exige: `source_url` + `sha256` 64-hex; `data`
     injetável p/ testes determinísticos). URL ausente ou sha inválido
     levantam `ValueError` — nunca se registra proveniência sem fonte.
+    `membro_csv` (cubic R3): o sha cobre o CSV EXTRAÍDO, não o zip da
+    `source_url` — o basename do membro é gravado (`sha_origin`) p/ o
+    hash ser reproduzível (extrair → hashear → comparar). Cria o parent
+    do manifest (cubic R3: CLI registra antes do build criar o dir).
     """
     from etl.manifest import write_manifest
 
@@ -147,10 +159,14 @@ def register_depara_ingest(manifest_path, rows=None, sha256=None,
     entry = {
         "source_url": url,
         "sha256": sha256,
+        "sha_origin": "csv_extraido",
         "data": data_iso,
         "dataset": entry_meta.get("nome", "municipio_tse_ibge"),
         "tipo": "depara_tse_ibge",
         "rows": rows,
     }
+    if membro_csv is not None:
+        entry["membro_csv"] = str(membro_csv)
+    Path(manifest_path).parent.mkdir(parents=True, exist_ok=True)
     write_manifest(str(manifest_path), entry)  # valida sha fail-closed
     return entry

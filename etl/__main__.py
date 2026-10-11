@@ -190,12 +190,16 @@ def _passo_depara(depara_csv: Path, manifest: Path) -> dict:
     registrado no manifest (proveniência); CSV inválido levanta antes de
     qualquer escrita downstream.
     """
-    from etl.depara import DEPARA_URL, load_depara_csv, register_depara_ingest
+    from etl.depara import load_depara_csv, parse_depara_csv, register_depara_ingest
 
     bruto = Path(depara_csv).read_bytes()
-    mapa = load_depara_csv(Path(depara_csv))
+    # Parse NOS MESMOS bytes hasheados (cubic R3: reler o path abriria
+    # TOCTOU — o sha registrado e o mapa aplicado seriam de leituras
+    # distintas).
+    mapa = parse_depara_csv(bruto)
     entry = register_depara_ingest(
-        str(manifest), rows=len(mapa), sha256=hashlib.sha256(bruto).hexdigest())
+        str(manifest), rows=len(mapa), sha256=hashlib.sha256(bruto).hexdigest(),
+        membro_csv=Path(depara_csv).name)
     print(f"de-para: {len(mapa)} pares TSE→IBGE7 ok "
           f"(sha256={str(entry.get('sha256', ''))[:12]}…)")
     return mapa

@@ -84,13 +84,17 @@ def _aplicar_depara(digits, depara):
 
     Só o que não é IBGE7 consulta o mapa (IBGE7 direto nunca é
     remapeado); chave canônica zfill(5) — votos sem padding ("3018")
-    casam com o oficial com padding ("03018"). Sem par → "" (o
-    chamador valida e avisa fail-closed como antes).
+    casam com o oficial com padding ("03018"). Só valores no shape
+    documentado 4–5 dígitos consultam (cubic R3: "12" padado p/ "00012"
+    traduziria lixo p/ um município real). Sem par → "" (o chamador
+    valida e avisa fail-closed como antes).
     """
     mapa = dict(depara)
-    precisa = ~digits.str.fullmatch(r"\d{7}")
+    precisa = digits.str.fullmatch(r"\d{7}")
+    cru = digits.str.fullmatch(r"\d{4,5}")
     traduzidos = digits.str.zfill(5).map(mapa).fillna("")
-    return digits.where(~precisa, traduzidos)
+    traduzidos = traduzidos.where(cru.fillna(False), "")
+    return digits.where(precisa, traduzidos)
 
 
 def _col_ano(df: pd.DataFrame) -> pd.Series:
