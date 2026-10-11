@@ -22,6 +22,7 @@ import { buildCsvExport } from "../lib/export";
 import type { SealState } from "../lib/data";
 import {
   CANDIDATOS_EXEMPLO as CANDIDATOS,
+  clicarExportar,
   esperarBotaoExport,
   linhas40Municipio as linhas40,
   renderJsdom,
@@ -46,35 +47,6 @@ function fato() {
 }
 
 afterEach(teardownJsdom);
-
-// Download real via clique (cubic R3): jsdom não tem createObjectURL —
-// stub captura o Blob e o teste lê o CSV (pin da fiação botão→CSV).
-async function clicarExportar(node: React.ReactElement): Promise<string> {
-  const vistos: Blob[] = [];
-  const U = URL as unknown as Record<string, unknown>;
-  const prevCreate = U["createObjectURL"];
-  const prevRevoke = U["revokeObjectURL"];
-  U["createObjectURL"] = (b: Blob) => {
-    vistos.push(b);
-    return "blob:mock";
-  };
-  U["revokeObjectURL"] = () => {};
-  try {
-    const div = await renderJsdom(node);
-    const btn = [...div.querySelectorAll("button")].find(
-      (b) => b.textContent === "Exportar CSV",
-    );
-    expect(btn).not.toBe(undefined);
-    await act(async () => {
-      btn!.click();
-    });
-    expect(vistos.length).toBe(1);
-    return await vistos[0].text();
-  } finally {
-    U["createObjectURL"] = prevCreate;
-    U["revokeObjectURL"] = prevRevoke;
-  }
-}
 
 const CHECK: Check = {
   slug: "sint-vencedor",
@@ -107,10 +79,11 @@ describe("verificarCsvRows / curadaCsvRows (linhas do CSV das curadas)", () => {
     const rows = curadaCsvRows({
       titulo: "Quem venceu onde", nMunicipios: 40, shareMedio: 0.55,
       rPearson: 0.1, rSpearman: 0.2, nPearson: 38, nSpearman: 38,
-      veredito: "padrão sustentado entre os estratos",
+      pesoShare: "eleitorado", veredito: "padrão sustentado entre os estratos",
     });
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ n_municipios: 40, n_pearson: 38 });
+    expect(rows[0]).toMatchObject({ n_municipios: 40, n_pearson: 38, peso_share: "eleitorado" });
+    expect(rows[0]).toMatchObject({ entradas: expect.stringContaining("Censo IBGE") });
     const csv = buildCsvExport(rows, SEAL_OK.official);
     expect(csv.split("\n")[0]).toContain("fonte,url,hash,data");
     expect(csv).toContain(HASH);

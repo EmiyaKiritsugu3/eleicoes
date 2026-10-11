@@ -817,7 +817,7 @@ export function ExplorarConteudo({
           <CopyShare url={shareUrl} />
         </p>
         {/* Export em `ExportCsv` (fonte única, paridade com as curadas). */}
-        <ExportCsv arquivo="explorar.csv" linhas={csvRows} seal={seal.official} />
+        <ExportCsv arquivo="explorar.csv" linhas={csvRows} seal={seal} />
       </section>
     </>
   );

@@ -690,7 +690,7 @@ export function VerificarConteudo({
           <ExportCsv
             arquivo={`verificar-${check.slug}.csv`}
             linhas={csvRows}
-            seal={seal.official}
+            seal={seal}
           />
         )}
       </section>

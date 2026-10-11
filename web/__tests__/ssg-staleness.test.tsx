@@ -13,6 +13,7 @@ import {
   instalarFetchRoteado,
   montarRotacao,
   focarRotacao,
+  voltarVisivelRotacao,
 } from "./helpers";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -124,5 +125,35 @@ describe("SSG staleness display-only (EVOLVE-11 Task 6)", () => {
     manifestAtual = manifestFixture("e".repeat(64));
     await focarRotacao();
     expect(div.innerHTML).toContain("diverge do build");
+  });
+
+  it("volta de visibilidade também confere (cubic R3)", async () => {
+    manifestAtual = manifestCom(HASH_BUILD);
+    instalar();
+    const div = await montar();
+    expect(div.innerHTML).not.toContain("diverge do build");
+    manifestAtual = manifestCom(HASH_NOVO);
+    await voltarVisivelRotacao();
+    expect(div.innerHTML).toContain("diverge do build");
+  });
+
+  it("divergência + blip em seguida: alerta permanece (cubic R3)", async () => {
+    manifestAtual = manifestCom(HASH_NOVO);
+    instalar();
+    const div = await montar();
+    expect(div.innerHTML).toContain("diverge do build");
+    // Manifest ilegível depois: sem alerta falso novo, mas o aviso
+    // existente não some (stale-while-revalidate mantém o disclosure).
+    fetchOk = false;
+    await focarRotacao();
+    expect(div.innerHTML).toContain("diverge do build");
+  });
+
+  it("só caixa do hash muda: sem alerta (hex case-insensitive, cubic R4)", async () => {
+    manifestAtual = manifestCom(HASH_BUILD.toUpperCase());
+    instalar();
+    const div = await montar();
+    await focarRotacao();
+    expect(div.innerHTML).not.toContain("diverge do build");
   });
 });

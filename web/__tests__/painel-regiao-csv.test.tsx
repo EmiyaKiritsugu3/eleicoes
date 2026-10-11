@@ -2,13 +2,22 @@
 // tinha share mas zero export. Botão "Exportar CSV" desabilitado sem
 // `seal.official` (gate oficial); habilitado exporta votos do pleito com
 // header de proveniência (pop do Censo fora — proveniência distinta).
-// PainelRegiao é puro (sem effects): SSR estático basta.
+// Marcações via SSR (puro, sem effects); download real via clique jsdom
+// (cubic R3).
+// @vitest-environment jsdom
 import React from "react";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import PainelRegiao, { regiaoCsvRows } from "../components/PainelRegiao";
 import { buildCsvExport } from "../lib/export";
-import { demoCurada, esperarBotaoExport } from "./helpers";
+import {
+  clicarExportar,
+  demoCurada,
+  esperarBotaoExport,
+  teardownJsdom,
+} from "./helpers";
+
+(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 const DS = "fato_2022_1_presidente";
 const HASH = "a".repeat(64);
@@ -33,6 +42,8 @@ const SEAL_OFICIAL = {
 };
 const SEAL_NULO = { official: null, hasFixture: false, fixtureHash: "" };
 const SEAL_FIXTURE = { official: null, hasFixture: true, fixtureHash: "f".repeat(64) };
+
+afterEach(teardownJsdom);
 
 describe("regiaoCsvRows (linhas do CSV do /regiao)", () => {
   it("municipio: vencedor + votos + margem/participação cruas", () => {
@@ -102,5 +113,17 @@ describe("/regiao: botão Exportar CSV (EVOLVE-11 Task 4)", () => {
       ),
       "desabilitado",
     );
+  });
+});
+
+describe("/regiao: download do CSV via clique (cubic R3)", () => {
+  it("município: CSV baixado com votos + hash oficial (sem pop do Censo)", async () => {
+    const csv = await clicarExportar(
+      <PainelRegiao ibge="3550308" fato={FATO} seal={SEAL_OFICIAL} manifestChecked fatoDataset={DS} censo={null} />,
+    );
+    expect(csv.split("\n")[0]).toContain("fonte,url,hash,data");
+    expect(csv).toContain(HASH);
+    expect(csv).toContain("Cand A");
+    expect(csv).not.toContain("Censo");
   });
 });

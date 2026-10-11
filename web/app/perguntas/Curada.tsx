@@ -109,8 +109,15 @@ export interface ResumoCuradaCsv {
    *  ausente que Pearson/Spearman descartam — sem n, o r não é auditável). */
   nPearson: number | null;
   nSpearman: number | null;
+  /** Fonte do peso do share (cubic R3: eleitorado puro vs misto). */
+  pesoShare: string;
   veredito: string;
 }
+
+/** Famílias de entrada da resposta (cubic R3: o CSV não atribui tudo ao
+ *  TSE — votos/eleitorado vêm do fato TSE, a demografia do Censo IBGE via
+ *  `dim_municipio`; header fonte/url/hash/data segue do artefato auditado). */
+export const ENTRADAS_CURADA = "votos TSE + demografia Censo IBGE (via fato auditado)";
 
 /** Linhas do CSV da Curada (paridade Verificar/Analisar/Explorar/Regiao):
  *  resumo da resposta numa linha; proveniência via `buildCsvExport`
@@ -125,6 +132,8 @@ export function curadaCsvRows(r: ResumoCuradaCsv): Record<string, unknown>[] {
       r_spearman: r.rSpearman,
       n_pearson: r.nPearson,
       n_spearman: r.nSpearman,
+      peso_share: r.pesoShare,
+      entradas: ENTRADAS_CURADA,
       veredito: r.veredito,
     },
   ];
@@ -618,9 +627,10 @@ export function CuradaConteudo({
               rSpearman: corrS ? corrS.r : null,
               nPearson: corrP ? corrP.n : null,
               nSpearman: corrS ? corrS.n : null,
+              pesoShare: pesoMistoShare ? "misto (eleitorado, total ou população)" : "eleitorado",
               veredito: VEREDITO_PT[veredito] ?? veredito,
             })}
-            seal={seal.official}
+            seal={seal}
           />
         )}
       </section>

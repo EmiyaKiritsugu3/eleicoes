@@ -521,7 +521,7 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
               participacao: ag.participacao,
               nMun: ag.nMun,
             })}
-            seal={seal.official}
+            seal={seal}
             detalhe="; pop do Censo só em tela."
           />
         </section>
@@ -636,7 +636,7 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
             margem: res.margem,
             participacao: res.participacao,
           })}
-          seal={seal.official}
+          seal={seal}
           detalhe="; pop do Censo só em tela."
         />
       </section>

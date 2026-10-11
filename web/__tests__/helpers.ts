@@ -346,6 +346,36 @@ export function esperarBotaoExport(
   else expect(btns[0]).toMatch(/\bdisabled\b/);
 }
 
+// Download real via clique (fonte única — cubic R3): jsdom não tem
+// createObjectURL — stub captura o Blob e o chamador lê o CSV (pin da
+// fiação botão→CSV, que o SSR sozinho não cobre).
+export async function clicarExportar(node: React.ReactElement): Promise<string> {
+  const vistos: Blob[] = [];
+  const U = URL as unknown as Record<string, unknown>;
+  const prevCreate = U["createObjectURL"];
+  const prevRevoke = U["revokeObjectURL"];
+  U["createObjectURL"] = (b: Blob) => {
+    vistos.push(b);
+    return "blob:mock";
+  };
+  U["revokeObjectURL"] = () => {};
+  try {
+    const div = await renderJsdom(node);
+    const btn = [...div.querySelectorAll("button")].find(
+      (b) => b.textContent === "Exportar CSV",
+    );
+    expect(btn).not.toBe(undefined);
+    await act(async () => {
+      btn!.click();
+    });
+    expect(vistos.length).toBe(1);
+    return await vistos[0].text();
+  } finally {
+    U["createObjectURL"] = prevCreate;
+    U["revokeObjectURL"] = prevRevoke;
+  }
+}
+
 // ---------- fato sintético (40 municípios) ----------
 
 export const CANDIDATOS_LULA = [

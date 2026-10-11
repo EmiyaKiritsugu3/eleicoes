@@ -136,10 +136,14 @@ export function vereditoTemProva(seal: SealState): boolean {
 /** Hash-resumo do selo p/ comparação de staleness (fonte única — as 2
  *  rotas SSG passam o mesmo resumo do build e `SeloStaleness` deriva o
  *  resumo runtime igual; cubic R3: oficial vence, fixture com hash conta
- *  quando não há oficial; sem prova → ""). */
+ *  quando não há oficial; sem prova → ""). Hex normalizado p/ minúsculas
+ *  (cubic R4: SHA-256 hex é case-insensitive — mudança só de caixa não é
+ *  rotação). */
 export function hashResumoSeal(seal: SealState): string {
-  if (seal.official !== null && typeof seal.official.hash === "string") return seal.official.hash;
-  if (seal.hasFixture && typeof seal.fixtureHash === "string") return seal.fixtureHash;
+  if (seal.official !== null && typeof seal.official.hash === "string") {
+    return seal.official.hash.toLowerCase();
+  }
+  if (seal.hasFixture && typeof seal.fixtureHash === "string") return seal.fixtureHash.toLowerCase();
   return "";
 }
 
