@@ -31,6 +31,7 @@ import {
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => ({ get: (_k: string) => null }),
+  usePathname: () => "/",
 }));
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
