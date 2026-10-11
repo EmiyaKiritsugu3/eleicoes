@@ -18,7 +18,7 @@ import {
 } from "../../lib/data";
 import { fetchJson } from "../../lib/fetchJson";
 import { manifestoValidoParaRotacao } from "../../lib/regiao";
-import { SEM_DADO } from "../../lib/textos";
+import { ALERTA_STYLE, SEM_DADO } from "../../lib/textos";
 
 /** Selo de amostra sintética compartilhado (components/FixtureBadge):
  *  tratamento de aviso, NUNCA o selo oficial — mesmo com hash presente.
@@ -139,12 +139,7 @@ export default function Auditoria() {
     ? (manifest?.ingestions ?? [])
     : [];
   const artifacts = getArtifacts(manifest);
-  // Alerta honesto sem depender de CSS externo (M4-web): fundo/borda inline.
-  const ALERTA_STYLE: React.CSSProperties = {
-    background: "#fff3cd",
-    border: "1px solid #b45309",
-    fontWeight: "bold",
-  };
+  // `ALERTA_STYLE` vive em `lib/textos` (fonte única, EVOLVE-13).
   const hasFixture = ingestions.some(isFixtureEntry);
   const canDownload = ingestions.some(isAudited);
 
@@ -172,7 +167,7 @@ export default function Auditoria() {
           <SourceBadge hash="" url="" date="" />
         )}
         {!checked ? (
-          <p>carregando manifest…</p>
+          <p role="status">carregando manifest…</p>
         ) : ingestions.length === 0 ? (
           <p>{SEM_DADO} — nenhuma ingestão registrada no manifest</p>
         ) : (
@@ -256,6 +251,8 @@ export default function Auditoria() {
       <section aria-label="Arquivos servidos">
         <h2>Arquivos servidos</h2>
         {!checked ? (
+          /* Placeholder comum (o anúncio vivo vive na seção Ingestões —
+             cubic R1: 2 status idênticos anunciam em duplicata). */
           <p>carregando manifest…</p>
         ) : (
           <ArtifactsTable artifacts={artifacts} />

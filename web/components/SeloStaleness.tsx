@@ -20,17 +20,14 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { fetchJson } from "../lib/fetchJson";
+import { ALERTA_STYLE } from "../lib/textos";
 import { getSealParaDataset, hashResumoSeal, manifestoValidoParaRotacao } from "../lib/regiao";
 
 /** Nota estática das páginas SSG (fonte única p/ os 2 slugs). */
 export const NOTA_PLEITO_CONGELADO =
   "pleito default do build — páginas curadas congelam o pleito exibido; outros pleitos no /explorar e na /regiao.";
 
-const ALERTA_STYLE: React.CSSProperties = {
-  background: "#fff3cd",
-  border: "1px solid #b45309",
-  fontWeight: "bold",
-};
+// `ALERTA_STYLE` vive em `lib/textos` (fonte única, EVOLVE-13).
 
 export default function SeloStaleness({
   dataset,

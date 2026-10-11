@@ -17,8 +17,9 @@ import CopyShare from "./CopyShare";
 import ExportCsv from "./ExportCsv";
 import { formatVotes, type SealState } from "../lib/data";
 import { isFatoDataset } from "../lib/regiao";
-import { SEM_DADO } from "../lib/textos";
+import { ALERTA_STYLE, SEM_DADO } from "../lib/textos";
 import {
+  finito,
   indiceVencedor,
   perfilOndeVenceu,
   totalLinha,
@@ -172,9 +173,7 @@ export interface ResumoVencedor {
   participacao: number | null;
 }
 
-function finito(v: unknown): v is number {
-  return typeof v === "number" && Number.isFinite(v);
-}
+// `finito` vive em `lib/motor` (fonte única, EVOLVE-13).
 
 function eleitoresLinha(row: MunRow): number | null {
   const e = row.demo?.eleitores;
@@ -319,11 +318,7 @@ export function regiaoCsvRows(regiao: string, r: LinhaRegiaoCsv): Record<string,
   return [row];
 }
 
-const ALERTA_STYLE: React.CSSProperties = {
-  background: "#fff3cd",
-  border: "1px solid #b45309",
-  fontWeight: "bold",
-};
+// `ALERTA_STYLE` vive em `lib/textos` (fonte única, EVOLVE-13).
 
 interface PainelRegiaoProps {
   ibge: string;

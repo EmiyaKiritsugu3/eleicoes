@@ -8,13 +8,8 @@ import { ExplorarConteudo, parseExplorarQuery, type ExplorarSelecao } from "../.
 import type { SealState } from "../../lib/data";
 import { fatoDatasetDe, getSealParaDataset, isHashDivergente, manifestoValidoParaRotacao } from "../../lib/regiao";
 import { fetchJson } from "../../lib/fetchJson";
+import { ALERTA_STYLE } from "../../lib/textos";
 import type { FatoRegiao } from "../../components/PainelRegiao";
-
-const ALERTA_STYLE: React.CSSProperties = {
-  background: "#fff3cd",
-  border: "1px solid #b45309",
-  fontWeight: "bold",
-};
 
 const SEL_VAZIA: ExplorarSelecao = {
   quem: "",

@@ -28,7 +28,7 @@ import {
 } from "../../lib/export";
 import { manifestoValidoParaRotacao, vereditoTemProva } from "../../lib/regiao";
 import { fetchJson } from "../../lib/fetchJson";
-import { MOTIVO_SEM_HASH, SEM_DADO } from "../../lib/textos";
+import { ALERTA_STYLE, MOTIVO_SEM_HASH, SEM_DADO } from "../../lib/textos";
 
 const SEM_COBERTURA_AGG =
   " — filtro sem cobertura no agregado V1 (só ano/cargo/UF e partido)";
@@ -350,12 +350,7 @@ export default function Analisar() {
     [pivoRows, pivo, f.ano, f.cargo, f.uf, f.turno, f.zona, f.partido, f.candidato],
   );
 
-  // Alerta honesto sem depender de CSS externo (M4-web): fundo/borda inline.
-  const ALERTA_STYLE: React.CSSProperties = {
-    background: "#fff3cd",
-    border: "1px solid #b45309",
-    fontWeight: "bold",
-  };
+  // `ALERTA_STYLE` vive em `lib/textos` (fonte única, EVOLVE-13).
 
   return (
     <>

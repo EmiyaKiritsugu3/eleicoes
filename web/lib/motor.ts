@@ -80,7 +80,9 @@ export interface PerfilResult {
   vsBrasil: Record<VarDemo, number>;
 }
 
-function finito(v: unknown): v is number {
+/** Predicado numérico (fonte única, EVOLVE-13 — dedupe dos forks em
+ *  Verificar/Curada/Explorar/PainelRegiao; mesmo contrato). */
+export function finito(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v);
 }
 

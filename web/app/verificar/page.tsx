@@ -17,20 +17,10 @@ import { getSealState, type SealState } from "../../lib/data";
 import { manifestoValidoParaRotacao } from "../../lib/regiao";
 import { fetchJson } from "../../lib/fetchJson";
 import { checksParaRegiao, type Check } from "./Verificar";
+import { UF_POR_PREFIXO_IBGE } from "../../components/PainelRegiao";
 import checksJson from "../../data/checks.json";
 
 const checks = checksJson as unknown as Check[];
-
-/** Prefixo IBGE (2 primeiros dígitos do código do município) → sigla da UF.
- *  Tabela oficial: 11–17 Norte, 21–29 Nordeste, 31–33/35 Sudeste, 41–43 Sul,
- *  50–53 Centro-Oeste. */
-const UF_POR_PREFIXO_IBGE: Record<string, string> = {
-  "11": "RO", "12": "AC", "13": "AM", "14": "RR", "15": "PA", "16": "AP",
-  "17": "TO", "21": "MA", "22": "PI", "23": "CE", "24": "RN", "25": "PB",
-  "26": "PE", "27": "AL", "28": "SE", "29": "BA", "31": "MG", "32": "ES",
-  "33": "RJ", "35": "SP", "41": "PR", "42": "SC", "43": "RS", "50": "MS",
-  "51": "MT", "52": "GO", "53": "DF",
-};
 
 /** Normaliza `?regiao=` para o filtro: sigla passa intacta (maiúscula,
  *  aparada); código IBGE todo-numérico vira a UF do prefixo. Prefixo

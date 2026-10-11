@@ -36,11 +36,12 @@ import ExportCsv from "./ExportCsv";
 import { ENTRADAS_CURADA } from "../lib/export";
 import { MALHA_MUNICIPIOS_URL } from "../lib/malha";
 import { vereditoTemProva } from "../lib/regiao";
-import { MOTIVO_SEM_HASH } from "../lib/textos";
+import { ALERTA_STYLE, MOTIVO_SEM_HASH } from "../lib/textos";
 import {
   VAR_DEMO,
   PISO_CORRELACAO_N,
   correlacao,
+  finito,
   indiceVencedor,
   perfilOndeVenceu,
   quintis,
@@ -79,15 +80,8 @@ const DEBOUNCE_MS = 250;
  *  descartado no parse (fail-closed) e na renderização (`verSeguro`). */
 const VER_VALIDOS = new Set<string>(VER_OPCOES.map((o) => o.value));
 
-const ALERTA_STYLE: React.CSSProperties = {
-  background: "#fff3cd",
-  border: "1px solid #b45309",
-  fontWeight: "bold",
-};
-
-function finito(v: unknown): v is number {
-  return typeof v === "number" && Number.isFinite(v);
-}
+// `ALERTA_STYLE` vive em `lib/textos` e `finito` em `lib/motor`
+// (fontes únicas, EVOLVE-13).
 
 /** Filtro do bloco "onde" sobre as linhas do fato. Desconhecido → []. */
 export function aplicarOnde(

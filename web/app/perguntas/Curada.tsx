@@ -42,13 +42,14 @@ import { formatVotes, type SealState } from "../../lib/data";
 import { ENTRADAS_CURADA } from "../../lib/export";
 export { ENTRADAS_CURADA };
 import { vereditoTemProva } from "../../lib/regiao";
-import { MOTIVO_SEM_HASH } from "../../lib/textos";
+import { ALERTA_STYLE, MOTIVO_SEM_HASH } from "../../lib/textos";
 import {
   VAR_DEMO,
   PISO_CORRELACAO_N,
   conclusaoLeiga,
   correlacao,
   estratificar,
+  finito,
   fontePeso,
   perfilOndeVenceu,
   pesoEleitoral,
@@ -79,15 +80,8 @@ const VEREDITO_PT: Record<string, string> = {
   nao_sustentado: "padrão não sustentado pelos estratos",
 };
 
-const ALERTA_STYLE: React.CSSProperties = {
-  background: "#fff3cd",
-  border: "1px solid #b45309",
-  fontWeight: "bold",
-};
-
-function finito(v: unknown): v is number {
-  return typeof v === "number" && Number.isFinite(v);
-}
+// `ALERTA_STYLE` vive em `lib/textos` e `finito` em `lib/motor`
+// (fontes únicas, EVOLVE-13).
 
 /** r com 3 casas em pt-BR; null (suprimido) → sem dado oficial. */
 function fmtR(r: number | null): string {

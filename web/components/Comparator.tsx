@@ -53,7 +53,7 @@ export default function Comparator({
       <div style={{ flex: "1 1 200px" }}>
         <Side side={right} label={labelRight} />
       </div>
-      <p style={{ width: "100%" }}>
+      <p role="status" style={{ width: "100%" }}>
         {diff === null ? SEM_DADO : `Diferença (A − B): ${formatVotes(diff)} votos`}
       </p>
     </div>

@@ -245,6 +245,7 @@ export default function MapaBrasil({
         width={CSS_W}
         height={CSS_H}
         onClick={aoClicar}
+        role="img"
         aria-label="Mapa do Brasil — clique num município"
         // Responde a taps sem o atraso de double-tap; scroll da página preservado.
         style={{ width: "100%", maxWidth: CSS_W, aspectRatio: "4 / 3", touchAction: "manipulation" }}
