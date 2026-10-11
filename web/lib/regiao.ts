@@ -47,6 +47,21 @@ export function fatoDatasetDe(manifest: unknown, override?: string): string | nu
   return defaultFatoDataset(manifest);
 }
 
+/** Datasets de fato municipal disponíveis no manifest (EVOLVE-11 Task 1 —
+ *  fonte única das opções do pleito switcher da /regiao): entries
+ *  `fato_municipal` com dataset no allowlist `isFatoDataset`, em ordem do
+ *  manifest, sem duplicar. Traversal/shape inválido e outro tipo nunca
+ *  viram opção (fail-closed: opção sempre monta fetch seguro). */
+export function listarFatosMunicipais(manifest: unknown): string[] {
+  const out: string[] = [];
+  for (const e of ingestoesFato(manifest)) {
+    if ((e as ManifestFato | null)?.tipo !== "fato_municipal") continue;
+    const ds = (e as ManifestFato | null)?.dataset;
+    if (isFatoDataset(ds) && !out.includes(ds as string)) out.push(ds as string);
+  }
+  return out;
+}
+
 /** Registro auditado do dataset selecionado: ingestão `fato_municipal`
  *  com este `dataset`, hash válido e não-fixture (mesma semântica de
  *  `isAudited`/`isOfficialDisplay` de `lib/data.ts`). Qualquer outra
