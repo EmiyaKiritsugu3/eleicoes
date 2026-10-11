@@ -8,3 +8,4 @@ web/tsconfig.tsbuildinfo
 node_modules/
 build/
 *.egg-info/
+.worktrees/
