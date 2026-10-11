@@ -43,6 +43,7 @@ import SealSlot from "../../components/SealSlot";
 import SourceBadge from "../../components/SourceBadge";
 import { ECO_SEAL, SEM_DADO, type FatoRegiao } from "../../components/PainelRegiao";
 import ExportCsv from "../../components/ExportCsv";
+import { ENTRADAS_CURADA } from "../../lib/export";
 import type { SealState } from "../../lib/data";
 import {
   LIMIAR_EFEITO_R,
@@ -489,8 +490,10 @@ export function buildVerificarShareUrl(slug: string, manifestHash: string): stri
 }
 
 /** Linhas do CSV do veredito (EVOLVE-11 Task 5, paridade Analisar/Explorar):
- *  os números que decidem + slug/veredito como contexto; proveniência via
- *  `buildCsvExport` (gate oficial no botão — sem hash, desabilitado). */
+ *  os números que decidem + slug/veredito como contexto + `entradas`
+ *  (EVOLVE-12, paridade com a Curada — fonte única `ENTRADAS_CURADA` em
+ *  `lib/export`); proveniência via `buildCsvExport` (gate oficial no
+ *  botão — sem hash, desabilitado). */
 export function verificarCsvRows(
   slug: string,
   veredito: string,
@@ -502,6 +505,7 @@ export function verificarCsvRows(
     numero: n?.rotulo ?? "",
     valor: n?.valor ?? null,
     formato: n?.formato ?? "",
+    entradas: ENTRADAS_CURADA,
   }));
 }
 

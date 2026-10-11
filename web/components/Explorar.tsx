@@ -33,6 +33,7 @@ import {
 } from "./PainelRegiao";
 import { formatVotes, type SealState } from "../lib/data";
 import ExportCsv from "./ExportCsv";
+import { ENTRADAS_CURADA } from "../lib/export";
 import { MALHA_MUNICIPIOS_URL } from "../lib/malha";
 import { vereditoTemProva } from "../lib/regiao";
 import { MOTIVO_SEM_HASH } from "../lib/textos";
@@ -184,8 +185,10 @@ const SEL_PADRAO: ExplorarSelecao = {
 };
 
 /** Linhas do CSV: recorte filtrado + contexto de filtro (`f_*`, paridade
- *  com `/analisar` — o CSV é auto-descritivo). Células vazias seguem o
- *  contrato blank-cell de `buildCsvExport` (nunca "null"/"undefined").
+ *  com `/analisar` — o CSV é auto-descritivo) + `entradas` (paridade com a
+ *  Curada — fonte única `ENTRADAS_CURADA` em `lib/export`). Células vazias
+ *  seguem o contrato blank-cell de `buildCsvExport` (nunca
+ *  "null"/"undefined").
  *  `percentual` sai em pontos percentuais (0–100, ×100 sobre a fração
  *  0–1 do display), paridade com ranking/quintis/foco; `null` → blank.
  *  Download via fonte única `downloadCsv` em `lib/export` (dedupe). */
@@ -204,6 +207,7 @@ export function explorarCsvRows(
       uf: r?.uf ?? "",
       percentual: share === null ? null : share * 100,
       [sel.cruzar]: r?.demo ? (r.demo[sel.cruzar as VarDemo] as unknown as number) : null,
+      entradas: ENTRADAS_CURADA,
       f_quem: sel.quem ?? "",
       f_onde: sel.onde ?? "",
       f_cruzar: sel.cruzar ?? "",
