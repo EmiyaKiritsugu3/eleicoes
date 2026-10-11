@@ -206,6 +206,8 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 - Minors: nada acionável (zero TODO/FIXME/XXX/HACK em app/components/lib/etl/scripts).
 - Terminal: verificação completa, 1 desbloqueio registrado, 0 churn (sem PR — sem mudança real).
 
-## Próxima sessão — EVOLVE-15 arquitetural: ingestão do de-para TSE→IBGE7 (design pendente — caminho architectural: perguntas → abordagens → spec escrita → plano)
-- Escopo provável: fonte `municipio_tse_ibge` no ETL (download SHA/retry/atômico, Latin-1, gates de bijeção 5571↔5571), join TSE→IBGE7 em `normalize`/`build_fato`, entries no manifest, reescrita de `test_fato_real_e2e.py` (fail-closed → join real), fato-real full e2e.
-- Baseline main @19ddc0f verde (pytest 202 + vitest 565). Evidência em `/tmp/opencode/depara/`.
+## EVOLVE-15 mergeado (2026-10-11 ~11:00 UTC) — DESBLOQUEIO DO FATO REAL
+- Merge PR #16 (merge commit 336a6dc): tudo verde — CI ×2, GitGuardian, CodeRabbit (rate-limited), cubic pass (10 P2 triados: 9 corrigidos R3 + 1 R2-novo, todos com reply; +1 P2 respondido como pré-existente/deferido p/ EVOLVE-16), Sonar pass (S3776×2+S5778×3 corrigidos R1/R2; 2 S8707 mesma-família wont-fix justificado via API, ruling EVOLVE-1). Branch evolve-15 deletada.
+- Total: etl/depara.py (parse+gates bijection+DV, chave zfill5, register ingest) + normalize(df,depara=None) default intacto + threading build_all/CLI --depara-csv + fontes triplas no fato + 20 testes (19 offline + e2e real RR→Boa Vista verde) + R1/R2/R3. Suítes finais: pytest 217 + vitest 565 + tsc + build.
+- Incidentes: voto "3018" vs oficial "03018" (chave canônica); timer/revoke não se aplica (sem clique); canônico com artifacts stale em fluxo não-vazio — gates correm no MIRROR (contrato __main__), e2e ajustado; S8707 ruling sem MCP (token do config via API direta).
+- Backlog EVOLVE-16: E5 empty-build artifact coverage (P2 cubic deferido, quebra contrato pinado — design próprio) + instrução/GeoJSON (bloqueados).
