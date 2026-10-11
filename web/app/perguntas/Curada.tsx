@@ -38,6 +38,7 @@ import {
   type FatoRegiao,
 } from "../../components/PainelRegiao";
 import { formatVotes, type SealState } from "../../lib/data";
+import { buildCsvExport, downloadCsv } from "../../lib/export";
 import { vereditoTemProva } from "../../lib/regiao";
 import { MOTIVO_SEM_HASH } from "../../lib/textos";
 import {
@@ -95,6 +96,32 @@ function notaEscopo(onde: string): string | null {
   if (onde === "exterior") return NOTA_EXTERIOR;
   if (onde === "evolucao") return NOTA_EVOLUCAO;
   return null;
+}
+
+/** Resumo numérico da resposta curada p/ o CSV (EVOLVE-11 Task 5). */
+export interface ResumoCuradaCsv {
+  titulo: string;
+  nMunicipios: number;
+  shareMedio: number | null;
+  rPearson: number | null;
+  rSpearman: number | null;
+  veredito: string;
+}
+
+/** Linhas do CSV da Curada (paridade Verificar/Analisar/Explorar/Regiao):
+ *  resumo da resposta numa linha; proveniência via `buildCsvExport`
+ *  (gate oficial no botão — sem hash, desabilitado). */
+export function curadaCsvRows(r: ResumoCuradaCsv): Record<string, unknown>[] {
+  return [
+    {
+      pergunta: r.titulo,
+      n_municipios: r.nMunicipios,
+      share_medio: r.shareMedio,
+      r_pearson: r.rPearson,
+      r_spearman: r.rSpearman,
+      veredito: r.veredito,
+    },
+  ];
 }
 
 /** Resolve `quem` a um candidato do fato (tokens ou id literal). */
@@ -569,6 +596,47 @@ export function CuradaConteudo({
             municipais (onde venceu, 2º lugar, margem, participação); votos do exterior
             e séries temporais ficam fora do fato auditado.
           </p>
+        )}
+        {/* Export da resposta (EVOLVE-11 Task 5, paridade Verificar):
+            resumo numérico + proveniência do fato. Só com números
+            (sem prova ou recorte vazio → sem botão); gate oficial. */}
+        {hashAuditado && fato && cand && filtradas.length > 0 && (
+          <>
+            <p>
+              <button
+                type="button"
+                disabled={!seal.official}
+                title={
+                  seal.official
+                    ? "Baixar CSV com proveniência auditada"
+                    : "Exportação bloqueada — dado não auditado"
+                }
+                onClick={() =>
+                  downloadCsv(
+                    `pergunta-${pergunta.slug}.csv`,
+                    buildCsvExport(
+                      curadaCsvRows({
+                        titulo: pergunta.titulo,
+                        nMunicipios: filtradas.length,
+                        shareMedio,
+                        rPearson: corrP ? corrP.r : null,
+                        rSpearman: corrS ? corrS.r : null,
+                        veredito: VEREDITO_PT[veredito] ?? veredito,
+                      }),
+                      seal.official,
+                    ),
+                  )
+                }
+              >
+                Exportar CSV
+              </button>
+            </p>
+            <p>
+              <small>
+                O CSV inclui header de proveniência <code>fonte,url,hash,data</code>.
+              </small>
+            </p>
+          </>
         )}
       </section>
     </>
