@@ -322,6 +322,30 @@ export function secao(html: string, label: string): string {
   return m ? m[1] : "";
 }
 
+// ---------- paridade de export (botão "Exportar CSV" no markup) ----------
+
+// Botões Exportar CSV no markup (fonte única do inventário de paridade de
+// export — EVOLVE-11 Tasks 4/5; gate Sonar duplication).
+export function botoesExport(html: string): string[] {
+  return html.match(/<button[^>]*>Exportar CSV<\/button>/g) ?? [];
+}
+
+// Gate oficial do export: habilitado com selo auditado, desabilitado sem,
+// ausente quando a superfície não tem números p/ exportar.
+export function esperarBotaoExport(
+  html: string,
+  modo: "habilitado" | "desabilitado" | "ausente",
+): void {
+  const btns = botoesExport(html);
+  if (modo === "ausente") {
+    expect(btns.length).toBe(0);
+    return;
+  }
+  expect(btns.length).toBe(1);
+  if (modo === "habilitado") expect(btns[0]).not.toMatch(/\bdisabled\b/);
+  else expect(btns[0]).toMatch(/\bdisabled\b/);
+}
+
 // ---------- fato sintético (40 municípios) ----------
 
 export const CANDIDATOS_LULA = [

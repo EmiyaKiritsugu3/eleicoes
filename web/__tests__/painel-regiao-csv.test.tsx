@@ -8,25 +8,21 @@ import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import PainelRegiao, { regiaoCsvRows } from "../components/PainelRegiao";
 import { buildCsvExport } from "../lib/export";
+import { demoCurada, esperarBotaoExport } from "./helpers";
 
 const DS = "fato_2022_1_presidente";
 const HASH = "a".repeat(64);
 
-function demo() {
-  return {
-    esc_sup: 12, esc_med: 30, esc_fund: 50, renda_media: 2200, pobres_pct: 18,
-    idade_mediana: 34, urbanizacao: 85, pop: 12000, eleitores: 10000,
-  };
-}
-
+// FATO mínimo da /regiao (demo via `demoCurada` de ./helpers — fonte única;
+// valores da demo irrelevantes aqui, só a estrutura).
 const FATO = {
   candidatos: [
     { id: "A", nome: "Cand A", partido: "PA" },
     { id: "B", nome: "Cand B", partido: "PB" },
   ],
   municipios: [
-    { ibge: "3550308", uf: "SP", nome: "Mun 0", votos: [600, 400], total: 1000, abst: 100, demo: demo() },
-    { ibge: "3550309", uf: "SP", nome: "Mun 1", votos: [100, 700], total: 800, abst: 50, demo: demo() },
+    { ibge: "3550308", uf: "SP", nome: "Mun 0", votos: [600, 400], total: 1000, abst: 100, demo: demoCurada() },
+    { ibge: "3550309", uf: "SP", nome: "Mun 1", votos: [100, 700], total: 800, abst: 50, demo: demoCurada() },
   ],
 };
 
@@ -37,10 +33,6 @@ const SEAL_OFICIAL = {
 };
 const SEAL_NULO = { official: null, hasFixture: false, fixtureHash: "" };
 const SEAL_FIXTURE = { official: null, hasFixture: true, fixtureHash: "f".repeat(64) };
-
-function botoesExport(html: string): string[] {
-  return html.match(/<button[^>]*>Exportar CSV<\/button>/g) ?? [];
-}
 
 describe("regiaoCsvRows (linhas do CSV do /regiao)", () => {
   it("municipio: vencedor + votos + margem/participação cruas", () => {
@@ -76,37 +68,39 @@ describe("regiaoCsvRows (linhas do CSV do /regiao)", () => {
 
 describe("/regiao: botão Exportar CSV (EVOLVE-11 Task 4)", () => {
   it("município + selo oficial: botão habilitado", () => {
-    const html = renderToStaticMarkup(
-      <PainelRegiao ibge="3550308" fato={FATO} seal={SEAL_OFICIAL} manifestChecked fatoDataset={DS} censo={null} />,
+    esperarBotaoExport(
+      renderToStaticMarkup(
+        <PainelRegiao ibge="3550308" fato={FATO} seal={SEAL_OFICIAL} manifestChecked fatoDataset={DS} censo={null} />,
+      ),
+      "habilitado",
     );
-    const btns = botoesExport(html);
-    expect(btns.length).toBe(1);
-    expect(btns[0]).not.toMatch(/\bdisabled\b/);
   });
 
   it("UF + selo oficial: botão habilitado", () => {
-    const html = renderToStaticMarkup(
-      <PainelRegiao ibge="SP" fato={FATO} seal={SEAL_OFICIAL} manifestChecked fatoDataset={DS} censo={null} />,
+    esperarBotaoExport(
+      renderToStaticMarkup(
+        <PainelRegiao ibge="SP" fato={FATO} seal={SEAL_OFICIAL} manifestChecked fatoDataset={DS} censo={null} />,
+      ),
+      "habilitado",
     );
-    const btns = botoesExport(html);
-    expect(btns.length).toBe(1);
-    expect(btns[0]).not.toMatch(/\bdisabled\b/);
   });
 
   it("sem fato: nenhum botão (nada do pleito p/ exportar)", () => {
-    const html = renderToStaticMarkup(
-      <PainelRegiao ibge="3550308" fato={null} seal={SEAL_NULO} manifestChecked fatoDataset={DS} censo={null} />,
-    );
     // Ramo sem-fato não exporta (sem números do pleito): zero botões.
-    expect(botoesExport(html).length).toBe(0);
+    esperarBotaoExport(
+      renderToStaticMarkup(
+        <PainelRegiao ibge="3550308" fato={null} seal={SEAL_NULO} manifestChecked fatoDataset={DS} censo={null} />,
+      ),
+      "ausente",
+    );
   });
 
   it("fato fixture sem oficial: botão desabilitado (gate oficial)", () => {
-    const html = renderToStaticMarkup(
-      <PainelRegiao ibge="3550308" fato={FATO} seal={SEAL_FIXTURE} manifestChecked fatoDataset={DS} censo={null} />,
+    esperarBotaoExport(
+      renderToStaticMarkup(
+        <PainelRegiao ibge="3550308" fato={FATO} seal={SEAL_FIXTURE} manifestChecked fatoDataset={DS} censo={null} />,
+      ),
+      "desabilitado",
     );
-    const btns = botoesExport(html);
-    expect(btns.length).toBe(1);
-    expect(btns[0]).toMatch(/\bdisabled\b/);
   });
 });

@@ -20,7 +20,7 @@ import { buildCsvExport } from "../lib/export";
 import type { SealState } from "../lib/data";
 import {
   CANDIDATOS_EXEMPLO as CANDIDATOS,
-  demoCurada as demo,
+  esperarBotaoExport,
   linhas40Municipio as linhas40,
 } from "./helpers";
 import type { MunRow } from "../lib/motor";
@@ -53,10 +53,6 @@ const PERGUNTA: PerguntaCurada = {
   texto_metodo: "método sintético",
 };
 
-function botoesExport(html: string): string[] {
-  return html.match(/<button[^>]*>Exportar CSV<\/button>/g) ?? [];
-}
-
 describe("verificarCsvRows / curadaCsvRows (linhas do CSV das curadas)", () => {
   it("verificar: numero/valor/formato + slug/veredito por linha", () => {
     const rows = verificarCsvRows("sint-vencedor", "sustentado", [
@@ -83,58 +79,62 @@ describe("verificarCsvRows / curadaCsvRows (linhas do CSV das curadas)", () => {
   });
 });
 
-describe("verificar: botão Exportar CSV (EVOLVE-11 Task 5)", () => {
-  function html(seal: SealState, check: Check | null = CHECK): string {
-    return renderToStaticMarkup(
-      React.createElement(VerificarConteudo, {
-        check, slug: "sint-vencedor", checks: [], fato: fato(), seal, manifestChecked: true,
-      }),
-    );
+// Botão Exportar CSV nas 2 curadas (table-driven: 1 render por superfície,
+// sem forkar o bloco de asserts — gate Sonar duplication).
+const SUPERFICIES: {
+  nome: string;
+  comNumeros: (seal: SealState) => string;
+  semNumeros: () => string[];
+}[] = [
+  {
+    nome: "verificar",
+    comNumeros: (seal) =>
+      renderToStaticMarkup(
+        React.createElement(VerificarConteudo, {
+          check: CHECK, slug: CHECK.slug, checks: [], fato: fato(), seal, manifestChecked: true,
+        }),
+      ),
+    semNumeros: () => [
+      renderToStaticMarkup(
+        React.createElement(VerificarConteudo, {
+          check: CHECK, slug: CHECK.slug, checks: [], fato: fato(), seal: SEAL_NULO, manifestChecked: true,
+        }),
+      ),
+      renderToStaticMarkup(
+        React.createElement(VerificarConteudo, {
+          check: null, slug: "sint-vencedor", checks: [], fato: fato(), seal: SEAL_OK, manifestChecked: true,
+        }),
+      ),
+    ],
+  },
+  {
+    nome: "curada",
+    comNumeros: (seal) =>
+      renderToStaticMarkup(
+        React.createElement(CuradaConteudo, {
+          pergunta: PERGUNTA, fato: fato(), seal, manifestChecked: true,
+        }),
+      ),
+    semNumeros: () => [
+      renderToStaticMarkup(
+        React.createElement(CuradaConteudo, {
+          pergunta: PERGUNTA, fato: fato(), seal: SEAL_NULO, manifestChecked: true,
+        }),
+      ),
+    ],
+  },
+];
+
+describe("curadas: botão Exportar CSV (EVOLVE-11 Task 5)", () => {
+  for (const s of SUPERFICIES) {
+    it(`${s.nome}: com selo oficial → habilitado`, () => {
+      esperarBotaoExport(s.comNumeros(SEAL_OK), "habilitado");
+    });
+    it(`${s.nome}: fixture sem oficial → desabilitado (gate oficial)`, () => {
+      esperarBotaoExport(s.comNumeros(SEAL_FIXTURE), "desabilitado");
+    });
+    it(`${s.nome}: sem números → ausente`, () => {
+      for (const html of s.semNumeros()) esperarBotaoExport(html, "ausente");
+    });
   }
-
-  it("veredito + selo oficial: botão habilitado", () => {
-    const btns = botoesExport(html(SEAL_OK));
-    expect(btns.length).toBe(1);
-    expect(btns[0]).not.toMatch(/\bdisabled\b/);
-  });
-
-  it("veredito fixture sem oficial: botão desabilitado (gate oficial)", () => {
-    const btns = botoesExport(html(SEAL_FIXTURE));
-    expect(btns.length).toBe(1);
-    expect(btns[0]).toMatch(/\bdisabled\b/);
-  });
-
-  it("sem prova (selo nulo): sem botão (sem números p/ exportar)", () => {
-    expect(botoesExport(html(SEAL_NULO)).length).toBe(0);
-  });
-
-  it("sugestão (check null): sem botão", () => {
-    expect(botoesExport(html(SEAL_OK, null)).length).toBe(0);
-  });
-});
-
-describe("curada: botão Exportar CSV (EVOLVE-11 Task 5)", () => {
-  function html(seal: SealState): string {
-    return renderToStaticMarkup(
-      React.createElement(CuradaConteudo, {
-        pergunta: PERGUNTA, fato: fato(), seal, manifestChecked: true,
-      }),
-    );
-  }
-
-  it("números + selo oficial: botão habilitado", () => {
-    const btns = botoesExport(html(SEAL_OK));
-    expect(btns.length).toBe(1);
-    expect(btns[0]).not.toMatch(/\bdisabled\b/);
-  });
-
-  it("números fixture sem oficial: botão desabilitado (gate oficial)", () => {
-    const btns = botoesExport(html(SEAL_FIXTURE));
-    expect(btns.length).toBe(1);
-    expect(btns[0]).toMatch(/\bdisabled\b/);
-  });
-
-  it("sem prova (selo nulo): sem botão", () => {
-    expect(botoesExport(html(SEAL_NULO)).length).toBe(0);
-  });
 });

@@ -10,6 +10,7 @@ import type { Root } from "react-dom/client";
 import PaginaRegiao from "../app/regiao/[ibge]/page";
 import { listarFatosMunicipais } from "../lib/regiao";
 import {
+  demoCurada,
   instalarFetchRoteado,
   montarRotacao,
 } from "./helpers";
@@ -25,20 +26,14 @@ vi.mock("next/navigation", () => ({
 const DS_A = "fato_2022_1_presidente";
 const DS_B = "fato_2022_2_governador";
 
-function demo() {
-  return {
-    esc_sup: 12, esc_med: 30, esc_fund: 50, renda_media: 2200, pobres_pct: 18,
-    idade_mediana: 34, urbanizacao: 85, pop: 12000, eleitores: 10000,
-  };
-}
-
+// FATO mínimo p/ o fetch roteado (demo via `demoCurada` de ./helpers).
 const FATO = {
   candidatos: [
     { id: "A", nome: "Cand A", partido: "PA" },
     { id: "B", nome: "Cand B", partido: "PB" },
   ],
   municipios: [
-    { ibge: "3550308", uf: "SP", nome: "Mun 0", votos: [600, 400], total: 1000, abst: 100, demo: demo() },
+    { ibge: "3550308", uf: "SP", nome: "Mun 0", votos: [600, 400], total: 1000, abst: 100, demo: demoCurada() },
   ],
 };
 
