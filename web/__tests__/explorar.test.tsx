@@ -516,5 +516,7 @@ describe("explorar (CSV export, EVOLVE-10 Task 4: paridade com /analisar)", () =
     const lines = csv.split("\n");
     expect(lines[1]).toMatch(/,50,/);
     expect(lines[4]).not.toMatch(/null/);
+    // célula percentual exatamente vazia (não só "sem null": 0 ou fração também falhariam aqui).
+    expect(lines[4]).toMatch(/^4,SemVoto,SP,,/);
   });
 });
