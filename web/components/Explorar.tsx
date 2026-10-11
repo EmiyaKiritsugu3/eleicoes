@@ -32,6 +32,7 @@ import {
   type FatoRegiao,
 } from "./PainelRegiao";
 import { formatVotes, type SealState } from "../lib/data";
+import { buildCsvExport } from "../lib/export";
 import { MALHA_MUNICIPIOS_URL } from "../lib/malha";
 import { vereditoTemProva } from "../lib/regiao";
 import { MOTIVO_SEM_HASH } from "../lib/textos";
@@ -181,6 +182,41 @@ const SEL_PADRAO: ExplorarSelecao = {
   ver: ["dispersao"],
   foco: "",
 };
+
+/** Download client-side do CSV (mesmo padrão de `/analisar`). */
+function downloadCsv(filename: string, csv: string) {
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** Linhas do CSV: recorte filtrado + contexto de filtro (`f_*`, paridade
+ *  com `/analisar` — o CSV é auto-descritivo). Células vazias seguem o
+ *  contrato blank-cell de `buildCsvExport` (nunca "null"/"undefined"). */
+export function explorarCsvRows(
+  filtradas: MunRow[],
+  sel: Pick<ExplorarSelecao, "quem" | "onde" | "cruzar">,
+  ordem: { id: string }[],
+): Record<string, unknown>[] {
+  const lista = Array.isArray(filtradas) ? filtradas : [];
+  const idx = Array.isArray(ordem) ? ordem.findIndex((c) => c?.id === sel.quem) : -1;
+  return lista.map((r) => ({
+    ibge: r?.ibge ?? "",
+    nome: r?.nome ?? "",
+    uf: r?.uf ?? "",
+    percentual: idx >= 0 ? shareCandidato(r, idx) : null,
+    [sel.cruzar]: r?.demo ? (r.demo[sel.cruzar as VarDemo] as unknown as number) : null,
+    f_quem: sel.quem ?? "",
+    f_onde: sel.onde ?? "",
+    f_cruzar: sel.cruzar ?? "",
+  }));
+}
 
 /** Query → seleção: `?q=` vence; `?foco=` (link do painel da região) e
  *  `?hash=` valem mesmo sem `?q=`. `?q=` inválido → padrão (fail-closed). */
@@ -407,6 +443,13 @@ export function ExplorarConteudo({
 
   const shareUrl = buildExplorarShareUrl({ ...sel, ver: verSeguro }, seal.official?.hash ?? "");
   const badge = <SealSlot seal={seal} />;
+  // CSV do recorte filtrado (paridade com `/analisar`: `buildCsvExport`
+  // com header de proveniência; botão desabilitado sem `seal.official` —
+  // fixture nunca ancora export).
+  const csvRows = useMemo(
+    () => explorarCsvRows(filtradas, sel, ordem),
+    [filtradas, sel, ordem],
+  );
   const ondeLabel = ONDE_OPCOES.find((o) => o.value === sel.onde)?.label ?? sel.onde;
   const quemNome = ordem.find((c) => c?.id === sel.quem)?.nome ?? sel.quem;
 
@@ -779,6 +822,30 @@ export function ExplorarConteudo({
         {badge}
         <p>
           <CopyShare url={shareUrl} />
+        </p>
+        <p>
+          <button
+            type="button"
+            disabled={!seal.official}
+            title={
+              seal.official
+                ? "Baixar CSV com proveniência auditada"
+                : "Exportação bloqueada — dado não auditado"
+            }
+            onClick={() =>
+              downloadCsv(
+                "explorar.csv",
+                buildCsvExport(csvRows, seal.official),
+              )
+            }
+          >
+            Exportar CSV
+          </button>
+        </p>
+        <p>
+          <small>
+            O CSV inclui header de proveniência <code>fonte,url,hash,data</code>.
+          </small>
         </p>
       </section>
     </>

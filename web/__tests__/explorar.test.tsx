@@ -5,9 +5,11 @@ import {
   ExplorarConteudo,
   aplicarOnde,
   buildExplorarShareUrl,
+  explorarCsvRows,
   parseExplorarQuery,
   type ExplorarSelecao,
 } from "../components/Explorar";
+import { buildCsvExport } from "../lib/export";
 import type { MunRow } from "../lib/motor";
 import type { SealState } from "../lib/data";
 import {
@@ -471,5 +473,30 @@ describe("explorar (decimais pt-BR: vírgula, nunca ponto)", () => {
     expect(html).toMatch(/r \(Pearson\) = -?\d+,\d{3}/);
     expect(html).not.toMatch(/r \(Pearson\) = -?\d+\.\d{3}/);
     expect(html).not.toMatch(/r \(Spearman\) = -?\d+\.\d{3}/);
+  });
+});
+
+describe("explorar (CSV export, EVOLVE-10 Task 4: paridade com /analisar)", () => {
+  function secaoExport(html: string): string {
+    return html.split('aria-label="Export reproduzível"')[1] ?? "";
+  }
+  it("botão desabilitado sem seal.official", () => {
+    const html = htmlExplorar({ candidatos: CANDIDATOS, municipios: linhasValidas() }, SEAL_SEM_HASH);
+    const export_ = secaoExport(html);
+    expect(export_).toContain("Exportar CSV");
+    expect(export_).toMatch(/<button[^>]*\bdisabled\b/);
+  });
+  it("habilitado com official + header de proveniência fonte,url,hash,data", () => {
+    const html = htmlExplorar({ candidatos: CANDIDATOS, municipios: linhasValidas() }, SEAL_OK);
+    const export_ = secaoExport(html);
+    expect(export_).toContain("Exportar CSV");
+    expect(export_).not.toMatch(/<button[^>]*\bdisabled\b/);
+    expect(export_).toContain("fonte,url,hash,data");
+    const filtradas = aplicarOnde(linhasValidas(), CANDIDATOS, "lula", "venceu");
+    const csv = buildCsvExport(
+      explorarCsvRows(filtradas, SEL_VALIDA, CANDIDATOS),
+      SEAL_OK.official,
+    );
+    expect(csv.split("\n")[0]).toContain("fonte,url,hash,data");
   });
 });
