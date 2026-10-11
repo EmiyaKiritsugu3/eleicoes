@@ -48,6 +48,7 @@ import type { SealState } from "../../lib/data";
 import {
   LIMIAR_EFEITO_R,
   correlacao,
+  finito,
   perfilOndeVenceu,
   shareCandidato,
   totalLinha,
@@ -55,7 +56,7 @@ import {
   type VarDemo,
 } from "../../lib/motor";
 import { resolverCandidato } from "../perguntas/Curada";
-import { MOTIVO_SEM_HASH } from "../../lib/textos";
+import { ALERTA_STYLE, MOTIVO_SEM_HASH } from "../../lib/textos";
 import { vereditoTemProva } from "../../lib/regiao";
 
 export type Veredito = "sustentado" | "enganoso" | "falso";
@@ -123,15 +124,8 @@ const VEREDITO_STYLE: Record<Veredito, React.CSSProperties> = {
   falso: { background: "#fdecea", border: "2px solid #b3261e", color: "#7a1a14" },
 };
 
-const ALERTA_STYLE: React.CSSProperties = {
-  background: "#fff3cd",
-  border: "1px solid #b45309",
-  fontWeight: "bold",
-};
-
-function finito(v: unknown): v is number {
-  return typeof v === "number" && Number.isFinite(v);
-}
+// `ALERTA_STYLE` vive em `lib/textos` e `finito` em `lib/motor`
+// (fontes únicas, EVOLVE-13).
 
 function str(v: unknown): string {
   return typeof v === "string" ? v : "";

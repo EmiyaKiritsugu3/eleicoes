@@ -27,7 +27,7 @@ import {
 } from "../lib/data";
 import { isHashDivergente, manifestoValidoParaRotacao, vereditoTemProva } from "../lib/regiao";
 import { fetchJson } from "../lib/fetchJson";
-import { MOTIVO_SEM_HASH, SEM_DADO } from "../lib/textos";
+import { ALERTA_STYLE, MOTIVO_SEM_HASH, SEM_DADO } from "../lib/textos";
 
 /** Seleção do mapa → sigla UF p/ focar o filtro (fail-closed: EXTERIOR e
  *  seleções desconhecidas retornam null em vez de focar errado). Aceita
@@ -238,12 +238,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   // (fail-closed em `ufDeSelecaoMapa`), então nunca há zoom p/ ele.
   const ufFoco = (f.uf ?? "").trim().toUpperCase();
   const comZoom = (UFS as readonly string[]).includes(ufFoco);
-  // Alerta honesto sem depender de CSS externo (M4-web): fundo/borda inline.
-  const ALERTA_STYLE: React.CSSProperties = {
-    background: "#fff3cd",
-    border: "1px solid #b45309",
-    fontWeight: "bold",
-  };
+  // `ALERTA_STYLE` vive em `lib/textos` (fonte única, EVOLVE-13).
   const escopoIgnoradoNoRanking =
     (f.ano ?? "").trim() !== "" ||
     (f.cargo ?? "").trim() !== "" ||
@@ -304,7 +299,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         {carregando ? (
           <p role="status">a carregar…</p>
         ) : semDados || semProva ? (
-          <p>{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
+          <p role="alert">{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
         ) : (
           <ul>
             <li>Total de votos: {formatVotes(res.totalVotos)}</li>
@@ -326,7 +321,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         {carregando ? (
           <p role="status">a carregar…</p>
         ) : semProva || ufs.length === 0 ? (
-          <p>{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
+          <p role="alert">{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
         ) : malhaFeatures ? (
           <>
             {comZoom && (
@@ -384,7 +379,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         {carregando ? (
           <p role="status">a carregar…</p>
         ) : semProva || cands.length === 0 ? (
-          <p>{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
+          <p role="alert">{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
         ) : (
           <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Ranking de candidatos por votos">
           <table>
@@ -410,7 +405,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         {carregando ? (
           <p role="status">a carregar…</p>
         ) : semProva || ev.length === 0 ? (
-          <p>{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
+          <p role="alert">{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
         ) : (
           <>
             <ul aria-hidden="true" style={{ listStyle: "none", padding: 0 }}>
