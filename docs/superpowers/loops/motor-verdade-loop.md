@@ -171,3 +171,15 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 ## EVOLVE-11 mergeado (2026-10-11 ~01:30 UTC)
 - Merge PR #13 (merge commit 55645cd): tudo verde — CI ×2, GitGuardian, CodeRabbit (rate-limited, sem findings), cubic (19 findings triados: 16 corrigidos R1/R3/R4, 3 wont_fix justificados em thread), Sonar (dup 8.3%→1.7% via ExportCsv + fixtures fonte única). Branch evolve-11 deletada.
 - Total: 6 tasks (pleito switcher /regiao, comparador desabilitado, share Home, CSV /regiao, CSV curadas, staleness SSG) + R1 (ExportCsv fonte única) + R2 (dedupe testes) + R3 (10 findings) + R4 (re-review 8). Suítes finais: pytest 202 + vitest 547 + tsc clean + build 52/52.
+
+## Próxima sessão — EVOLVE-12 (escopo APROVADO pelo usuário, design pendente de aprovação final)
+- Direção votada: **CSV + proveniência** (auditoria com 12 achados registrada na sessão; baseline main @f6f8e35 verde).
+- Design proposto (bounded, 6 tasks — REAPRESENTAR p/ aprovação explícita antes de implementar):
+  1. CSV na Home (`HomeContent.tsx`, `ExportCsv` gate official; última superfície sem export).
+  2. Coluna `entradas` em `explorarCsvRows` (padrão `ENTRADAS_CURADA`).
+  3. Coluna `entradas` em `verificarCsvRows`.
+  4. `pronto={manifestChecked}` no `ExportCsv` do `PainelRegiao` (hardening).
+  5. Dedupe colunas `ano/cargo/uf` vs `f_*` no `csvRows` do Analisar.
+  6. Teste inventário CSV-spots (6 superfícies, trava de paridade).
+- Backlog EVOLVE-13: a11y batch (canvas `role`, live regions auditoria/Comparator, SEM_DADO alert Home), dedupe `ALERTA_STYLE`/`finito`/tabela UF, bloqueados (de-para, instrução, GeoJSON).
+- Retomar: criar branch `evolve-12` de main, TDD RED→GREEN por task, PR + reviews (cubic/CodeRabbit/Sonar) até green, merge commit, atualizar este loop.
