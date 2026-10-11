@@ -523,6 +523,7 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
             })}
             seal={seal}
             detalhe="; pop do Censo só em tela."
+            pronto={manifestChecked}
           />
         </section>
       </>
@@ -638,6 +639,7 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
           })}
           seal={seal}
           detalhe="; pop do Censo só em tela."
+          pronto={manifestChecked}
         />
       </section>
     </>

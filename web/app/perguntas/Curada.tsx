@@ -39,6 +39,8 @@ import {
   type FatoRegiao,
 } from "../../components/PainelRegiao";
 import { formatVotes, type SealState } from "../../lib/data";
+import { ENTRADAS_CURADA } from "../../lib/export";
+export { ENTRADAS_CURADA };
 import { vereditoTemProva } from "../../lib/regiao";
 import { MOTIVO_SEM_HASH } from "../../lib/textos";
 import {
@@ -114,10 +116,8 @@ export interface ResumoCuradaCsv {
   veredito: string;
 }
 
-/** Famílias de entrada da resposta (cubic R3: o CSV não atribui tudo ao
- *  TSE — votos/eleitorado vêm do fato TSE, a demografia do Censo IBGE via
- *  `dim_municipio`; header fonte/url/hash/data segue do artefato auditado). */
-export const ENTRADAS_CURADA = "votos TSE + demografia Censo IBGE (via fato auditado)";
+/** Famílias de entrada da resposta (fonte única em `lib/export` —
+ *  re-export por compatibilidade com os importadores existentes). */
 
 /** Linhas do CSV da Curada (paridade Verificar/Analisar/Explorar/Regiao):
  *  resumo da resposta numa linha; proveniência via `buildCsvExport`

@@ -7,6 +7,8 @@ import { loadMalha, MALHA_MUNICIPIOS_URL, UFS, type MalhaFeature } from "../lib/
 import SourceBadge from "./SourceBadge";
 import SealSlot from "./SealSlot";
 import CopyShare from "./CopyShare";
+import ExportCsv from "./ExportCsv";
+import { ENTRADAS_HOME } from "../lib/export";
 import perguntasJson from "../data/perguntas.json";
 import {
   evolucaoAnual,
@@ -37,6 +39,28 @@ export function ufDeSelecaoMapa(sel: string): string | null {
   const m = /^(\d{2})\d{5}$/.exec(s);
   if (m) return UF_POR_PREFIXO_IBGE[m[1]] ?? null;
   return null;
+}
+
+/** Linhas do CSV da Home (EVOLVE-12, última superfície sem export):
+ *  ranking por UF exibido no mapa + contexto dos filtros que o ranking
+ *  aplica (`f_ano/f_cargo/f_uf`, paridade com `/analisar`) + `entradas`
+ *  (fonte única `ENTRADAS_HOME` em `lib/export` — só votos TSE, sem
+ *  demografia do Censo que o ranking não usa). Sem `f_candidato`: o
+ *  `rankingUf` ignora candidato no V1 (cf. `NOTA_CANDIDATO_GLOBAL`), então
+ *  a coluna implicaria filtragem que não houve. Proveniência via
+ *  `buildCsvExport` (gate oficial no botão — sem hash, desabilitado). */
+export function homeCsvRows(
+  ufs: { uf: string; votos: number }[],
+  filtros: Filtros,
+): Record<string, unknown>[] {
+  return (Array.isArray(ufs) ? ufs : []).map((r) => ({
+    uf: r?.uf ?? "",
+    votos: r?.votos ?? null,
+    entradas: ENTRADAS_HOME,
+    f_ano: filtros?.ano ?? "",
+    f_cargo: filtros?.cargo ?? "",
+    f_uf: filtros?.uf ?? "",
+  }));
 }
 
 function Bar({ value, max }: { value: number; max: number }) {
@@ -167,6 +191,8 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   const ev = useMemo(() => evolucaoAnual(porUf, f), [porUf, f]);
   const cands = useMemo(() => filtrarCandidatos(porCand, f), [porCand, f]);
   const maxEv = ev.reduce((m, r) => Math.max(m, r.votos), 0);
+  // CSV do ranking por UF (paridade com Analisar/Explorar/Curadas).
+  const csvRows = useMemo(() => homeCsvRows(ufs, f), [ufs, f]);
   const semDados = !resumo || res.vazio || resumo.total_linhas === 0;
   // Loading honesto (Task 5): fetch pendente mostra "a carregar" com
   // role="status" nas seções de dados; SEM_DADO só após resolve.
@@ -338,6 +364,15 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
           </table>
           </div>
         )}
+        {/* Export do ranking por UF (EVOLVE-12, última superfície sem
+            export — paridade Analisar/Explorar/Regiao/Curadas). Bloco em
+            `ExportCsv` (fonte única); gate oficial dentro dele. */}
+        <ExportCsv
+          arquivo="home.csv"
+          linhas={csvRows}
+          seal={seal}
+          pronto={manifestChecked}
+        />
       </section>
 
       <section aria-label="Ranking de candidatos">

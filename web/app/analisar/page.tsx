@@ -20,6 +20,7 @@ import {
   type SealState,
 } from "../../lib/data";
 import {
+  analisarCsvRows,
   buildShareUrl,
   emptyStateFor,
   parseAnalisarSearchParams,
@@ -341,23 +342,11 @@ export default function Analisar() {
 
   // Contexto de filtro junto dos dados (M13): cada linha carrega os 7
   // filtros ativos como colunas f_* para o CSV ser auto-descritivo.
+  // EVOLVE-12: sem as colunas nuas `ano/cargo/uf` (dedupe — repetiam
+  // `f_ano/f_cargo/f_uf` com o mesmo valor; uma fonte por filtro).
+  // Fonte única `analisarCsvRows` (pura/testável).
   const csvRows = useMemo(
-    () =>
-      pivoRows.map((r) => ({
-        chave: r.rotulo,
-        votos: r.votos,
-        pivo,
-        ano: f.ano ?? "",
-        cargo: f.cargo ?? "",
-        uf: f.uf ?? "",
-        f_ano: f.ano ?? "",
-        f_cargo: f.cargo ?? "",
-        f_uf: f.uf ?? "",
-        f_turno: f.turno ?? "",
-        f_zona: f.zona ?? "",
-        f_partido: f.partido ?? "",
-        f_candidato: f.candidato ?? "",
-      })),
+    () => analisarCsvRows(pivoRows, pivo, f),
     [pivoRows, pivo, f.ano, f.cargo, f.uf, f.turno, f.zona, f.partido, f.candidato],
   );
 
