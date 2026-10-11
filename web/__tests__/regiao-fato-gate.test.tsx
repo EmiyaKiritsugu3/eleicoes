@@ -7,8 +7,10 @@
 import React from "react";
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { act } from "react-dom/test-utils";
+import { renderToStaticMarkup } from "react-dom/server";
 import type { Root } from "react-dom/client";
 import PaginaRegiao from "../app/regiao/[ibge]/page";
+import PainelRegiao from "../components/PainelRegiao";
 import {
   SEM_DADO,
   focarRotacao,
@@ -69,12 +71,31 @@ const MANIFEST_FIXTURE = {
   ],
 };
 
+// Selo do fato vazio MAS Censo atestado: a pop é fato-independente e segue
+// renderizando sob o gate do fato (protege contra refactor que ponha a
+// linha da pop atrás do portão do fato).
+const MANIFEST_SEM_HASH_COM_CENSO = {
+  ingestions: [{ tipo: "fato_municipal", dataset: DS }],
+  artifacts: [
+    {
+      arquivo: "censo_municipios.json",
+      sha256: "c".repeat(64),
+      source_url: "https://cdn.ibge.gov.br/censo.zip",
+    },
+  ],
+};
+
+const CENSO = { "3550308": 12345, "3550309": 6789 };
+
+const SEAL_NULO = { official: null, hasFixture: false, fixtureHash: "" };
+
 let manifestAtual: unknown = MANIFEST_OFICIAL;
 const chamadas: string[] = [];
 
 function instalar() {
   instalarFetchRoteado(chamadas, (u) => {
     if (u.endsWith("/data/manifest.json")) return { ok: true, json: async () => manifestAtual };
+    if (u.endsWith("/data/censo_municipios.json")) return { ok: true, json: async () => CENSO };
     if (u.includes("/data/fato_")) return { ok: true, json: async () => FATO };
     return { ok: false, json: async () => null };
   });
@@ -158,5 +179,30 @@ describe("/regiao: fato sem prova é suprimido (EVOLVE-10 Task 1)", () => {
     expect(div.innerHTML).toContain("Cand A");
     expect(div.innerHTML).toContain("600");
     expect(div.innerHTML).not.toContain("fonte auditada");
+  });
+
+  it("selo do fato vazio + Censo atestado: pop renderiza, votos suprimidos (independência)", async () => {
+    manifestAtual = MANIFEST_SEM_HASH_COM_CENSO;
+    instalar();
+    const div = await montar();
+    const html = div.innerHTML;
+    expect(resultado(html)).toContain(SEM_DADO);
+    expect(html).not.toContain("Cand A");
+    expect(html).not.toContain("Votos do vencedor");
+    const p = perfil(html);
+    expect(p).toContain("População (Censo 2022)");
+    expect(p).toContain("12.345"); // pop do artefato, nunca demo fixture
+  });
+
+  it("UF sem prova + Censo: agregado do mapa renderiza, Resultado em SEM_DADO", () => {
+    const html = renderToStaticMarkup(
+      <PainelRegiao ibge="SP" fato={null} seal={SEAL_NULO} manifestChecked censo={CENSO} />,
+    );
+    const res = html.split("<h2>Resultado</h2>")[1]?.split("<section")[0] ?? "";
+    const p = html.split("<h2>Perfil do lugar</h2>")[1]?.split("<section")[0] ?? "";
+    expect(res).toContain(SEM_DADO);
+    expect(html).not.toContain("Cand A");
+    expect(p).toContain("População (Censo 2022)");
+    expect(p).toContain("19.134"); // 12345+6789 do mapa, sem fato
   });
 });
