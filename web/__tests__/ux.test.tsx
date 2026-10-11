@@ -3,7 +3,6 @@ import React from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { act } from "react-dom/test-utils";
-import RootLayout from "../app/layout";
 import PainelRegiao, { type FatoRegiao } from "../components/PainelRegiao";
 import { HomeContent } from "../components/HomeContent";
 import Analisar from "../app/analisar/page";
@@ -28,6 +27,7 @@ import {
   demoBase,
   municipios40Linear,
 } from "./helpers";
+import { htmlShell } from "./shell-html";
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => ({ get: (_k: string) => null }),
@@ -165,11 +165,8 @@ afterEach(teardownJsdom);
 
 describe("ux nav", () => {
   it("nav renderiza Explorar/Perguntas/Verificar", () => {
-    const html = renderToStaticMarkup(
-      <RootLayout>
-        <p>filho</p>
-      </RootLayout>,
-    );
+    // Fonte única `htmlShell` (shell-html.tsx, dedupe Sonar com shell.test).
+    const html = htmlShell();
     expect(html).toContain('href="/explorar"');
     expect(html).toContain("Explorar");
     expect(html).toContain('href="/perguntas"');
@@ -449,11 +446,7 @@ describe("ux CopyShare copia + fallback", () => {
 
 describe("ux a11y T4 nav com quebra em viewport estreita", () => {
   it("nav usa flex-wrap para não estourar em telemóvel", () => {
-    const html = renderToStaticMarkup(
-      <RootLayout>
-        <p>filho</p>
-      </RootLayout>,
-    );
+    const html = htmlShell();
     expect(html).toMatch(/flex-wrap:\s*wrap/);
   });
 });
