@@ -163,3 +163,7 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 
 ## EVOLVE-10 completo (final review: Merge Yes)
 - 6/6 tasks + revisão final limpa; nenhum MUST-FIX; minors → EVOLVE-11 backlog.
+
+## EVOLVE-10 mergeado (2026-10-11 ~01:25 UTC)
+- Merge PR #12 (merge commit e3e74d6): tudo verde — CI ×2, GitGuardian, CodeRabbit, cubic ("All reported issues were addressed"), Sonar. Branch evolve-10 deletada.
+- Total: 6 tasks + R1/R2 com re-reviews limpos. 5/5 superfícies gated. Suítes finais: pytest 202 + vitest 506 + tsc clean + build.
