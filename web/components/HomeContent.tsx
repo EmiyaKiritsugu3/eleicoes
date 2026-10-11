@@ -397,7 +397,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         </h2>
         {candidatoAtivo && <p role="note">{NOTA_CANDIDATO_GLOBAL}</p>}
         {carregando ? (
-          <p role="status"><span style={TEXTO_OCULTO}>a carregar…</span><Skeleton linhas={3} /></p>
+          <div role="status"><span style={TEXTO_OCULTO}>a carregar…</span><Skeleton linhas={3} /></div>
         ) : semDados || semProva ? (
           /* Alerta vivo único do estado sem-prova (compartilhado pelas 4
              seções — as demais anunciam como texto comum, cf. Mapa). */
@@ -448,7 +448,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         {candidatoAtivo && <p role="note">{NOTA_CANDIDATO_GLOBAL}</p>}
         {badge}
         {carregando ? (
-          <p role="status"><span style={TEXTO_OCULTO}>a carregar…</span><Skeleton bloco /></p>
+          <div role="status"><span style={TEXTO_OCULTO}>a carregar…</span><Skeleton bloco /></div>
         ) : semProva || ufs.length === 0 ? (
           /* Alerta só no vazio local (cubic R2): com sem-prova, o alerta
              vivo do Resumo já cobre o estado compartilhado; sem ele, a
@@ -528,7 +528,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         )}
         {badge}
         {carregando ? (
-          <p role="status"><span style={TEXTO_OCULTO}>a carregar…</span><Skeleton linhas={5} /></p>
+          <div role="status"><span style={TEXTO_OCULTO}>a carregar…</span><Skeleton linhas={5} /></div>
         ) : semProva || cands.length === 0 ? (
           /* Alerta só no vazio local (cubic R2, paridade Mapa/Evolução). */
           <p role={semProva ? undefined : "alert"}>{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
@@ -574,7 +574,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         </h2>
         {badge}
         {carregando ? (
-          <p role="status"><span style={TEXTO_OCULTO}>a carregar…</span><Skeleton linhas={5} /></p>
+          <div role="status"><span style={TEXTO_OCULTO}>a carregar…</span><Skeleton linhas={5} /></div>
         ) : semProva || ev.length === 0 ? (
           /* Alerta só no vazio local (cubic R2, paridade Mapa/Ranking). */
           <p role={semProva ? undefined : "alert"}>{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
