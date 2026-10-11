@@ -178,7 +178,10 @@ const PAGINAS: PaginaMatriz[] = [
     pesados: [`/data/${DS}.json`],
     pesadoMantido: `/data/${DS}.json`,
     manifestSomente: false,
-    numero: null,
+    // Data de auditoria do selo: único marcador numérico dependente de
+    // estado (seleção default não renderiza votos; curados estáticos como
+    // "20%" valem nos dois estados e não servem).
+    numero: "2026-01-01",
   },
   {
     rota: "/verificar",
@@ -186,7 +189,10 @@ const PAGINAS: PaginaMatriz[] = [
     pesados: [],
     pesadoMantido: null,
     manifestSomente: true,
-    numero: null,
+    // Índice sem fato: só número dependente de estado é a data do selo
+    // (títulos curados com "20%"/"10 pontos" são estáticos, presentes
+    // suprimido — não servem como marcador de vazamento).
+    numero: "2026-01-01",
   },
   {
     rota: "/analisar",
