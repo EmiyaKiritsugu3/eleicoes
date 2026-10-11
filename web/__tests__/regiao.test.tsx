@@ -183,15 +183,26 @@ describe("pixel-mentiroso (toda resposta exibe fonte+hash)", () => {
     expect(html).toContain("fonte auditada");
     expect(html).toContain(HASH_SHORT); // hash curto visível
   });
-  it("sem selo: nenhuma seção apresenta número como oficial (badge de aviso em cada)", () => {
+  it("sem selo: fato suprimido pelo portão da página → SEM_DADO, sem número (supressão, não só badges)", () => {
+    // EVOLVE-10 Task 1: a página passa `fato=null` salvo
+    // `vereditoTemProva(seal)` — este input é o único shape sem-prova que o
+    // painel recebe em prod. Trava a supressão: Resultado + Perfil em
+    // SEM_DADO e ZERO número de candidato, além dos badges honestos.
     const html = renderToStaticMarkup(
-      <PainelRegiao ibge="3550308" fato={FATO} seal={SEAL_NULO} manifestChecked />,
+      <PainelRegiao ibge="3550308" fato={null} seal={SEAL_NULO} manifestChecked />,
     );
     expect(html).not.toContain("fonte auditada");
     for (const s of secoesDe(html)) {
       expect(secaoHonesta(s)).toBe(true);
     }
     expect(html).toContain("dado não auditado");
+    const resultado = html.split("<h2>Resultado</h2>")[1]?.split("<section")[0] ?? "";
+    const perfil = html.split("<h2>Perfil do lugar</h2>")[1]?.split("<section")[0] ?? "";
+    expect(resultado).toContain("sem dado oficial");
+    expect(perfil).toContain("sem dado oficial");
+    expect(html).not.toContain("Cand A");
+    expect(html).not.toContain("Cand B");
+    expect(html).not.toContain("Votos do vencedor");
   });
   it("fail-closed (ibge ausente): cada seção honesta mesmo sem números", () => {
     const html = renderToStaticMarkup(
