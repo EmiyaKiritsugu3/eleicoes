@@ -186,5 +186,14 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
   4. Dedupe `ALERTA_STYLE` (fonte única).
   5. Dedupe `finito`/tabela UF.
   6. Teste inventário a11y-spots (trava de paridade).
-- Backlog EVOLVE-14: bloqueados (de-para TSE↔IBGE, instrução, GeoJSON).
-- Retomar: criar branch `evolve-13` de main, TDD RED→GREEN por task, PR + reviews (cubic/CodeRabbit/Sonar) até green, merge commit, atualizar este loop.
+- Backlog EVOLVE-14: bloqueados (de-para TSE↔IBGE, instrução, GeoJSON) + varredura de minors.
+- Retomar: auditar bloqueados, propor design bounded (REAPRESENTAR p/ aprovação explícita), branch `evolve-14`, TDD RED→GREEN por task, PR + reviews até green, merge commit, atualizar este loop.
+
+## EVOLVE-13 mergeado (2026-10-11 ~09:50 UTC)
+- Merge PR #15 (merge commit 3a8ef33): tudo verde — CI ×2, GitGuardian, CodeRabbit (rate-limited, sem findings), cubic pass (4 P2 triados: 3 corrigidos R1 + 1 R2, todos com reply em thread), Sonar pass. Branch evolve-13 deletada.
+- Total: 6 tasks (role=img canvas MapaBrasil, live regions Comparator role=status + auditoria carregando, SEM_DADO alert Home, ALERTA_STYLE fonte única 9→1 em lib/textos, finito fonte única 4→1 em lib/motor + tabela UF do índice verificar via PainelRegiao, inventário a11y-spots) + R1 (alerta vivo único Home/auditoria + claim dedupe honesto) + R2 (vazio local com prova anuncia via role condicional). Suítes finais: pytest 202 + vitest 565 + tsc clean + build.
+- Pesquisa skills de loop (pedido do usuário): carregadas `loop-library`/`loopy`/`cubic-loop` + catálogo publicado consultado — 3 fits: 019 Clodex adversarial-review (≈ nosso PR-GREEN), 040 accessibility repair (≈ EVOLVE-13), 033 propagation compliance (≈ nosso fonte-única). `cubic-loop` segue o protocolo do repo.
+
+## Próxima sessão — EVOLVE-14 (backlog, design pendente de aprovação final)
+- Direção: **bloqueados remanescentes** (de-para TSE↔IBGE, instrução, GeoJSON) + varredura de minors.
+- Baseline main @3a8ef33 verde (pytest 202 + vitest 565).
