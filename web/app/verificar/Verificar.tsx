@@ -42,8 +42,8 @@ import CopyShare from "../../components/CopyShare";
 import SealSlot from "../../components/SealSlot";
 import SourceBadge from "../../components/SourceBadge";
 import { ECO_SEAL, SEM_DADO, type FatoRegiao } from "../../components/PainelRegiao";
+import ExportCsv from "../../components/ExportCsv";
 import type { SealState } from "../../lib/data";
-import { buildCsvExport, downloadCsv } from "../../lib/export";
 import {
   LIMIAR_EFEITO_R,
   correlacao,
@@ -684,34 +684,14 @@ export function VerificarConteudo({
         </p>
         {/* Export do veredito (EVOLVE-11 Task 5, paridade Analisar/Explorar/
             Regiao): os números que decidem + proveniência do fato. Só com
-            veredito (sem prova → sem números, sem botão); gate oficial. */}
+            veredito (sem prova → sem números, sem botão). Bloco em
+            `ExportCsv` (fonte única); gate oficial dentro dele. */}
         {v.veredito !== null && (
-          <>
-            <p>
-              <button
-                type="button"
-                disabled={!seal.official}
-                title={
-                  seal.official
-                    ? "Baixar CSV com proveniência auditada"
-                    : "Exportação bloqueada — dado não auditado"
-                }
-                onClick={() =>
-                  downloadCsv(
-                    `verificar-${check.slug}.csv`,
-                    buildCsvExport(csvRows, seal.official),
-                  )
-                }
-              >
-                Exportar CSV
-              </button>
-            </p>
-            <p>
-              <small>
-                O CSV inclui header de proveniência <code>fonte,url,hash,data</code>.
-              </small>
-            </p>
-          </>
+          <ExportCsv
+            arquivo={`verificar-${check.slug}.csv`}
+            linhas={csvRows}
+            seal={seal.official}
+          />
         )}
       </section>
     </>

@@ -23,6 +23,7 @@
 
 import React from "react";
 import CopyShare from "../../components/CopyShare";
+import ExportCsv from "../../components/ExportCsv";
 import SealSlot from "../../components/SealSlot";
 import SourceBadge from "../../components/SourceBadge";
 import {
@@ -38,7 +39,6 @@ import {
   type FatoRegiao,
 } from "../../components/PainelRegiao";
 import { formatVotes, type SealState } from "../../lib/data";
-import { buildCsvExport, downloadCsv } from "../../lib/export";
 import { vereditoTemProva } from "../../lib/regiao";
 import { MOTIVO_SEM_HASH } from "../../lib/textos";
 import {
@@ -599,44 +599,21 @@ export function CuradaConteudo({
         )}
         {/* Export da resposta (EVOLVE-11 Task 5, paridade Verificar):
             resumo numérico + proveniência do fato. Só com números
-            (sem prova ou recorte vazio → sem botão); gate oficial. */}
+            (sem prova ou recorte vazio → sem botão). Bloco em `ExportCsv`
+            (fonte única); gate oficial dentro dele. */}
         {hashAuditado && fato && cand && filtradas.length > 0 && (
-          <>
-            <p>
-              <button
-                type="button"
-                disabled={!seal.official}
-                title={
-                  seal.official
-                    ? "Baixar CSV com proveniência auditada"
-                    : "Exportação bloqueada — dado não auditado"
-                }
-                onClick={() =>
-                  downloadCsv(
-                    `pergunta-${pergunta.slug}.csv`,
-                    buildCsvExport(
-                      curadaCsvRows({
-                        titulo: pergunta.titulo,
-                        nMunicipios: filtradas.length,
-                        shareMedio,
-                        rPearson: corrP ? corrP.r : null,
-                        rSpearman: corrS ? corrS.r : null,
-                        veredito: VEREDITO_PT[veredito] ?? veredito,
-                      }),
-                      seal.official,
-                    ),
-                  )
-                }
-              >
-                Exportar CSV
-              </button>
-            </p>
-            <p>
-              <small>
-                O CSV inclui header de proveniência <code>fonte,url,hash,data</code>.
-              </small>
-            </p>
-          </>
+          <ExportCsv
+            arquivo={`pergunta-${pergunta.slug}.csv`}
+            linhas={curadaCsvRows({
+              titulo: pergunta.titulo,
+              nMunicipios: filtradas.length,
+              shareMedio,
+              rPearson: corrP ? corrP.r : null,
+              rSpearman: corrS ? corrS.r : null,
+              veredito: VEREDITO_PT[veredito] ?? veredito,
+            })}
+            seal={seal.official}
+          />
         )}
       </section>
     </>

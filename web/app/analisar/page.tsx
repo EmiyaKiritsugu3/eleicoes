@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import SourceBadge from "../../components/SourceBadge";
 import SealSlot from "../../components/SealSlot";
 import CopyShare from "../../components/CopyShare";
+import ExportCsv from "../../components/ExportCsv";
 import Comparator, { type CompareSide } from "../../components/Comparator";
 import {
   evolucaoAnual,
@@ -19,9 +20,7 @@ import {
   type SealState,
 } from "../../lib/data";
 import {
-  buildCsvExport,
   buildShareUrl,
-  downloadCsv,
   emptyStateFor,
   parseAnalisarSearchParams,
   semCoberturaTurnoZona,
@@ -660,25 +659,9 @@ export default function Analisar() {
         ) : (
           <p role="status">a carregar…</p>
         )}
-        <p>
-          <button
-            type="button"
-            disabled={!seal.official}
-            title={
-              seal.official
-                ? "Baixar CSV com proveniência auditada"
-                : "Exportação bloqueada — dado não auditado"
-            }
-            onClick={() =>
-              downloadCsv(
-                "analisar.csv",
-                buildCsvExport(csvRows, seal.official),
-              )
-            }
-          >
-            Exportar CSV
-          </button>
-        </p>
+        {/* Export em `ExportCsv` (fonte única); alertas de bloqueio e
+            estado vazio seguem aqui (só esta superfície os tem). */}
+        <ExportCsv arquivo="analisar.csv" linhas={csvRows} seal={seal.official} />
         {manifestChecked && !seal.official && !seal.hasFixture && (
           <p role="alert" style={ALERTA_STYLE}>
             exportação bloqueada — dado não auditado; o CSV só é gerado com
@@ -692,11 +675,6 @@ export default function Analisar() {
             auto-descritivo
           </p>
         )}
-        <p>
-          <small>
-            O CSV inclui header de proveniência <code>fonte,url,hash,data</code>.
-          </small>
-        </p>
         {carregando ? (
           <p role="status">a carregar…</p>
         ) : emptyStateFor(csvRows) ? (

@@ -32,7 +32,7 @@ import {
   type FatoRegiao,
 } from "./PainelRegiao";
 import { formatVotes, type SealState } from "../lib/data";
-import { buildCsvExport, downloadCsv } from "../lib/export";
+import ExportCsv from "./ExportCsv";
 import { MALHA_MUNICIPIOS_URL } from "../lib/malha";
 import { vereditoTemProva } from "../lib/regiao";
 import { MOTIVO_SEM_HASH } from "../lib/textos";
@@ -816,30 +816,8 @@ export function ExplorarConteudo({
         <p>
           <CopyShare url={shareUrl} />
         </p>
-        <p>
-          <button
-            type="button"
-            disabled={!seal.official}
-            title={
-              seal.official
-                ? "Baixar CSV com proveniência auditada"
-                : "Exportação bloqueada — dado não auditado"
-            }
-            onClick={() =>
-              downloadCsv(
-                "explorar.csv",
-                buildCsvExport(csvRows, seal.official),
-              )
-            }
-          >
-            Exportar CSV
-          </button>
-        </p>
-        <p>
-          <small>
-            O CSV inclui header de proveniência <code>fonte,url,hash,data</code>.
-          </small>
-        </p>
+        {/* Export em `ExportCsv` (fonte única, paridade com as curadas). */}
+        <ExportCsv arquivo="explorar.csv" linhas={csvRows} seal={seal.official} />
       </section>
     </>
   );

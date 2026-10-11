@@ -14,7 +14,7 @@ import React from "react";
 import SourceBadge from "./SourceBadge";
 import SealSlot from "./SealSlot";
 import CopyShare from "./CopyShare";
-import { buildCsvExport, downloadCsv } from "../lib/export";
+import ExportCsv from "./ExportCsv";
 import { formatVotes, type SealState } from "../lib/data";
 import { isFatoDataset } from "../lib/regiao";
 import { SEM_DADO } from "../lib/textos";
@@ -508,43 +508,22 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
           )}
           {/* Export do pleito (EVOLVE-11 Task 4, paridade Analisar/Explorar):
               votos do agregado UF + proveniência do fato; pop do Censo fora
-              (outro hash — só em tela). Gate oficial: sem hash, desabilitado. */}
-          <p>
-            <button
-              type="button"
-              disabled={!seal.official}
-              title={
-                seal.official
-                  ? "Baixar CSV com proveniência auditada"
-                  : "Exportação bloqueada — dado não auditado"
-              }
-              onClick={() =>
-                downloadCsv(
-                  `regiao-${cod}.csv`,
-                  buildCsvExport(
-                    regiaoCsvRows(cod, {
-                      vencedorNome: ag.vencedorNome,
-                      vencedorPartido: ag.vencedorPartido,
-                      v1: ag.v1,
-                      v2: ag.v2,
-                      total: ag.total,
-                      margem: ag.margem,
-                      participacao: ag.participacao,
-                      nMun: ag.nMun,
-                    }),
-                    seal.official,
-                  ),
-                )
-              }
-            >
-              Exportar CSV
-            </button>
-          </p>
-          <p>
-            <small>
-              O CSV inclui header de proveniência <code>fonte,url,hash,data</code>; pop do Censo só em tela.
-            </small>
-          </p>
+              (outro hash — só em tela). Bloco em `ExportCsv` (fonte única). */}
+          <ExportCsv
+            arquivo={`regiao-${cod}.csv`}
+            linhas={regiaoCsvRows(cod, {
+              vencedorNome: ag.vencedorNome,
+              vencedorPartido: ag.vencedorPartido,
+              v1: ag.v1,
+              v2: ag.v2,
+              total: ag.total,
+              margem: ag.margem,
+              participacao: ag.participacao,
+              nMun: ag.nMun,
+            })}
+            seal={seal.official}
+            detalhe="; pop do Censo só em tela."
+          />
         </section>
       </>
     );
@@ -645,42 +624,21 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
         )}
         {/* Export do pleito (EVOLVE-11 Task 4, paridade Analisar/Explorar):
             votos do município + proveniência do fato; pop do Censo fora
-            (outro hash — só em tela). Gate oficial: sem hash, desabilitado. */}
-        <p>
-          <button
-            type="button"
-            disabled={!seal.official}
-            title={
-              seal.official
-                ? "Baixar CSV com proveniência auditada"
-                : "Exportação bloqueada — dado não auditado"
-            }
-            onClick={() =>
-              downloadCsv(
-                `regiao-${ibge}.csv`,
-                buildCsvExport(
-                  regiaoCsvRows(String(ibge), {
-                    vencedorNome: res.vencedorNome,
-                    vencedorPartido: res.vencedorPartido,
-                    v1: res.v1,
-                    v2: res.v2,
-                    total: res.total,
-                    margem: res.margem,
-                    participacao: res.participacao,
-                  }),
-                  seal.official,
-                ),
-              )
-            }
-          >
-            Exportar CSV
-          </button>
-        </p>
-        <p>
-          <small>
-            O CSV inclui header de proveniência <code>fonte,url,hash,data</code>; pop do Censo só em tela.
-          </small>
-        </p>
+            (outro hash — só em tela). Bloco em `ExportCsv` (fonte única). */}
+        <ExportCsv
+          arquivo={`regiao-${ibge}.csv`}
+          linhas={regiaoCsvRows(String(ibge), {
+            vencedorNome: res.vencedorNome,
+            vencedorPartido: res.vencedorPartido,
+            v1: res.v1,
+            v2: res.v2,
+            total: res.total,
+            margem: res.margem,
+            participacao: res.participacao,
+          })}
+          seal={seal.official}
+          detalhe="; pop do Censo só em tela."
+        />
       </section>
     </>
   );
