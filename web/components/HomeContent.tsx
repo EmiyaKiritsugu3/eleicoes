@@ -28,6 +28,11 @@ import {
 import { isHashDivergente, manifestoValidoParaRotacao, vereditoTemProva } from "../lib/regiao";
 import { fetchJson } from "../lib/fetchJson";
 import { ALERTA_STYLE, MOTIVO_SEM_HASH, SEM_DADO } from "../lib/textos";
+import { tokens } from "../lib/tokens";
+
+const [giganteSize, giganteLine] = tokens.texto.gigante.split("/");
+const [secaoSize, secaoLine] = tokens.texto.secao.split("/");
+const FILETE = `1px solid ${tokens.cor.linha}`;
 
 /** Seleção do mapa → sigla UF p/ focar o filtro (fail-closed: EXTERIOR e
  *  seleções desconhecidas retornam null em vez de focar errado). Aceita
@@ -69,9 +74,9 @@ function Bar({ value, max }: { value: number; max: number }) {
     <div
       role="img"
       aria-label={`${pct}% do máximo`}
-      style={{ background: "#eee", height: 10, minWidth: 120 }}
+      style={{ background: tokens.cor.linha, height: 10, minWidth: 120 }}
     >
-      <div style={{ background: "#1a5fb4", height: 10, width: `${pct}%` }} />
+      <div style={{ background: tokens.cor.graficoBarra, height: 10, width: `${pct}%` }} />
     </div>
   );
 }
@@ -246,7 +251,16 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
 
   return (
     <>
-      <h1>SAD Eleições — resultados</h1>
+      <h1
+        style={{
+          fontFamily: tokens.fonte.display,
+          fontSize: giganteSize,
+          lineHeight: giganteLine,
+          color: tokens.cor.tinta,
+        }}
+      >
+        SAD Eleições — resultados
+      </h1>
 
       {manifestChecked && !seal.official && !seal.hasFixture && (
         <p role="alert" className="badge badge-warn" style={ALERTA_STYLE}>
@@ -270,8 +284,19 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         </p>
       )}
 
-      <section aria-label="Busca">
-        <h2>Busca</h2>
+      <section
+        aria-label="Busca"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Busca
+        </h2>
         <form onSubmit={(e) => e.preventDefault()} style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
           {(["ano", "cargo", "uf", "candidato"] as const).map((k) => (
             <label key={k}>
@@ -293,8 +318,19 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         </form>
       </section>
 
-      <section aria-label="Resumo">
-        <h2>Resumo</h2>
+      <section
+        aria-label="Resumo"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Resumo
+        </h2>
         {candidatoAtivo && <p role="note">{NOTA_CANDIDATO_GLOBAL}</p>}
         {carregando ? (
           <p role="status">a carregar…</p>
@@ -316,8 +352,19 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         )}
       </section>
 
-      <section aria-label="Mapa por UF">
-        <h2>Mapa por UF</h2>
+      <section
+        aria-label="Mapa por UF"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Mapa por UF
+        </h2>
         {candidatoAtivo && <p role="note">{NOTA_CANDIDATO_GLOBAL}</p>}
         {badge}
         {carregando ? (
@@ -375,8 +422,19 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         />
       </section>
 
-      <section aria-label="Ranking de candidatos">
-        <h2>Ranking de candidatos</h2>
+      <section
+        aria-label="Ranking de candidatos"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Ranking de candidatos
+        </h2>
         {candidatoAtivo && escopoIgnoradoNoRanking && (
           <p role="note">{NOTA_RANKING_SEM_COBERTURA}</p>
         )}
@@ -405,8 +463,19 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         )}
       </section>
 
-      <section aria-label="Evolução">
-        <h2>Evolução anual</h2>
+      <section
+        aria-label="Evolução"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Evolução anual
+        </h2>
         {badge}
         {carregando ? (
           <p role="status">a carregar…</p>
@@ -441,8 +510,19 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         )}
       </section>
 
-      <section aria-label="Biblioteca curada">
-        <h2>Biblioteca curada — 30 perguntas</h2>
+      <section
+        aria-label="Biblioteca curada"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Biblioteca curada — 30 perguntas
+        </h2>
         {badge}
         <p>
           Respostas pré-computadas com fonte e hash quando há dado oficial auditado; sem dado
@@ -457,8 +537,19 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         </ul>
       </section>
 
-      <section aria-label="Abstenção, nulos e brancos">
-        <h2>Abstenção / nulos / brancos</h2>
+      <section
+        aria-label="Abstenção, nulos e brancos"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Abstenção / nulos / brancos
+        </h2>
         <p>{SEM_DADO} — fato_eleitorado sem fonte no V1 (só votação nominal)</p>
       </section>
     </>

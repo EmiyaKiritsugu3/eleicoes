@@ -318,7 +318,7 @@ export async function teardownJsdom(): Promise<void> {
 }
 
 export function secao(html: string, label: string): string {
-  const m = html.match(new RegExp(`<section aria-label="${label}">([\\s\\S]*?)</section>`));
+  const m = html.match(new RegExp(`<section aria-label="${label}"[^>]*>([\\s\\S]*?)</section>`));
   return m ? m[1] : "";
 }
 
