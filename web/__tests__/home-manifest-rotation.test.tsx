@@ -116,4 +116,19 @@ describe("Home: refetch em rotação de manifest (foco)", () => {
     await focar();
     expect(secao(div.innerHTML, "Resumo")).toContain(SEM_DADO);
   });
+
+  it("rotação com mudança reaproveita o manifest já lido (sem fetch duplicado)", async () => {
+    instalarFetchMutavel();
+    const div = await montar();
+    expect(secao(div.innerHTML, "Resumo")).toContain("3.000");
+    expect(conta("/data/manifest.json")).toBe(1);
+    manifestAtual = MANIFEST_GIRADO;
+    porUfAtual = POR_UF_GIRADO;
+    await focar();
+    const resumo = secao(div.innerHTML, "Resumo");
+    expect(resumo).toContain("6.000");
+    expect(resumo).not.toContain("3.000");
+    expect(conta("/data/por_uf.json")).toBe(2);
+    expect(conta("/data/manifest.json")).toBe(2);
+  });
 });

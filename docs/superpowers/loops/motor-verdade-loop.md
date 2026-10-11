@@ -160,3 +160,6 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 ## EVOLVE-9 mergeado (2026-10-10 ~23:55 UTC)
 - Merge PR #11 (merge commit d082f65): tudo verde — CI ×2, GitGuardian, CodeRabbit, cubic ("All reported issues were addressed"), Sonar. Branch evolve-9 deletada.
 - Total: 6 tasks + R1/R2/R3/R4/R5 com re-reviews limpos. Suítes finais: pytest 202 + vitest 485 + tsc clean + build.
+
+## EVOLVE-10 completo (final review: Merge Yes)
+- 6/6 tasks + revisão final limpa; nenhum MUST-FIX; minors → EVOLVE-11 backlog.

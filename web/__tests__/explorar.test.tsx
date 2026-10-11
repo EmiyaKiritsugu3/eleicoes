@@ -5,9 +5,11 @@ import {
   ExplorarConteudo,
   aplicarOnde,
   buildExplorarShareUrl,
+  explorarCsvRows,
   parseExplorarQuery,
   type ExplorarSelecao,
 } from "../components/Explorar";
+import { buildCsvExport } from "../lib/export";
 import type { MunRow } from "../lib/motor";
 import type { SealState } from "../lib/data";
 import {
@@ -471,5 +473,50 @@ describe("explorar (decimais pt-BR: vírgula, nunca ponto)", () => {
     expect(html).toMatch(/r \(Pearson\) = -?\d+,\d{3}/);
     expect(html).not.toMatch(/r \(Pearson\) = -?\d+\.\d{3}/);
     expect(html).not.toMatch(/r \(Spearman\) = -?\d+\.\d{3}/);
+  });
+});
+
+describe("explorar (CSV export, EVOLVE-10 Task 4: paridade com /analisar)", () => {
+  function secaoExport(html: string): string {
+    return html.split('aria-label="Export reproduzível"')[1] ?? "";
+  }
+  it("botão desabilitado sem seal.official", () => {
+    const html = htmlExplorar({ candidatos: CANDIDATOS, municipios: linhasValidas() }, SEAL_SEM_HASH);
+    const export_ = secaoExport(html);
+    expect(export_).toContain("Exportar CSV");
+    expect(export_).toMatch(/<button[^>]*\bdisabled\b/);
+  });
+  it("habilitado com official + header de proveniência fonte,url,hash,data", () => {
+    const html = htmlExplorar({ candidatos: CANDIDATOS, municipios: linhasValidas() }, SEAL_OK);
+    const export_ = secaoExport(html);
+    expect(export_).toContain("Exportar CSV");
+    expect(export_).not.toMatch(/<button[^>]*\bdisabled\b/);
+    expect(export_).toContain("fonte,url,hash,data");
+    const filtradas = aplicarOnde(linhasValidas(), CANDIDATOS, "lula", "venceu");
+    const csv = buildCsvExport(
+      explorarCsvRows(filtradas, SEL_VALIDA, CANDIDATOS),
+      SEAL_OK.official,
+    );
+    expect(csv.split("\n")[0]).toContain("fonte,url,hash,data");
+  });
+  it("percentual sai em pontos percentuais (×100; null → blank)", () => {
+    const rows: MunRow[] = [
+      { ibge: "1", uf: "SP", nome: "Meio", votos: [50, 50], total: 100, abst: 0, demo: demo(10) },
+      { ibge: "2", uf: "SP", nome: "Tudo", votos: [100, 0], total: 100, abst: 0, demo: demo(10) },
+      { ibge: "3", uf: "SP", nome: "Nada", votos: [0, 100], total: 100, abst: 0, demo: demo(10) },
+      { ibge: "4", uf: "SP", nome: "SemVoto", votos: [], total: 0, abst: 0, demo: demo(10) },
+    ];
+    const out = explorarCsvRows(rows, SEL_VALIDA, CANDIDATOS);
+    expect(out[0].percentual).toBe(50);
+    expect(out[1].percentual).toBe(100);
+    expect(out[2].percentual).toBe(0);
+    expect(out[3].percentual).toBeNull();
+    // blank-cell no CSV final: null vira célula vazia, nunca "null".
+    const csv = buildCsvExport(out, SEAL_OK.official);
+    const lines = csv.split("\n");
+    expect(lines[1]).toMatch(/,50,/);
+    expect(lines[4]).not.toMatch(/null/);
+    // célula percentual exatamente vazia (não só "sem null": 0 ou fração também falhariam aqui).
+    expect(lines[4]).toMatch(/^4,SemVoto,SP,,/);
   });
 });

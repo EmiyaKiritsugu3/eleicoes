@@ -120,13 +120,20 @@ export default function Analisar() {
   // webfix Finding 6): mount (`effect` abaixo) e rotação (`aoRetomar`)
   // partilham este helper — a sequência de fetches existe UMA vez (sem
   // fork). Devolve o selo lido; cada chamador aplica o seu epílogo.
-  const carregarPesados = useCallback(async () => {
+  // `manifestJaLido` reaproveita o manifest barato já lido pela rotação
+  // (sem fetch duplicado); ausente, o manifest é buscado como antes.
+  // Sem mudança de comportamento.
+  const carregarPesados = useCallback(async (manifestJaLido?: unknown) => {
     setResumo((await fetchJson<ResumoJson>("/data/resumo.json")).data);
     setPorUf((await fetchJson<PorUfRow[]>("/data/por_uf.json")).data ?? []);
     setPorCand(
       (await fetchJson<PorCandidatoRow[]>("/data/por_candidato.json")).data ?? [],
     );
-    return getSealState((await fetchJson("/data/manifest.json")).data);
+    const manifest =
+      manifestJaLido !== undefined
+        ? manifestJaLido
+        : (await fetchJson("/data/manifest.json")).data;
+    return getSealState(manifest);
   }, []);
 
   useEffect(() => {
@@ -183,7 +190,7 @@ export default function Analisar() {
         if (geracaoRef.current !== minha) return;
         const conferido = getSealState(leitura.data);
         if (JSON.stringify(conferido) === seloRef.current) return;
-        const novoSeal = await carregarPesados();
+        const novoSeal = await carregarPesados(leitura.data);
         if (geracaoRef.current !== minha) return;
         seloRef.current = JSON.stringify(novoSeal);
         setSeal(novoSeal);

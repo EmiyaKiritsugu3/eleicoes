@@ -20,7 +20,7 @@ import PainelRegiao, {
   type FatoRegiao,
 } from "../../../components/PainelRegiao";
 import type { SealState } from "../../../lib/data";
-import { censoTemProva, entradaCensoAuditada, fatoDatasetDe, getSealParaDataset, manifestoValidoParaRotacao } from "../../../lib/regiao";
+import { censoTemProva, entradaCensoAuditada, fatoDatasetDe, getSealParaDataset, manifestoValidoParaRotacao, vereditoTemProva } from "../../../lib/regiao";
 import { fetchJson } from "../../../lib/fetchJson";
 
 function ConteudoRegiao({ ibge }: { ibge: string }) {
@@ -106,8 +106,11 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
         // de ?fato= exibiria transitoriamente números do dataset antigo sob
         // o selo do novo. Fail-closed também no transiente. (O censo é
         // fato-independente: publica direto, sem flash de SEM_DADO.)
+        // Portão de prova (EVOLVE-10 Task 1): sem `vereditoTemProva` — hash
+        // oficial ou de fixture 64-hex, paridade com Explorar — o fato é
+        // null e os ramos numéricos do PainelRegiao caem em SEM_DADO.
         setFato(null);
-        setFato(r.f);
+        setFato(vereditoTemProva(r.novoSeal) ? r.f : null);
         setManifestChecked(true);
       } finally {
         if (geracaoRef.current === minha) ocupadoRef.current = false;
@@ -156,6 +159,22 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
         // ausente. sha ausente (entry removida) → null ≠ sha anterior.
         const novoCenso = entradaCensoAuditada(manifest)?.sha256 ?? null;
         if (JSON.stringify({ ds, seal: novoSeal, censo: novoCenso }) === seloRef.current) return;
+        // Fail-closed imediato (rotfix3 Finding 2): manifest sem prova não
+        // sustenta os números antigos durante o fetch lento — publica a
+        // supressão (selo+dataset+fato null) ANTES de aguardar os artefatos.
+        // Sem isso, o `setFato` pós-`Promise.all` mantinha números sem hash
+        // visíveis até o fato/Censo assentarem. O Censo mantém seu próprio
+        // gate pós-await (não tocado aqui — independência preservada).
+        if (
+          !vereditoTemProva(novoSeal) &&
+          fatoParamRef.current === param &&
+          geracaoRef.current === minha
+        ) {
+          setSeal(novoSeal);
+          setDataset(ds);
+          seloRef.current = JSON.stringify({ ds, seal: novoSeal, censo: novoCenso });
+          setFato(null);
+        }
         // Selo runtime do Censo (EVOLVE-8 Task 1): sem entry auditada, o
         // artefato nem é buscado (custo zero no caso forjado) e a pop cai
         // p/ SEM_DADO junto com os votos.
@@ -173,7 +192,9 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
         setSeal(novoSeal);
         setDataset(ds);
         seloRef.current = JSON.stringify({ ds, seal: novoSeal, censo: novoCenso });
-        setFato(f);
+        // Mesmo portão do mount (EVOLVE-10 Task 1): rotação que remove a
+        // prova suprime o fato em vez de manter números stale sem hash.
+        setFato(vereditoTemProva(novoSeal) ? f : null);
         setCenso(censoOk ? parseCensoMapa(rawCenso) : null);
       } finally {
         if (geracaoRef.current === minha) ocupadoRef.current = false;

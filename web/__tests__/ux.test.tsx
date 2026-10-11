@@ -12,6 +12,7 @@ import PaginaRegiao from "../app/regiao/[ibge]/page";
 import Auditoria from "../app/auditoria/page";
 import Metodologia from "../app/metodologia/page";
 import { ExplorarConteudo, type ExplorarSelecao } from "../components/Explorar";
+import { VerificarConteudo, type Check } from "../app/verificar/Verificar";
 import { CuradaConteudo, type PerguntaCurada } from "../app/perguntas/Curada";
 import type { SealState } from "../lib/data";
 import type { MunRow } from "../lib/motor";
@@ -80,6 +81,13 @@ const PERGUNTA: PerguntaCurada = {
   titulo: "Título curado",
   blocos: { quem: "lula", onde: "venceu", cruzar: "esc_sup", ver: ["dispersao", "tabela", "ranking"] },
   texto_metodo: "método",
+};
+
+const CHECK_INVENTARIO: Check = {
+  slug: "sint-vencedor",
+  frase: "Candidata Exemplo venceu no Brasil",
+  computacao: { tipo: "vencedor_regiao", params: { quem: "lula", regiao: "BR" } },
+  fontes: ["https://dadosabertos.tse.jus.br/"],
 };
 
 function conta(hay: string, needle: string): number {
@@ -388,7 +396,7 @@ describe("ux CopyShare copia + fallback", () => {
       Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
     }
   });
-  it("share spots usam CopyShare (analisar/explorar/regiao)", async () => {
+  it("share spots usam CopyShare (analisar/explorar/regiao/verificar/curada)", async () => {
     mockFetchOk();
     const divA = await renderJsdom(<Analisar />);
     expect(divA.innerHTML).toContain("Copiar link");
@@ -408,6 +416,28 @@ describe("ux CopyShare copia + fallback", () => {
       <PainelRegiao ibge="SP" fato={fatoCheio} seal={SEAL_OK} manifestChecked />,
     );
     expect(htmlR).toContain("Copiar link");
+    // EVOLVE-10 Task 3: Verificar + Curada no inventário (todos os spots atuais).
+    const htmlV = renderToStaticMarkup(
+      <VerificarConteudo
+        check={CHECK_INVENTARIO}
+        slug={CHECK_INVENTARIO.slug}
+        checks={[CHECK_INVENTARIO]}
+        fato={fatoCheio}
+        seal={SEAL_OK}
+        manifestChecked
+      />,
+    );
+    expect(htmlV).toContain("Copiar link");
+    const htmlC = renderToStaticMarkup(
+      <CuradaConteudo
+        pergunta={PERGUNTA}
+        fato={fatoCheio}
+        seal={SEAL_OK}
+        manifestChecked
+      />,
+    );
+    expect(htmlC).toContain("Copiar link");
+    expect(htmlC).toContain("hash=");
   });
 });
 

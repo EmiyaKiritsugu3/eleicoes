@@ -78,12 +78,18 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   // (`carregarDados`) e rotação (`aoRetomar`) partilham este helper — a
   // sequência de fetches existe UMA vez (sem fork). Devolve o selo lido;
   // cada chamador aplica o seu epílogo (mount: `setManifestChecked(true)`;
-  // rotação: só entra aqui com selo mudado). Sem mudança de comportamento.
-  const carregarPesados = useCallback(async () => {
+  // rotação: só entra aqui com selo mudado). `manifestJaLido` reaproveita o
+  // manifest barato já lido pela rotação (sem fetch duplicado); ausente, o
+  // manifest é buscado como antes. Sem mudança de comportamento.
+  const carregarPesados = useCallback(async (manifestJaLido?: unknown) => {
     setResumo((await fetchJson<ResumoJson>("/data/resumo.json")).data);
     setPorUf((await fetchJson<PorUfRow[]>("/data/por_uf.json")).data ?? []);
     setPorCand((await fetchJson<PorCandidatoRow[]>("/data/por_candidato.json")).data ?? []);
-    return getSealState((await fetchJson("/data/manifest.json")).data);
+    const manifest =
+      manifestJaLido !== undefined
+        ? manifestJaLido
+        : (await fetchJson("/data/manifest.json")).data;
+    return getSealState(manifest);
   }, []);
 
   const carregarDados = useCallback(async () => {
@@ -123,7 +129,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         if (leitura.status !== "ok" || !manifestoValidoParaRotacao(leitura.data)) return;
         const novoSeal = getSealState(leitura.data);
         if (JSON.stringify(novoSeal) === JSON.stringify(sealRef.current)) return;
-        sealRef.current = await carregarPesados();
+        sealRef.current = await carregarPesados(leitura.data);
         setSeal(sealRef.current);
       } finally {
         ocupadoRef.current = false;

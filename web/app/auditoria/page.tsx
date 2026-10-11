@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ArtifactsTable } from "../../components/ArtifactsTable";
 import { FontesCell } from "../../components/FontesCell";
 import SourceBadge from "../../components/SourceBadge";
@@ -17,6 +17,7 @@ import {
   type Manifest,
 } from "../../lib/data";
 import { fetchJson } from "../../lib/fetchJson";
+import { manifestoValidoParaRotacao } from "../../lib/regiao";
 import { SEM_DADO } from "../../lib/textos";
 
 /** Selo de amostra sintética compartilhado (components/FixtureBadge):
@@ -55,15 +56,84 @@ export default function Auditoria() {
   const [official, setOfficial] = useState<AuditInfo | null>(null);
   const [checked, setChecked] = useState(false);
   const [erroDownload, setErroDownload] = useState("");
+  // Trigger vivo de rotação (paridade Home/regiao/Explorar/Verificar,
+  // EVOLVE-10 Task 5): `manifestRef` é a verdade comparável fora do closure
+  // (o effect de foco monta uma vez); `ocupadoRef` evita fetch duplicado com
+  // um load em voo; `geracaoRef` barra publish de run stale. Display-only:
+  // a rotação republica manifest+official juntos (mesmo display do mount),
+  // sem mudar semântica de supressão — e falha mantém o último display
+  // validado (stale-while-revalidate, sem wipe em blip).
+  const manifestRef = useRef<string | null>(null);
+  const ocupadoRef = useRef(false);
+  const geracaoRef = useRef(0);
+
+  // Núcleo único de leitura (mount + rotação partilham — sem fork):
+  // devolve `ok` (fetch com `status === "ok"` E corpo objeto com
+  // `ingestions` array) + manifest. A rotação só publica com `ok` (blip ≠
+  // rotação: falha ou 200+corpo-ilegível mantém o último display validado).
+  const carregarManifest = useCallback(async () => {
+    const leitura = await fetchJson<Manifest>("/data/manifest.json");
+    return {
+      ok: leitura.status === "ok" && manifestoValidoParaRotacao(leitura.data),
+      manifest: leitura.data,
+    };
+  }, []);
 
   useEffect(() => {
+    const minha = ++geracaoRef.current;
+    ocupadoRef.current = true;
     (async () => {
-      const m = (await fetchJson<Manifest>("/data/manifest.json")).data;
-      setManifest(m);
-      setOfficial(getOfficialAuditInfo(m));
-      setChecked(true);
+      try {
+        const r = await carregarManifest();
+        if (geracaoRef.current !== minha) return;
+        manifestRef.current = JSON.stringify(r.manifest);
+        setManifest(r.manifest);
+        setOfficial(getOfficialAuditInfo(r.manifest));
+        setChecked(true);
+      } finally {
+        if (geracaoRef.current === minha) ocupadoRef.current = false;
+      }
     })();
-  }, []);
+    return () => {
+      ocupadoRef.current = false;
+    };
+  }, [carregarManifest]);
+
+  // Rotação de manifest (paridade Verificar): no foco da janela ou na volta
+  // de visibilidade, re-lê o manifest barato e só republica o display quando
+  // o manifest mudou — sem display stale após rotação, sem set duplicado
+  // quando inalterado, sem wipe em falha.
+  useEffect(() => {
+    const aoRetomar = async () => {
+      if (ocupadoRef.current) return;
+      ocupadoRef.current = true;
+      const minha = ++geracaoRef.current;
+      try {
+        const r = await carregarManifest();
+        // Blip ≠ rotação: manifest ilegível mantém o último display validado.
+        if (!r.ok) return;
+        if (geracaoRef.current !== minha) return;
+        if (JSON.stringify(r.manifest) === manifestRef.current) return;
+        manifestRef.current = JSON.stringify(r.manifest);
+        setManifest(r.manifest);
+        setOfficial(getOfficialAuditInfo(r.manifest));
+      } finally {
+        if (geracaoRef.current === minha) ocupadoRef.current = false;
+      }
+    };
+    const aoFocar = () => {
+      void aoRetomar();
+    };
+    const aoVisibilidade = () => {
+      if (document.visibilityState === "visible") void aoRetomar();
+    };
+    window.addEventListener("focus", aoFocar);
+    document.addEventListener("visibilitychange", aoVisibilidade);
+    return () => {
+      window.removeEventListener("focus", aoFocar);
+      document.removeEventListener("visibilitychange", aoVisibilidade);
+    };
+  }, [carregarManifest]);
 
   const ingestions = Array.isArray(manifest?.ingestions)
     ? (manifest?.ingestions ?? [])

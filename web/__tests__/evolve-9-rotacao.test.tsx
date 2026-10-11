@@ -15,6 +15,7 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { act } from "react-dom/test-utils";
 import type { Root } from "react-dom/client";
 import PainelRegiao from "../components/PainelRegiao";
+import PaginaRegiao from "../app/regiao/[ibge]/page";
 import ExplorarPage from "../app/explorar/page";
 import VerificarPage from "../app/verificar/page";
 import AnalisarPage from "../app/analisar/page";
@@ -25,10 +26,17 @@ import {
   POR_CAND,
   instalarFetchRoteado,
   contaChamadas,
+  flushRotacao,
   focarRotacao,
   montarRotacao,
   voltarVisivelRotacao,
 } from "./helpers";
+
+// eslint-disable-next-line prefer-const
+let fatoParamRegiao = "";
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => ({ get: (k: string) => (k === "fato" ? fatoParamRegiao : null) }),
+}));
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -178,7 +186,10 @@ const PAGINAS: PaginaMatriz[] = [
     pesados: [`/data/${DS}.json`],
     pesadoMantido: `/data/${DS}.json`,
     manifestSomente: false,
-    numero: null,
+    // Data de auditoria do selo: único marcador numérico dependente de
+    // estado (seleção default não renderiza votos; curados estáticos como
+    // "20%" valem nos dois estados e não servem).
+    numero: "2026-01-01",
   },
   {
     rota: "/verificar",
@@ -186,7 +197,10 @@ const PAGINAS: PaginaMatriz[] = [
     pesados: [],
     pesadoMantido: null,
     manifestSomente: true,
-    numero: null,
+    // Índice sem fato: só número dependente de estado é a data do selo
+    // (títulos curados com "20%"/"10 pontos" são estáticos, presentes
+    // suprimido — não servem como marcador de vazamento).
+    numero: "2026-01-01",
   },
   {
     rota: "/analisar",
@@ -295,3 +309,72 @@ for (const p of PAGINAS) {
       matrizSuprimido(p));
   });
 }
+
+// rotfix3 Finding 2: rotação que remove a prova com fato lento mantinha os
+// números antigos visíveis até o `Promise.all` assentar (sem prova). O fix
+// publica `fato=null` IMEDIATAMENTE após o manifest sem prova, antes de
+// aguardar os artefatos — o Censo mantém seu próprio gate pós-await.
+describe("/regiao: rotação sem prova suprime sem esperar o fato lento (rotfix3)", () => {
+  it("slow-fato + manifest sem prova → SEM_DADO imediato, sem esperar", async () => {
+    const DS_REGIAO = "fato_2022_1_presidente";
+    const MANIFEST_REGIAO_OK = {
+      ingestions: [
+        {
+          tipo: "fato_municipal",
+          dataset: DS_REGIAO,
+          sha256: "a".repeat(64),
+          source_url: "https://cdn.tse.jus.br/x.zip",
+          date: "2026-01-01",
+        },
+      ],
+    };
+    // Dataset resolve (fato é buscado, lento) mas o selo é vazio: sem prova.
+    const MANIFEST_REGIAO_SEM_PROVA = {
+      ingestions: [{ tipo: "fato_municipal", dataset: DS_REGIAO }],
+    };
+    const FATO_REGIAO = {
+      candidatos: [
+        { id: "A", nome: "Cand A", partido: "PA" },
+        { id: "B", nome: "Cand B", partido: "PB" },
+      ],
+      municipios: [
+        {
+          ibge: "3550308", uf: "SP", nome: "Mun 0", votos: [600, 400],
+          total: 1000, abst: 100, demo: demo(),
+        },
+      ],
+    };
+    let manifestRegiao: unknown = MANIFEST_REGIAO_OK;
+    let travarFato = false;
+    let liberaFato: (() => void) | null = null;
+    const chamadasRegiao: string[] = [];
+    fatoParamRegiao = "";
+    instalarFetchRoteado(chamadasRegiao, (u) => {
+      if (u.endsWith("/data/manifest.json")) return { ok: true, json: async () => manifestRegiao };
+      if (u.includes("/data/fato_")) {
+        if (travarFato) {
+          return new Promise((res) => {
+            liberaFato = () => res({ ok: true, json: async () => FATO_REGIAO });
+          });
+        }
+        return { ok: true, json: async () => FATO_REGIAO };
+      }
+      return { ok: false, json: async () => null };
+    });
+    const div = await montar(<PaginaRegiao params={{ ibge: "3550308" }} />);
+    expect(div.innerHTML).toContain("Cand A");
+    // Rotação: prova removida + fato lento (pende para sempre).
+    manifestRegiao = MANIFEST_REGIAO_SEM_PROVA;
+    travarFato = true;
+    await focarRotacao();
+    // Supressão SEM esperar o fato: números antigos fora, SEM_DADO dentro.
+    expect(div.innerHTML).not.toContain("Cand A");
+    expect(div.innerHTML).toContain(SEM_DADO);
+    // Cleanup: solta o pendente p/ não vazar fetch entre testes.
+    await act(async () => {
+      liberaFato?.();
+    });
+    await flushRotacao();
+    fatoParamRegiao = "";
+  });
+});
