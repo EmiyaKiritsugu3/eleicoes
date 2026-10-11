@@ -29,12 +29,28 @@ import { isHashDivergente, manifestoValidoParaRotacao, vereditoTemProva } from "
 import { fetchJson } from "../lib/fetchJson";
 import { ALERTA_STYLE, MOTIVO_SEM_HASH, SEM_DADO } from "../lib/textos";
 import { tokens } from "../lib/tokens";
+import Skeleton from "./Skeleton";
 
 const [giganteSize, giganteLine] = tokens.texto.gigante.split("/");
 const [tituloSize, tituloLine] = tokens.texto.titulo.split("/");
 const [secaoSize, secaoLine] = tokens.texto.secao.split("/");
 const [miudoSize, miudoLine] = tokens.texto.miudo.split("/");
 const FILETE = `1px solid ${tokens.cor.linha}`;
+
+// Onda-2 Task 3 (display-only): texto de loading mantido p/ leitores de
+// tela (e p/ os asserts que casam "a carregar"), visualmente oculto — o
+// Skeleton aria-hidden ocupa o espaço visível.
+const TEXTO_OCULTO: React.CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  border: 0,
+  margin: -1,
+  overflow: "hidden",
+  clipPath: "inset(50%)",
+  whiteSpace: "nowrap",
+};
 
 // Task 5 (display-only): cabeçalhos de tabela editoriais + células
 // numéricas tabulares. Constantes de estilo puras, sem estado semântico.
@@ -58,6 +74,23 @@ const focaInput = (e: React.FocusEvent<HTMLInputElement>) => {
 };
 const desfocaInput = (e: React.FocusEvent<HTMLInputElement>) => {
   e.currentTarget.style.outline = "";
+};
+
+// Onda-2 Task 4 (display-only): hover de links internos e linhas de
+// tabela — mutação direta do nó (sem estado semântico, sem re-render).
+// SSR-safe (handlers são props, sem window).
+const TRANSICAO_COR_HOVER = `color ${tokens.movimento.duracaoCurtaMs}ms ${tokens.movimento.easing}`;
+const realcaLink = (e: React.MouseEvent<HTMLElement>) => {
+  e.currentTarget.style.color = tokens.cor.destaqueVerde;
+};
+const apagaLink = (e: React.MouseEvent<HTMLElement>) => {
+  e.currentTarget.style.color = tokens.cor.tinta;
+};
+const realcaLinha = (e: React.MouseEvent<HTMLElement>) => {
+  e.currentTarget.style.backgroundColor = tokens.cor.linha;
+};
+const apagaLinha = (e: React.MouseEvent<HTMLElement>) => {
+  e.currentTarget.style.backgroundColor = "transparent";
 };
 
 /** Seleção do mapa → sigla UF p/ focar o filtro (fail-closed: EXTERIOR e
@@ -229,6 +262,33 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   // role="status" nas seções de dados; SEM_DADO só após resolve.
   // Seções estáticas (biblioteca, abstenção) não dependem de fetch.
   const carregando = !manifestChecked;
+  // Onda-2 micro (display-only): fade-in do conteúdo resolvido via
+  // `@keyframes home-fadein` (transição morta `opacity 1→1` removida — sem
+  // mudança de valor não há animação; keyframes animam de verdade no mount
+  // do wrapper). `semMovimento` mantido: ainda gateia o hover (link /regiao)
+  // + desliga a animação inline pós-mount; a media query no <style> cobre o
+  // SSR/primeiro paint. Só estilo, sem semântica.
+  const [semMovimento, setSemMovimento] = useState(false);
+  useEffect(() => {
+    if (typeof window !== "undefined" && typeof window.matchMedia === "function")
+      setSemMovimento(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  }, []);
+  // <style> emitido UMA vez por render no topo do fragmento (fora de
+  // qualquer role=status) — mesmo padrão de `Skeleton.tsx`. A classe
+  // `home-fade` existe só p/ a media query desligar a animação inline
+  // (`!important` sobrescreve o inline no SSR/primeiro paint).
+  const estiloFadeCss =
+    `@keyframes home-fadein{from{opacity:0}to{opacity:1}}` +
+    `@media (prefers-reduced-motion: reduce){.home-fade{animation:none !important}}`;
+  // Onda-2 final (display-only): o fade vive SÓ no wrapper do conteúdo
+  // resolvido — a <section> fica sempre opacity 1 p/ o Skeleton + <h2>
+  // estático renderizarem visíveis durante o loading.
+  const estiloFade: React.CSSProperties = {
+    opacity: 1,
+    animation: semMovimento
+      ? "none"
+      : `home-fadein ${tokens.movimento.duracaoMediaMs}ms ${tokens.movimento.easing}`,
+  };
   // Ruling EVOLVE-3 Task 4 (opção a): Home suprime como Explorar/Curada —
   // sem prova no selo (nem oficial nem fixture com hash, cf.
   // `vereditoTemProva` em lib/regiao — fonte única do gate), as seções de
@@ -277,6 +337,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
 
   return (
     <>
+      <style>{estiloFadeCss}</style>
       <h1
         style={{
           fontFamily: tokens.fonte.display,
@@ -357,7 +418,12 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
 
       <section
         aria-label="Resumo"
-        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+        style={{
+          borderTop: FILETE,
+          paddingTop: tokens.espaco[4],
+          marginTop: tokens.espaco[6],
+          opacity: 1,
+        }}
       >
         <h2
           style={{
@@ -370,25 +436,29 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         </h2>
         {candidatoAtivo && <p role="note">{NOTA_CANDIDATO_GLOBAL}</p>}
         {carregando ? (
-          <p role="status">a carregar…</p>
-        ) : semDados || semProva ? (
-          /* Alerta vivo único do estado sem-prova (compartilhado pelas 4
-             seções — as demais anunciam como texto comum, cf. Mapa). */
-          <p role="alert">{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
+          <div role="status"><span style={TEXTO_OCULTO}>a carregar…</span><Skeleton linhas={3} /></div>
         ) : (
-          <ul>
-            <li
-              style={{
-                fontSize: tituloSize,
-                lineHeight: tituloLine,
-                color: tokens.cor.destaqueVerde,
-              }}
-            >
-              Total de votos: {formatVotes(res.totalVotos)}
-            </li>
-            <li>Linhas: {formatVotes(resumo?.total_linhas ?? 0)}</li>
-            <li>Anos: {(resumo?.anos ?? []).join(", ") || SEM_DADO}</li>
-          </ul>
+          <div className="home-fade" style={estiloFade}>
+            {semDados || semProva ? (
+              /* Alerta vivo único do estado sem-prova (compartilhado pelas 4
+                 seções — as demais anunciam como texto comum, cf. Mapa). */
+              <p role="alert">{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
+            ) : (
+              <ul>
+                <li
+                  style={{
+                    fontSize: tituloSize,
+                    lineHeight: tituloLine,
+                    color: tokens.cor.destaqueVerde,
+                  }}
+                >
+                  Total de votos: {formatVotes(res.totalVotos)}
+                </li>
+                <li>Linhas: {formatVotes(resumo?.total_linhas ?? 0)}</li>
+                <li>Anos: {(resumo?.anos ?? []).join(", ") || SEM_DADO}</li>
+              </ul>
+            )}
+          </div>
         )}
         {seal.official ? (
           <SourceBadge hash={seal.official.hash} url={seal.official.url} date={seal.official.date} />
@@ -399,7 +469,12 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
 
       <section
         aria-label="Mapa por UF"
-        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+        style={{
+          borderTop: FILETE,
+          paddingTop: tokens.espaco[4],
+          marginTop: tokens.espaco[6],
+          opacity: 1,
+        }}
       >
         <h2
           style={{
@@ -413,13 +488,15 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         {candidatoAtivo && <p role="note">{NOTA_CANDIDATO_GLOBAL}</p>}
         {badge}
         {carregando ? (
-          <p role="status">a carregar…</p>
-        ) : semProva || ufs.length === 0 ? (
-          /* Alerta só no vazio local (cubic R2): com sem-prova, o alerta
-             vivo do Resumo já cobre o estado compartilhado; sem ele, a
-             seção anuncia o próprio vazio (ex. busca sem match). */
-          <p role={semProva ? undefined : "alert"}>{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
-        ) : malhaFeatures ? (
+          <div role="status"><span style={TEXTO_OCULTO}>a carregar…</span><Skeleton bloco /></div>
+        ) : (
+          <div className="home-fade" style={estiloFade}>
+            {semProva || ufs.length === 0 ? (
+              /* Alerta só no vazio local (cubic R2): com sem-prova, o alerta
+                 vivo do Resumo já cobre o estado compartilhado; sem ele, a
+                 seção anuncia o próprio vazio (ex. busca sem match). */
+              <p role={semProva ? undefined : "alert"}>{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
+            ) : malhaFeatures ? (
           <>
             {comZoom && (
               <div>
@@ -450,10 +527,22 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
             </thead>
             <tbody>
               {ufs.map((r) => (
-                <tr key={r.uf}><td><a href={`/regiao/${r.uf}`}>{r.uf}</a></td><td style={NUM_TABULAR}>{formatVotes(r.votos)}</td></tr>
+                <tr
+                  key={r.uf}
+                  style={{ backgroundColor: "transparent" }}
+                  onMouseEnter={realcaLinha}
+                  onMouseLeave={apagaLinha}
+                ><td><a
+                  href={`/regiao/${r.uf}`}
+                  style={{ color: tokens.cor.tinta, transition: semMovimento ? "none" : TRANSICAO_COR_HOVER }}
+                  onMouseEnter={realcaLink}
+                  onMouseLeave={apagaLink}
+                >{r.uf}</a></td><td style={NUM_TABULAR}>{formatVotes(r.votos)}</td></tr>
               ))}
             </tbody>
           </table>
+          </div>
+            )}
           </div>
         )}
         {/* Export do ranking por UF (EVOLVE-12, última superfície sem
@@ -469,7 +558,12 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
 
       <section
         aria-label="Ranking de candidatos"
-        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+        style={{
+          borderTop: FILETE,
+          paddingTop: tokens.espaco[4],
+          marginTop: tokens.espaco[6],
+          opacity: 1,
+        }}
       >
         <h2
           style={{
@@ -485,32 +579,46 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         )}
         {badge}
         {carregando ? (
-          <p role="status">a carregar…</p>
-        ) : semProva || cands.length === 0 ? (
-          /* Alerta só no vazio local (cubic R2, paridade Mapa/Evolução). */
-          <p role={semProva ? undefined : "alert"}>{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
+          <div role="status"><span style={TEXTO_OCULTO}>a carregar…</span><Skeleton linhas={5} /></div>
         ) : (
-          <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Ranking de candidatos por votos">
-          <table>
-            <caption>Ranking de candidatos por votos</caption>
-            <thead>
-              <tr><th scope="col" style={TH_EDITORIAL}>Nome</th><th scope="col" style={TH_EDITORIAL}>Partido</th><th scope="col" style={TH_EDITORIAL}>Votos</th></tr>
-            </thead>
-            <tbody>
-              {cands.map((r) => (
-                <tr key={r.candidato_id}>
-                  <td>{r.nome_urna}</td><td>{r.partido}</td><td style={NUM_TABULAR}>{formatVotes(r.votos)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="home-fade" style={estiloFade}>
+            {semProva || cands.length === 0 ? (
+              /* Alerta só no vazio local (cubic R2, paridade Mapa/Evolução). */
+              <p role={semProva ? undefined : "alert"}>{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
+            ) : (
+              <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Ranking de candidatos por votos">
+              <table>
+                <caption>Ranking de candidatos por votos</caption>
+                <thead>
+                  <tr><th scope="col" style={TH_EDITORIAL}>Nome</th><th scope="col" style={TH_EDITORIAL}>Partido</th><th scope="col" style={TH_EDITORIAL}>Votos</th></tr>
+                </thead>
+                <tbody>
+                  {cands.map((r) => (
+                    <tr
+                      key={r.candidato_id}
+                      style={{ backgroundColor: "transparent" }}
+                      onMouseEnter={realcaLinha}
+                      onMouseLeave={apagaLinha}
+                    >
+                      <td>{r.nome_urna}</td><td>{r.partido}</td><td style={NUM_TABULAR}>{formatVotes(r.votos)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              </div>
+            )}
           </div>
         )}
       </section>
 
       <section
         aria-label="Evolução"
-        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+        style={{
+          borderTop: FILETE,
+          paddingTop: tokens.espaco[4],
+          marginTop: tokens.espaco[6],
+          opacity: 1,
+        }}
       >
         <h2
           style={{
@@ -523,35 +631,44 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         </h2>
         {badge}
         {carregando ? (
-          <p role="status">a carregar…</p>
-        ) : semProva || ev.length === 0 ? (
-          /* Alerta só no vazio local (cubic R2, paridade Mapa/Ranking). */
-          <p role={semProva ? undefined : "alert"}>{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
+          <div role="status"><span style={TEXTO_OCULTO}>a carregar…</span><Skeleton linhas={5} /></div>
         ) : (
-          <>
-            <ul aria-hidden="true" style={{ listStyle: "none", padding: 0 }}>
-              {ev.map((r) => (
-                <li key={r.ano} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                  <span style={{ width: 48 }}>{r.ano}</span>
-                  <Bar value={r.votos} max={maxEv} />
-                  <span style={NUM_TABULAR}>{formatVotes(r.votos)}</span>
-                </li>
-              ))}
-            </ul>
-            <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Evolução anual de votos (tabela equivalente)">
-            <table>
-              <caption>Evolução anual de votos (tabela equivalente)</caption>
-              <thead>
-                <tr><th scope="col" style={TH_EDITORIAL}>Ano</th><th scope="col" style={TH_EDITORIAL}>Votos</th></tr>
-              </thead>
-              <tbody>
-                {ev.map((r) => (
-                  <tr key={r.ano}><td style={NUM_TABULAR}>{r.ano}</td><td style={NUM_TABULAR}>{formatVotes(r.votos)}</td></tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
-          </>
+          <div className="home-fade" style={estiloFade}>
+            {semProva || ev.length === 0 ? (
+              /* Alerta só no vazio local (cubic R2, paridade Mapa/Ranking). */
+              <p role={semProva ? undefined : "alert"}>{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
+            ) : (
+              <>
+                <ul aria-hidden="true" style={{ listStyle: "none", padding: 0 }}>
+                  {ev.map((r) => (
+                    <li key={r.ano} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                      <span style={{ width: 48 }}>{r.ano}</span>
+                      <Bar value={r.votos} max={maxEv} />
+                      <span style={NUM_TABULAR}>{formatVotes(r.votos)}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Evolução anual de votos (tabela equivalente)">
+                <table>
+                  <caption>Evolução anual de votos (tabela equivalente)</caption>
+                  <thead>
+                    <tr><th scope="col" style={TH_EDITORIAL}>Ano</th><th scope="col" style={TH_EDITORIAL}>Votos</th></tr>
+                  </thead>
+                  <tbody>
+                    {ev.map((r) => (
+                      <tr
+                        key={r.ano}
+                        style={{ backgroundColor: "transparent" }}
+                        onMouseEnter={realcaLinha}
+                        onMouseLeave={apagaLinha}
+                      ><td style={NUM_TABULAR}>{r.ano}</td><td style={NUM_TABULAR}>{formatVotes(r.votos)}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+                </div>
+              </>
+            )}
+          </div>
         )}
       </section>
 

@@ -120,6 +120,94 @@ describe("EVOLVE-13: valores pinados da fonte única (cubic R1: pina valores, un
   });
 });
 
+describe("onda-2 task 3: skeletons + fade-in na Home", () => {
+  function fetchPendente() {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})),
+    );
+  }
+
+  it("loading mostra Skeleton + status oculto (sem texto visível duplicado)", async () => {
+    fetchPendente();
+    const div = await renderJsdom(<HomeContent />);
+    const statuses = [...div.querySelectorAll('[role="status"]')].filter((el) =>
+      (el.textContent ?? "").includes("a carregar"),
+    );
+    expect(statuses).toHaveLength(4);
+    expect(div.innerHTML).toContain("a carregar");
+    for (const st of statuses) {
+      expect(st.querySelector('[aria-hidden="true"]')).not.toBeNull();
+    }
+  });
+
+  it("loading: seção visível (opacity 1) com Skeleton; resolvido: wrapper com fade", async () => {
+    fetchPendente();
+    const div = await renderJsdom(<HomeContent />);
+    for (const rotulo of ["Resumo", "Mapa por UF", "Ranking de candidatos", "Evolução"]) {
+      const sec = div.querySelector(`section[aria-label="${rotulo}"]`) as HTMLElement | null;
+      expect(sec).not.toBeNull();
+      // O fade vive no wrapper do conteúdo resolvido — a seção fica
+      // opacity 1 p/ Skeleton + h2 renderizarem visíveis no loading.
+      expect(sec!.style.opacity).toBe("1");
+      const st = sec!.querySelector('[role="status"]');
+      expect(st).not.toBeNull();
+      expect(st!.querySelector('[aria-hidden="true"]')).not.toBeNull();
+    }
+    await teardownJsdom();
+    mockFetchHome(MANIFEST_OK, "ausente");
+    const pronto = await renderJsdom(<HomeContent />);
+    // Keyframes emitidos uma vez por render, fora de role=status.
+    expect(pronto.innerHTML).toContain("home-fadein");
+    expect(pronto.innerHTML).toContain("prefers-reduced-motion");
+    for (const rotulo of ["Resumo", "Mapa por UF", "Ranking de candidatos", "Evolução"]) {
+      const sec = pronto.querySelector(`section[aria-label="${rotulo}"]`) as HTMLElement | null;
+      expect(sec).not.toBeNull();
+      expect(sec!.style.opacity).toBe("1");
+      const fade = [...sec!.querySelectorAll("div")].find(
+        (d) =>
+          (d as HTMLElement).style.opacity === "1" &&
+          (d as HTMLElement).style.animation.includes("home-fadein"),
+      );
+      expect(fade).not.toBeUndefined();
+      // jsdom não roda animações: o keyframe + duração são o assert.
+      expect((fade as HTMLElement).style.animation).toContain("250ms");
+    }
+  });
+
+  it("reduced-motion desliga a transição do conteúdo resolvido (pós-effect)", async () => {
+    mockFetchHome(MANIFEST_OK, "ausente");
+    const mm = vi.fn(() => ({ matches: true }));
+    vi.stubGlobal("matchMedia", mm);
+    const w = window as unknown as Record<string, unknown>;
+    const prevMm = w["matchMedia"];
+    w["matchMedia"] = mm;
+    try {
+      // renderJsdom drena effects via act: semMovimento já flipou p/ true.
+      const reduzido = await renderJsdom(<HomeContent />);
+      const sec = reduzido.querySelector(
+        'section[aria-label="Resumo"]',
+      ) as HTMLElement | null;
+      expect(sec).not.toBeNull();
+      expect(sec!.style.opacity).toBe("1");
+      const fade = [...sec!.querySelectorAll("div")].find(
+        (d) => (d as HTMLElement).style.opacity === "1",
+      );
+      expect(fade).not.toBeUndefined();
+      expect((fade as HTMLElement).style.animation).toBe("none");
+      // jsdom não roda animações: a cobertura reduced-motion é a media
+      // query no <style> (desliga o keyframe no CSS real).
+      const estilos = [...reduzido.querySelectorAll("style")].map((s) => s.textContent ?? "");
+      expect(estilos.some((css) => css.includes("prefers-reduced-motion: reduce"))).toBe(true);
+      expect(estilos.some((css) => css.includes("home-fadein"))).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+      if (prevMm === undefined) delete w["matchMedia"];
+      else w["matchMedia"] = prevMm;
+    }
+  });
+});
+
 describe("onda-1 task 5: tabelas e inputs editoriais", () => {
   it("inputs da Busca têm foco visível verde", async () => {
     mockFetchHome(MANIFEST_OK, "ausente");
