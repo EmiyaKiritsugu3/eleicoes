@@ -14,6 +14,7 @@ import { finito } from "../lib/motor";
 import { ALERTA_STYLE, SEM_DADO } from "../lib/textos";
 import {
   MANIFEST_INVALIDO,
+  MANIFEST_OK,
   mockCanvas2d,
   mockFetchHome,
   mockPath2D,
@@ -79,6 +80,17 @@ describe("EVOLVE-13: SEM_DADO da Home anunciado uma vez (cubic R1)", () => {
     expect(alertas).toHaveLength(1);
     const ocorrencias = div.innerHTML.split(SEM_DADO).length - 1;
     expect(ocorrencias).toBeGreaterThanOrEqual(4);
+  });
+
+  it("vazio local com prova → a seção anuncia o próprio vazio (cubic R2)", async () => {
+    mockFetchHome(MANIFEST_OK, "ausente");
+    const div = await renderJsdom(<HomeContent initialFiltros={{ candidato: "zzz-inexistente" }} />);
+    const alertas = [...div.querySelectorAll('[role="alert"]')].filter((el) =>
+      (el.textContent ?? "").includes(SEM_DADO),
+    );
+    // Só o Ranking esvazia (filtro sem match, com prova); Resumo/Mapa/
+    // Evolução têm números e o banner sem-prova não existe.
+    expect(alertas).toHaveLength(1);
   });
 });
 
