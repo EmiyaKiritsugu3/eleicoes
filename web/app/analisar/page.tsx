@@ -511,22 +511,32 @@ export default function Analisar() {
         <h2>Comparador lado-a-lado</h2>
         {badge}
         <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-          {(["candidatos", "anos", "municipios"] as const).map((m) => (
-            <label key={m}>
-              <input
-                type="radio"
-                name="compMode"
-                checked={compMode === m}
-                onChange={() => {
-                  setCompMode(m);
-                  setCompA("");
-                  setCompB("");
-                }}
-              />{" "}
-              {m}
-            </label>
-          ))}
+          {(["candidatos", "anos", "municipios"] as const).map((m) => {
+            // EVOLVE-11 Task 2: modo `municipios` sem cobertura no V1 (sempre
+            // null em `resolverComparador`) — opção desabilitada com título
+            // honesto em vez de controle que promete e entrega SEM_DADO.
+            // `?modo=municipios` herdado segue no ramo SEM_DADO abaixo.
+            const emBreve = m === "municipios";
+            return (
+              <label key={m}>
+                <input
+                  type="radio"
+                  name="compMode"
+                  checked={compMode === m}
+                  disabled={emBreve}
+                  title={emBreve ? "por município em breve — V1 agrega por UF" : undefined}
+                  onChange={() => {
+                    setCompMode(m);
+                    setCompA("");
+                    setCompB("");
+                  }}
+                />{" "}
+                {m}
+              </label>
+            );
+          })}
         </div>
+        <p><small>modo municípios em breve — V1 agrega por UF</small></p>
         {partidoIgnoradoUF && !semCob && compMode === "anos" && (
           <p role="note">{NOTA_PARTIDO}</p>
         )}
