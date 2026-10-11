@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import React from "react";
 import { tokens } from "../lib/tokens";
+import Nav from "../components/Nav";
 
 export const metadata: Metadata = {
   title: "SAD Eleições — resultados auditados",
@@ -50,15 +51,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           >
             resultados auditados
           </p>
-          <nav aria-label="Principal" style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-            <a href="/">Início</a>
-            <a href="/analisar">Analisar</a>
-            <a href="/explorar">Explorar</a>
-            <a href="/perguntas">Perguntas</a>
-            <a href="/verificar">Verificar</a>
-            <a href="/metodologia">Metodologia</a>
-            <a href="/auditoria">Auditoria</a>
-          </nav>
+          <Nav />
         </header>
         <main style={{ maxWidth: 960, margin: "0 auto", padding: "1rem" }}>{children}</main>
       </body>
