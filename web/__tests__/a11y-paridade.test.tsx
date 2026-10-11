@@ -157,6 +157,9 @@ describe("onda-2 task 3: skeletons + fade-in na Home", () => {
     await teardownJsdom();
     mockFetchHome(MANIFEST_OK, "ausente");
     const pronto = await renderJsdom(<HomeContent />);
+    // Keyframes emitidos uma vez por render, fora de role=status.
+    expect(pronto.innerHTML).toContain("home-fadein");
+    expect(pronto.innerHTML).toContain("prefers-reduced-motion");
     for (const rotulo of ["Resumo", "Mapa por UF", "Ranking de candidatos", "Evolução"]) {
       const sec = pronto.querySelector(`section[aria-label="${rotulo}"]`) as HTMLElement | null;
       expect(sec).not.toBeNull();
@@ -164,9 +167,11 @@ describe("onda-2 task 3: skeletons + fade-in na Home", () => {
       const fade = [...sec!.querySelectorAll("div")].find(
         (d) =>
           (d as HTMLElement).style.opacity === "1" &&
-          (d as HTMLElement).style.transition.includes("250ms"),
+          (d as HTMLElement).style.animation.includes("home-fadein"),
       );
       expect(fade).not.toBeUndefined();
+      // jsdom não roda animações: o keyframe + duração são o assert.
+      expect((fade as HTMLElement).style.animation).toContain("250ms");
     }
   });
 
@@ -189,7 +194,12 @@ describe("onda-2 task 3: skeletons + fade-in na Home", () => {
         (d) => (d as HTMLElement).style.opacity === "1",
       );
       expect(fade).not.toBeUndefined();
-      expect((fade as HTMLElement).style.transition).toBe("none");
+      expect((fade as HTMLElement).style.animation).toBe("none");
+      // jsdom não roda animações: a cobertura reduced-motion é a media
+      // query no <style> (desliga o keyframe no CSS real).
+      const estilos = [...reduzido.querySelectorAll("style")].map((s) => s.textContent ?? "");
+      expect(estilos.some((css) => css.includes("prefers-reduced-motion: reduce"))).toBe(true);
+      expect(estilos.some((css) => css.includes("home-fadein"))).toBe(true);
     } finally {
       vi.unstubAllGlobals();
       if (prevMm === undefined) delete w["matchMedia"];

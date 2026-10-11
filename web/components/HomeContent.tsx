@@ -262,23 +262,32 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   // role="status" nas seções de dados; SEM_DADO só após resolve.
   // Seções estáticas (biblioteca, abstenção) não dependem de fetch.
   const carregando = !manifestChecked;
-  // Onda-2 Task 3 (display-only): fade-in do conteúdo resolvido desliga
-  // com prefers-reduced-motion. useState(false) + effect: SSR + primeiro
-  // render do cliente idênticos (sem mismatch de hidratação); o effect
-  // ajusta após o mount. Só estilo, sem semântica.
+  // Onda-2 micro (display-only): fade-in do conteúdo resolvido via
+  // `@keyframes home-fadein` (transição morta `opacity 1→1` removida — sem
+  // mudança de valor não há animação; keyframes animam de verdade no mount
+  // do wrapper). `semMovimento` mantido: ainda gateia o hover (link /regiao)
+  // + desliga a animação inline pós-mount; a media query no <style> cobre o
+  // SSR/primeiro paint. Só estilo, sem semântica.
   const [semMovimento, setSemMovimento] = useState(false);
   useEffect(() => {
     if (typeof window !== "undefined" && typeof window.matchMedia === "function")
       setSemMovimento(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   }, []);
+  // <style> emitido UMA vez por render no topo do fragmento (fora de
+  // qualquer role=status) — mesmo padrão de `Skeleton.tsx`. A classe
+  // `home-fade` existe só p/ a media query desligar a animação inline
+  // (`!important` sobrescreve o inline no SSR/primeiro paint).
+  const estiloFadeCss =
+    `@keyframes home-fadein{from{opacity:0}to{opacity:1}}` +
+    `@media (prefers-reduced-motion: reduce){.home-fade{animation:none !important}}`;
   // Onda-2 final (display-only): o fade vive SÓ no wrapper do conteúdo
   // resolvido — a <section> fica sempre opacity 1 p/ o Skeleton + <h2>
   // estático renderizarem visíveis durante o loading.
   const estiloFade: React.CSSProperties = {
     opacity: 1,
-    transition: semMovimento
+    animation: semMovimento
       ? "none"
-      : `opacity ${tokens.movimento.duracaoMediaMs}ms ${tokens.movimento.easing}`,
+      : `home-fadein ${tokens.movimento.duracaoMediaMs}ms ${tokens.movimento.easing}`,
   };
   // Ruling EVOLVE-3 Task 4 (opção a): Home suprime como Explorar/Curada —
   // sem prova no selo (nem oficial nem fixture com hash, cf.
@@ -328,6 +337,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
 
   return (
     <>
+      <style>{estiloFadeCss}</style>
       <h1
         style={{
           fontFamily: tokens.fonte.display,
@@ -428,7 +438,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         {carregando ? (
           <div role="status"><span style={TEXTO_OCULTO}>a carregar…</span><Skeleton linhas={3} /></div>
         ) : (
-          <div style={estiloFade}>
+          <div className="home-fade" style={estiloFade}>
             {semDados || semProva ? (
               /* Alerta vivo único do estado sem-prova (compartilhado pelas 4
                  seções — as demais anunciam como texto comum, cf. Mapa). */
@@ -480,7 +490,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         {carregando ? (
           <div role="status"><span style={TEXTO_OCULTO}>a carregar…</span><Skeleton bloco /></div>
         ) : (
-          <div style={estiloFade}>
+          <div className="home-fade" style={estiloFade}>
             {semProva || ufs.length === 0 ? (
               /* Alerta só no vazio local (cubic R2): com sem-prova, o alerta
                  vivo do Resumo já cobre o estado compartilhado; sem ele, a
@@ -571,7 +581,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         {carregando ? (
           <div role="status"><span style={TEXTO_OCULTO}>a carregar…</span><Skeleton linhas={5} /></div>
         ) : (
-          <div style={estiloFade}>
+          <div className="home-fade" style={estiloFade}>
             {semProva || cands.length === 0 ? (
               /* Alerta só no vazio local (cubic R2, paridade Mapa/Evolução). */
               <p role={semProva ? undefined : "alert"}>{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
@@ -623,7 +633,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         {carregando ? (
           <div role="status"><span style={TEXTO_OCULTO}>a carregar…</span><Skeleton linhas={5} /></div>
         ) : (
-          <div style={estiloFade}>
+          <div className="home-fade" style={estiloFade}>
             {semProva || ev.length === 0 ? (
               /* Alerta só no vazio local (cubic R2, paridade Mapa/Ranking). */
               <p role={semProva ? undefined : "alert"}>{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
