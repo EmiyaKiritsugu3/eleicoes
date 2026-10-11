@@ -47,6 +47,21 @@ export function fatoDatasetDe(manifest: unknown, override?: string): string | nu
   return defaultFatoDataset(manifest);
 }
 
+/** Datasets de fato municipal disponíveis no manifest (EVOLVE-11 Task 1 —
+ *  fonte única das opções do pleito switcher da /regiao): entries
+ *  `fato_municipal` com dataset no allowlist `isFatoDataset`, em ordem do
+ *  manifest, sem duplicar. Traversal/shape inválido e outro tipo nunca
+ *  viram opção (fail-closed: opção sempre monta fetch seguro). */
+export function listarFatosMunicipais(manifest: unknown): string[] {
+  const out: string[] = [];
+  for (const e of ingestoesFato(manifest)) {
+    if ((e as ManifestFato | null)?.tipo !== "fato_municipal") continue;
+    const ds = (e as ManifestFato | null)?.dataset;
+    if (isFatoDataset(ds) && !out.includes(ds as string)) out.push(ds as string);
+  }
+  return out;
+}
+
 /** Registro auditado do dataset selecionado: ingestão `fato_municipal`
  *  com este `dataset`, hash válido e não-fixture (mesma semântica de
  *  `isAudited`/`isOfficialDisplay` de `lib/data.ts`). Qualquer outra
@@ -116,6 +131,20 @@ export function getSealParaDataset(manifest: unknown, dataset: string | null): S
 export function vereditoTemProva(seal: SealState): boolean {
   if (seal.official !== null && isAudited({ sha256: seal.official.hash })) return true;
   return seal.hasFixture && isAudited({ sha256: seal.fixtureHash });
+}
+
+/** Hash-resumo do selo p/ comparação de staleness (fonte única — as 2
+ *  rotas SSG passam o mesmo resumo do build e `SeloStaleness` deriva o
+ *  resumo runtime igual; cubic R3: oficial vence, fixture com hash conta
+ *  quando não há oficial; sem prova → ""). Hex normalizado p/ minúsculas
+ *  (cubic R4: SHA-256 hex é case-insensitive — mudança só de caixa não é
+ *  rotação). */
+export function hashResumoSeal(seal: SealState): string {
+  if (seal.official !== null && typeof seal.official.hash === "string") {
+    return seal.official.hash.toLowerCase();
+  }
+  if (seal.hasFixture && typeof seal.fixtureHash === "string") return seal.fixtureHash.toLowerCase();
+  return "";
 }
 
 /** Manifest legível para rotação (FONTE ÚNICA — EVOLVE-9 R4, dedupe Sonar:

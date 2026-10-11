@@ -20,7 +20,7 @@ import PainelRegiao, {
   type FatoRegiao,
 } from "../../../components/PainelRegiao";
 import type { SealState } from "../../../lib/data";
-import { censoTemProva, entradaCensoAuditada, fatoDatasetDe, getSealParaDataset, manifestoValidoParaRotacao, vereditoTemProva } from "../../../lib/regiao";
+import { censoTemProva, entradaCensoAuditada, fatoDatasetDe, getSealParaDataset, listarFatosMunicipais, manifestoValidoParaRotacao, vereditoTemProva } from "../../../lib/regiao";
 import { fetchJson } from "../../../lib/fetchJson";
 
 function ConteudoRegiao({ ibge }: { ibge: string }) {
@@ -30,6 +30,11 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
   const [seal, setSeal] = useState<SealState>({ official: null, hasFixture: false, fixtureHash: "" });
   const [manifestChecked, setManifestChecked] = useState(false);
   const [dataset, setDataset] = useState<string | null>(null);
+  // Opções do pleito switcher (EVOLVE-11 Task 1): datasets `fato_*` do
+  // manifest via `listarFatosMunicipais` (fonte única, allowlist). Navegação
+  // por form GET nativo (sem router): `?fato=` inválido cai no default via
+  // `fatoDatasetDe` (fail-closed). <2 opções → sem switcher (sem ruído).
+  const [opcoesFato, setOpcoesFato] = useState<string[]>([]);
   // Censo no nível da página (EVOLVE-7 Task 6 follow-up): o PainelRegiao
   // busca o artefato uma vez no mount quando a prop é omitida — sob
   // rotação de manifest, a pop ia stale. A página detém o mapa e o repassa
@@ -52,6 +57,11 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
   const seloRef = useRef<string | null>(null);
   const ocupadoRef = useRef(false);
   const geracaoRef = useRef(0);
+  // Opções do switcher vistas pelo handler de rotação (effect de foco monta
+  // uma vez): sem este ref, um manifest que ganha um pleito novo (tripla
+  // dataset+selo+censo do atual intacta) caía no early return e o switcher
+  // ia stale até reload.
+  const opcoesRef = useRef<string>("[]");
   const fatoParamRef = useRef(fatoParam);
   fatoParamRef.current = fatoParam;
 
@@ -97,6 +107,10 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
         // falha fechado (sem oficial), nunca com hash de outra ingestão.
         setSeal(r.novoSeal);
         setDataset(r.ds);
+        // Opções do switcher assentam junto do selo (mesmo manifest lido).
+        const opcoes = listarFatosMunicipais(r.manifest);
+        opcoesRef.current = JSON.stringify(opcoes);
+        setOpcoesFato(opcoes);
         seloRef.current = JSON.stringify({
           ds: r.ds,
           seal: r.novoSeal,
@@ -158,7 +172,16 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
         // idênticos) caía no early return e a pop ia stale com prova
         // ausente. sha ausente (entry removida) → null ≠ sha anterior.
         const novoCenso = entradaCensoAuditada(manifest)?.sha256 ?? null;
-        if (JSON.stringify({ ds, seal: novoSeal, censo: novoCenso }) === seloRef.current) return;
+        // Opções do switcher (EVOLVE-11 Task 1): pleito novo com a tripla do
+        // atual intacta atualiza o switcher sem fetch pesado (display-only).
+        const novasOpcoes = listarFatosMunicipais(manifest);
+        if (JSON.stringify({ ds, seal: novoSeal, censo: novoCenso }) === seloRef.current) {
+          if (JSON.stringify(novasOpcoes) !== opcoesRef.current) {
+            opcoesRef.current = JSON.stringify(novasOpcoes);
+            setOpcoesFato(novasOpcoes);
+          }
+          return;
+        }
         // Fail-closed imediato (rotfix3 Finding 2): manifest sem prova não
         // sustenta os números antigos durante o fetch lento — publica a
         // supressão (selo+dataset+fato null) ANTES de aguardar os artefatos.
@@ -172,6 +195,8 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
         ) {
           setSeal(novoSeal);
           setDataset(ds);
+          opcoesRef.current = JSON.stringify(novasOpcoes);
+          setOpcoesFato(novasOpcoes);
           seloRef.current = JSON.stringify({ ds, seal: novoSeal, censo: novoCenso });
           setFato(null);
         }
@@ -191,6 +216,8 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
         if (fatoParamRef.current !== param || geracaoRef.current !== minha) return;
         setSeal(novoSeal);
         setDataset(ds);
+        opcoesRef.current = JSON.stringify(novasOpcoes);
+        setOpcoesFato(novasOpcoes);
         seloRef.current = JSON.stringify({ ds, seal: novoSeal, censo: novoCenso });
         // Mesmo portão do mount (EVOLVE-10 Task 1): rotação que remove a
         // prova suprime o fato em vez de manter números stale sem hash.
@@ -214,12 +241,48 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
     };
   }, []);
 
+  // Switcher honesto (cubic R3): `?fato=` bem-formado mas sem registro no
+  // manifest resolve p/ SEM_DADO (fail-closed, sem fetch arbitrário) — e o
+  // select exibe o default em vez de um valor sem opção (paridade com o
+  // caso malformado, que já cai no default via `fatoDatasetDe`).
+  const pleitoExibido =
+    dataset !== null && (opcoesFato.length === 0 || opcoesFato.includes(dataset))
+      ? dataset
+      : (opcoesFato[0] ?? dataset ?? "");
   // Loading honesto (Task 5): manifest pendente mostra "a carregar"
   // com role="status"; SEM_DADO do painel só após resolve.
   if (!manifestChecked) {
     return <p role="status">a carregar…</p>;
   }
-  return <PainelRegiao ibge={ibge} fato={fato} seal={seal} manifestChecked={manifestChecked} fatoDataset={dataset} censo={censo} />;
+  return (
+    <>
+      {/* Pleito switcher (EVOLVE-11 Task 1): form GET nativo (sem router —
+          funciona sem JS via "trocar pleito"; com JS o select auto-submete).
+          Só com 2+ pleitos no manifest; valor = dataset resolvido
+          (`?fato=` inválido exibe o default, paridade com o fato exibido). */}
+      {opcoesFato.length >= 2 && (
+        <form method="get" action={`/regiao/${ibge}`} aria-label="trocar pleito">
+          <label>
+            pleito{" "}
+            <select
+              name="fato"
+              aria-label="pleito"
+              value={pleitoExibido}
+              onChange={(e) => e.currentTarget.form?.requestSubmit()}
+            >
+              {opcoesFato.map((ds) => (
+                <option key={ds} value={ds}>
+                  {ds}
+                </option>
+              ))}
+            </select>
+          </label>{" "}
+          <button type="submit">trocar pleito</button>
+        </form>
+      )}
+      <PainelRegiao ibge={ibge} fato={fato} seal={seal} manifestChecked={manifestChecked} fatoDataset={dataset} censo={censo} />
+    </>
+  );
 }
 
 export default function PaginaRegiao({ params }: { params: { ibge: string } }) {

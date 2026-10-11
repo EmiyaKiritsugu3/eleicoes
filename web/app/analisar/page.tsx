@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import SourceBadge from "../../components/SourceBadge";
 import SealSlot from "../../components/SealSlot";
 import CopyShare from "../../components/CopyShare";
+import ExportCsv from "../../components/ExportCsv";
 import Comparator, { type CompareSide } from "../../components/Comparator";
 import {
   evolucaoAnual,
@@ -19,7 +20,6 @@ import {
   type SealState,
 } from "../../lib/data";
 import {
-  buildCsvExport,
   buildShareUrl,
   emptyStateFor,
   parseAnalisarSearchParams,
@@ -64,18 +64,6 @@ const CHAVE_SEM_PARTIDO = "__sem_partido__";
 
 function chavePartido(bruto: string): string {
   return bruto === "" ? CHAVE_SEM_PARTIDO : `partido:${bruto}`;
-}
-
-function downloadCsv(filename: string, csv: string) {
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
 }
 
 export default function Analisar() {
@@ -511,22 +499,32 @@ export default function Analisar() {
         <h2>Comparador lado-a-lado</h2>
         {badge}
         <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-          {(["candidatos", "anos", "municipios"] as const).map((m) => (
-            <label key={m}>
-              <input
-                type="radio"
-                name="compMode"
-                checked={compMode === m}
-                onChange={() => {
-                  setCompMode(m);
-                  setCompA("");
-                  setCompB("");
-                }}
-              />{" "}
-              {m}
-            </label>
-          ))}
+          {(["candidatos", "anos", "municipios"] as const).map((m) => {
+            // EVOLVE-11 Task 2: modo `municipios` sem cobertura no V1 (sempre
+            // null em `resolverComparador`) — opção desabilitada com título
+            // honesto em vez de controle que promete e entrega SEM_DADO.
+            // `?modo=municipios` herdado segue no ramo SEM_DADO abaixo.
+            const emBreve = m === "municipios";
+            return (
+              <label key={m}>
+                <input
+                  type="radio"
+                  name="compMode"
+                  checked={compMode === m}
+                  disabled={emBreve}
+                  title={emBreve ? "por município em breve — V1 agrega por UF" : undefined}
+                  onChange={() => {
+                    setCompMode(m);
+                    setCompA("");
+                    setCompB("");
+                  }}
+                />{" "}
+                {m}
+              </label>
+            );
+          })}
         </div>
+        <p><small>modo municípios em breve — V1 agrega por UF</small></p>
         {partidoIgnoradoUF && !semCob && compMode === "anos" && (
           <p role="note">{NOTA_PARTIDO}</p>
         )}
@@ -661,43 +659,8 @@ export default function Analisar() {
         ) : (
           <p role="status">a carregar…</p>
         )}
-        <p>
-          <button
-            type="button"
-            disabled={!seal.official}
-            title={
-              seal.official
-                ? "Baixar CSV com proveniência auditada"
-                : "Exportação bloqueada — dado não auditado"
-            }
-            onClick={() =>
-              downloadCsv(
-                "analisar.csv",
-                buildCsvExport(csvRows, seal.official),
-              )
-            }
-          >
-            Exportar CSV
-          </button>
-        </p>
-        {manifestChecked && !seal.official && !seal.hasFixture && (
-          <p role="alert" style={ALERTA_STYLE}>
-            exportação bloqueada — dado não auditado; o CSV só é gerado com
-            manifest válido para que o arquivo seja auto-descritivo
-          </p>
-        )}
-        {manifestChecked && !seal.official && seal.hasFixture && (
-          <p role="note">
-            exportação bloqueada — amostra sintética sem valor oficial; o CSV
-            só é gerado com ingestão oficial para que o arquivo seja
-            auto-descritivo
-          </p>
-        )}
-        <p>
-          <small>
-            O CSV inclui header de proveniência <code>fonte,url,hash,data</code>.
-          </small>
-        </p>
+        {/* Export em `ExportCsv` (fonte única, inclui motivo de bloqueio). */}
+        <ExportCsv arquivo="analisar.csv" linhas={csvRows} seal={seal} pronto={manifestChecked} />
         {carregando ? (
           <p role="status">a carregar…</p>
         ) : emptyStateFor(csvRows) ? (

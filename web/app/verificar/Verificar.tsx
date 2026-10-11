@@ -42,6 +42,7 @@ import CopyShare from "../../components/CopyShare";
 import SealSlot from "../../components/SealSlot";
 import SourceBadge from "../../components/SourceBadge";
 import { ECO_SEAL, SEM_DADO, type FatoRegiao } from "../../components/PainelRegiao";
+import ExportCsv from "../../components/ExportCsv";
 import type { SealState } from "../../lib/data";
 import {
   LIMIAR_EFEITO_R,
@@ -487,6 +488,23 @@ export function buildVerificarShareUrl(slug: string, manifestHash: string): stri
   return qs ? `${base}?${qs}` : base;
 }
 
+/** Linhas do CSV do veredito (EVOLVE-11 Task 5, paridade Analisar/Explorar):
+ *  os números que decidem + slug/veredito como contexto; proveniência via
+ *  `buildCsvExport` (gate oficial no botão — sem hash, desabilitado). */
+export function verificarCsvRows(
+  slug: string,
+  veredito: string,
+  numeros: NumeroDecisivo[],
+): Record<string, unknown>[] {
+  return (Array.isArray(numeros) ? numeros : []).map((n) => ({
+    verificacao: slug,
+    veredito,
+    numero: n?.rotulo ?? "",
+    valor: n?.valor ?? null,
+    formato: n?.formato ?? "",
+  }));
+}
+
 function fmtNumero(n: NumeroDecisivo): string {
   if (n.valor === null || !finito(n.valor)) return SEM_DADO;
   const v = n.valor as number;
@@ -570,6 +588,9 @@ export function VerificarConteudo({
   // (oficial; sem hash → sem `hash=`, nunca número sem prova). O mesmo
   // `<CopyShare>` — absolutização, stale-guard e fallback vêm de graça.
   const shareUrl = buildVerificarShareUrl(check.slug, seal.official?.hash ?? "");
+  // Linhas do CSV do veredito (EVOLVE-11 Task 5): só com veredito; o botão
+  // abaixo gateia o hash oficial (sem oficial, desabilitado).
+  const csvRows = v.veredito !== null ? verificarCsvRows(check.slug, v.veredito, v.numeros) : [];
 
   return (
     <>
@@ -661,6 +682,17 @@ export function VerificarConteudo({
         <p>
           <CopyShare url={shareUrl} />
         </p>
+        {/* Export do veredito (EVOLVE-11 Task 5, paridade Analisar/Explorar/
+            Regiao): os números que decidem + proveniência do fato. Só com
+            veredito (sem prova → sem números, sem botão). Bloco em
+            `ExportCsv` (fonte única); gate oficial dentro dele. */}
+        {v.veredito !== null && (
+          <ExportCsv
+            arquivo={`verificar-${check.slug}.csv`}
+            linhas={csvRows}
+            seal={seal}
+          />
+        )}
       </section>
     </>
   );

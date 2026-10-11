@@ -14,6 +14,7 @@ import React from "react";
 import SourceBadge from "./SourceBadge";
 import SealSlot from "./SealSlot";
 import CopyShare from "./CopyShare";
+import ExportCsv from "./ExportCsv";
 import { formatVotes, type SealState } from "../lib/data";
 import { isFatoDataset } from "../lib/regiao";
 import { SEM_DADO } from "../lib/textos";
@@ -285,6 +286,39 @@ function renda(v: number): string {
   return finito(v) ? `R$ ${formatVotes(Math.round(v))}` : SEM_DADO;
 }
 
+/** Entrada numérica do CSV do /regiao (ramo município ou UF agregada). */
+export interface LinhaRegiaoCsv {
+  vencedorNome: string;
+  vencedorPartido: string;
+  v1: number;
+  v2: number;
+  total: number;
+  /** Frações 0–1 cruas (blank-cell de `buildCsvExport` cobre null). */
+  margem: number | null;
+  participacao: number | null;
+  /** Só no ramo UF agregada. */
+  nMun?: number;
+}
+
+/** Linhas do CSV do /regiao (EVOLVE-11 Task 4, paridade Analisar/Explorar):
+ *  votos do pleito exibido com proveniência do fato. A pop do Censo fica
+ *  FORA (proveniência distinta — entry `artifacts`, outro hash; só em tela).
+ *  Sem fato não há linha (o botão nem rende nesses ramos). */
+export function regiaoCsvRows(regiao: string, r: LinhaRegiaoCsv): Record<string, unknown>[] {
+  const row: Record<string, unknown> = {
+    regiao,
+    vencedor: r.vencedorNome,
+    partido: r.vencedorPartido,
+    votos_vencedor: r.v1,
+    votos_segundo: r.v2,
+    margem: r.margem,
+    participacao: r.participacao,
+    total_votos: r.total,
+  };
+  if (r.nMun !== undefined) row.municipios = r.nMun;
+  return [row];
+}
+
 const ALERTA_STYLE: React.CSSProperties = {
   background: "#fff3cd",
   border: "1px solid #b45309",
@@ -472,6 +506,24 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
           {seal.official && (
             <p><CopyShare url={`/regiao/${cod}?hash=${seal.official.hash}`} /></p>
           )}
+          {/* Export do pleito (EVOLVE-11 Task 4, paridade Analisar/Explorar):
+              votos do agregado UF + proveniência do fato; pop do Censo fora
+              (outro hash — só em tela). Bloco em `ExportCsv` (fonte única). */}
+          <ExportCsv
+            arquivo={`regiao-${cod}.csv`}
+            linhas={regiaoCsvRows(cod, {
+              vencedorNome: ag.vencedorNome,
+              vencedorPartido: ag.vencedorPartido,
+              v1: ag.v1,
+              v2: ag.v2,
+              total: ag.total,
+              margem: ag.margem,
+              participacao: ag.participacao,
+              nMun: ag.nMun,
+            })}
+            seal={seal}
+            detalhe="; pop do Censo só em tela."
+          />
         </section>
       </>
     );
@@ -570,6 +622,23 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
         {seal.official && (
           <p><CopyShare url={`/regiao/${ibge}?hash=${seal.official.hash}`} /></p>
         )}
+        {/* Export do pleito (EVOLVE-11 Task 4, paridade Analisar/Explorar):
+            votos do município + proveniência do fato; pop do Censo fora
+            (outro hash — só em tela). Bloco em `ExportCsv` (fonte única). */}
+        <ExportCsv
+          arquivo={`regiao-${ibge}.csv`}
+          linhas={regiaoCsvRows(String(ibge), {
+            vencedorNome: res.vencedorNome,
+            vencedorPartido: res.vencedorPartido,
+            v1: res.v1,
+            v2: res.v2,
+            total: res.total,
+            margem: res.margem,
+            participacao: res.participacao,
+          })}
+          seal={seal}
+          detalhe="; pop do Censo só em tela."
+        />
       </section>
     </>
   );

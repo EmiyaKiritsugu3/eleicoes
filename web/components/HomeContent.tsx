@@ -6,6 +6,7 @@ import { UF_POR_PREFIXO_IBGE } from "./PainelRegiao";
 import { loadMalha, MALHA_MUNICIPIOS_URL, UFS, type MalhaFeature } from "../lib/malha";
 import SourceBadge from "./SourceBadge";
 import SealSlot from "./SealSlot";
+import CopyShare from "./CopyShare";
 import perguntasJson from "../data/perguntas.json";
 import {
   evolucaoAnual,
@@ -22,7 +23,7 @@ import {
   type ResumoJson,
   type SealState,
 } from "../lib/data";
-import { manifestoValidoParaRotacao, vereditoTemProva } from "../lib/regiao";
+import { isHashDivergente, manifestoValidoParaRotacao, vereditoTemProva } from "../lib/regiao";
 import { fetchJson } from "../lib/fetchJson";
 import { MOTIVO_SEM_HASH, SEM_DADO } from "../lib/textos";
 
@@ -67,6 +68,10 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   const [manifestChecked, setManifestChecked] = useState(false);
   const [malhaFeatures, setMalhaFeatures] = useState<MalhaFeature[] | null>(null);
   const [f, setF] = useState<Filtros>(initialFiltros ?? {});
+  // Hash da URL compartilhada (`/?hash=` do CopyShare — cubic R3): sem
+  // hidratação de filtros na Home, o link ainda é verificável — divergente
+  // do manifest atual, alerta em vez de citar número stale.
+  const [urlHash, setUrlHash] = useState("");
   // EVOLVE-7 Task 6 — trigger vivo de rotação de manifest: `sealRef` é a
   // verdade comparável fora do closure (o effect de foco monta uma vez e
   // nunca veria o `seal` novo); `ocupadoRef` evita fetch duplicado entre o
@@ -106,6 +111,11 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   }, [carregarPesados]);
 
   useEffect(() => {
+    try {
+      setUrlHash(new URLSearchParams(window.location.search).get("hash") ?? "");
+    } catch {
+      setUrlHash("");
+    }
     void carregarDados();
   }, [carregarDados]);
 
@@ -226,6 +236,18 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         <SealSlot seal={seal} />
       )}
       {seal.official && <SourceBadge hash={seal.official.hash} url={seal.official.url} date={seal.official.date} />}
+      {/* Share de proveniência (EVOLVE-11 Task 3, paridade Analisar/
+          Explorar): âncora `/?hash=` do manifest oficial. Só com oficial —
+          a Home não hidrata filtros da query, então link sem hash não
+          reproduziria nada (fail-closed, sem link vazio). */}
+      {manifestChecked && seal.official && (
+        <p><CopyShare url={`/?hash=${seal.official.hash}`} /></p>
+      )}
+      {isHashDivergente(urlHash, seal.official?.hash ?? "", manifestChecked) && (
+        <p role="alert" className="badge badge-warn" style={ALERTA_STYLE}>
+          hash da URL diverge do manifest atual — revalide a fonte antes de citar
+        </p>
+      )}
 
       <section aria-label="Busca">
         <h2>Busca</h2>

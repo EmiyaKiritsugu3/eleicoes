@@ -23,6 +23,7 @@
 
 import React from "react";
 import CopyShare from "../../components/CopyShare";
+import ExportCsv from "../../components/ExportCsv";
 import SealSlot from "../../components/SealSlot";
 import SourceBadge from "../../components/SourceBadge";
 import {
@@ -95,6 +96,47 @@ function notaEscopo(onde: string): string | null {
   if (onde === "exterior") return NOTA_EXTERIOR;
   if (onde === "evolucao") return NOTA_EVOLUCAO;
   return null;
+}
+
+/** Resumo numérico da resposta curada p/ o CSV (EVOLVE-11 Task 5). */
+export interface ResumoCuradaCsv {
+  titulo: string;
+  nMunicipios: number;
+  shareMedio: number | null;
+  rPearson: number | null;
+  rSpearman: number | null;
+  /** n amostral de cada r (cubic R3: filtradas inclui linhas com dado
+   *  ausente que Pearson/Spearman descartam — sem n, o r não é auditável). */
+  nPearson: number | null;
+  nSpearman: number | null;
+  /** Fonte do peso do share (cubic R3: eleitorado puro vs misto). */
+  pesoShare: string;
+  veredito: string;
+}
+
+/** Famílias de entrada da resposta (cubic R3: o CSV não atribui tudo ao
+ *  TSE — votos/eleitorado vêm do fato TSE, a demografia do Censo IBGE via
+ *  `dim_municipio`; header fonte/url/hash/data segue do artefato auditado). */
+export const ENTRADAS_CURADA = "votos TSE + demografia Censo IBGE (via fato auditado)";
+
+/** Linhas do CSV da Curada (paridade Verificar/Analisar/Explorar/Regiao):
+ *  resumo da resposta numa linha; proveniência via `buildCsvExport`
+ *  (gate oficial no botão — sem hash, desabilitado). */
+export function curadaCsvRows(r: ResumoCuradaCsv): Record<string, unknown>[] {
+  return [
+    {
+      pergunta: r.titulo,
+      n_municipios: r.nMunicipios,
+      share_medio: r.shareMedio,
+      r_pearson: r.rPearson,
+      r_spearman: r.rSpearman,
+      n_pearson: r.nPearson,
+      n_spearman: r.nSpearman,
+      peso_share: r.pesoShare,
+      entradas: ENTRADAS_CURADA,
+      veredito: r.veredito,
+    },
+  ];
 }
 
 /** Resolve `quem` a um candidato do fato (tokens ou id literal). */
@@ -569,6 +611,27 @@ export function CuradaConteudo({
             municipais (onde venceu, 2º lugar, margem, participação); votos do exterior
             e séries temporais ficam fora do fato auditado.
           </p>
+        )}
+        {/* Export da resposta (EVOLVE-11 Task 5, paridade Verificar):
+            resumo numérico + proveniência do fato. Só com números
+            (sem prova ou recorte vazio → sem botão). Bloco em `ExportCsv`
+            (fonte única); gate oficial dentro dele. */}
+        {hashAuditado && fato && cand && filtradas.length > 0 && (
+          <ExportCsv
+            arquivo={`pergunta-${pergunta.slug}.csv`}
+            linhas={curadaCsvRows({
+              titulo: pergunta.titulo,
+              nMunicipios: filtradas.length,
+              shareMedio,
+              rPearson: corrP ? corrP.r : null,
+              rSpearman: corrS ? corrS.r : null,
+              nPearson: corrP ? corrP.n : null,
+              nSpearman: corrS ? corrS.n : null,
+              pesoShare: pesoMistoShare ? "misto (eleitorado, total ou população)" : "eleitorado",
+              veredito: VEREDITO_PT[veredito] ?? veredito,
+            })}
+            seal={seal}
+          />
         )}
       </section>
     </>
