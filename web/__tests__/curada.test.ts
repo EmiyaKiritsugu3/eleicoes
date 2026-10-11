@@ -280,6 +280,26 @@ describe("curada (reprodução fail-closed por escopo)", () => {
   });
 });
 
+describe("curada (CopyShare na Fonte e reprodução, EVOLVE-10 Task 3)", () => {
+  function fonteDe(html: string): string {
+    return html.split('aria-label="Fonte e reprodu')[1].split("<section")[0];
+  }
+  it("escopo coberto: botão Copiar link + hash= na seção", () => {
+    const p = perguntas.find((q) => q.slug === "estudo-voto-vencedor")!;
+    const fonte = fonteDe(htmlDe(p, fato40(), SEAL_OK));
+    expect(fonte).toContain("Copiar link");
+    expect(fonte).toContain("hash=");
+  });
+  it("fora de escopo: sem Copiar link, com nota de indisponibilidade", () => {
+    for (const slug of ["voto-exterior", "evolucao-vencedor"]) {
+      const p = perguntas.find((q) => q.slug === slug)!;
+      const fonte = fonteDe(htmlDe(p, fato40(), SEAL_OK));
+      expect(fonte).not.toContain("Copiar link");
+      expect(fonte).toContain("reprodução indisponível");
+    }
+  });
+});
+
 describe("curada (blocos.ver honored: só as visões pedidas renderizam)", () => {
   it("ranking-only não mostra Correlação nem Perfil; mostra Ranking", () => {
     const p = perguntas.find((q) => q.slug === "margem-ampla-vencedor")!;

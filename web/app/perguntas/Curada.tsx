@@ -22,6 +22,7 @@
  */
 
 import React from "react";
+import CopyShare from "../../components/CopyShare";
 import SealSlot from "../../components/SealSlot";
 import SourceBadge from "../../components/SourceBadge";
 import {
@@ -560,7 +561,7 @@ export function CuradaConteudo({
         {badge}
         {shareUrl ? (
           <p>
-            Para refazer esta análise: <code>{shareUrl}</code>
+            Para refazer esta análise: <CopyShare url={shareUrl} />
           </p>
         ) : (
           <p role="note">
