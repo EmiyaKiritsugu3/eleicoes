@@ -211,3 +211,15 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 - Total: etl/depara.py (parse+gates bijection+DV, chave zfill5, register ingest) + normalize(df,depara=None) default intacto + threading build_all/CLI --depara-csv + fontes triplas no fato + 20 testes (19 offline + e2e real RR→Boa Vista verde) + R1/R2/R3. Suítes finais: pytest 217 + vitest 565 + tsc + build.
 - Incidentes: voto "3018" vs oficial "03018" (chave canônica); timer/revoke não se aplica (sem clique); canônico com artifacts stale em fluxo não-vazio — gates correm no MIRROR (contrato __main__), e2e ajustado; S8707 ruling sem MCP (token do config via API direta).
 - Backlog EVOLVE-16: E5 empty-build artifact coverage (P2 cubic deferido, quebra contrato pinado — design próprio) + instrução/GeoJSON (bloqueados).
+
+## Onda 1 mergeada (2026-10-11, PR #17, commit 77e5211) — fundação editorial
+- Escopo: tokens fonte única (`web/lib/tokens.ts`, paleta papel/tinta + verde/amarelo editoriais) + shell (marca, filete, Nav com `aria-current`) + Home display-only (tipografia, filetes, tabelas, inputs com foco visível). Invariantes intactos: nenhum texto/role/ordem/comportamento muda; `ALERTA_STYLE` intacto; offline-first.
+- Execução subagent-driven (6 tasks + reviews por task + final review Ready-to-merge).
+- Rounds no PR: R1 (Sonar duplication 4.1% — bloco shell render duplicado shell.test↔ux.test → fonte única `htmlShell()` em shell-html.tsx; + nitpick CodeRabbit pinnando o link ativo `/analisar`). CodeRabbit: 1 trivial corrigido (sem thread p/ reply — só corpo do review). cubic: skipping (quota, neutro, sem findings). CI ×2 + Sonar + GitGuardian verdes no head.
+- Incidentes: helper `secao()` acoplado à ausência de atributos (ruling: tolerar atributos, asserções intactas); mock `usePathname` faltando em ux.test (fix test-infra).
+- Suítes finais: pytest 221 + vitest 571 + tsc + build.
+- Backlog: Onda 2 (movimento/transições + skeletons/loading, com testes novos).
+
+## Próxima sessão — Onda 2 (design pendente de aprovação final)
+- Direção: **movimento + carregamento percebido** na Home (transições, skeletons) — mudam o DOM, exigem testes novos.
+- Baseline main @77e5211 verde (pytest 221 + vitest 571).
