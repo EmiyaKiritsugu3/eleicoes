@@ -396,7 +396,7 @@ describe("ux CopyShare copia + fallback", () => {
       Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
     }
   });
-  it("share spots usam CopyShare (analisar/explorar/regiao/verificar/curada)", async () => {
+  it("share spots usam CopyShare (analisar/explorar/regiao/verificar/curada/home)", async () => {
     mockFetchOk();
     const divA = await renderJsdom(<Analisar />);
     expect(divA.innerHTML).toContain("Copiar link");
@@ -438,6 +438,11 @@ describe("ux CopyShare copia + fallback", () => {
     );
     expect(htmlC).toContain("Copiar link");
     expect(htmlC).toContain("hash=");
+    // EVOLVE-11 Task 3: Home no inventário (6º spot, âncora de proveniência).
+    mockFetchOk();
+    const divH = await renderJsdom(<HomeContent />);
+    expect(divH.innerHTML).toContain("Copiar link");
+    expect(divH.innerHTML).toContain("hash=");
   });
 });
 
