@@ -6,6 +6,7 @@ import { UF_POR_PREFIXO_IBGE } from "./PainelRegiao";
 import { loadMalha, MALHA_MUNICIPIOS_URL, UFS, type MalhaFeature } from "../lib/malha";
 import SourceBadge from "./SourceBadge";
 import SealSlot from "./SealSlot";
+import CopyShare from "./CopyShare";
 import perguntasJson from "../data/perguntas.json";
 import {
   evolucaoAnual,
@@ -226,6 +227,13 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         <SealSlot seal={seal} />
       )}
       {seal.official && <SourceBadge hash={seal.official.hash} url={seal.official.url} date={seal.official.date} />}
+      {/* Share de proveniência (EVOLVE-11 Task 3, paridade Analisar/
+          Explorar): âncora `/?hash=` do manifest oficial. Só com oficial —
+          a Home não hidrata filtros da query, então link sem hash não
+          reproduziria nada (fail-closed, sem link vazio). */}
+      {manifestChecked && seal.official && (
+        <p><CopyShare url={`/?hash=${seal.official.hash}`} /></p>
+      )}
 
       <section aria-label="Busca">
         <h2>Busca</h2>
