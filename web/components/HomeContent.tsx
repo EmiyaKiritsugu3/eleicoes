@@ -73,6 +73,23 @@ const desfocaInput = (e: React.FocusEvent<HTMLInputElement>) => {
   e.currentTarget.style.outline = "";
 };
 
+// Onda-2 Task 4 (display-only): hover de links internos e linhas de
+// tabela — mutação direta do nó (sem estado semântico, sem re-render).
+// SSR-safe (handlers são props, sem window).
+const TRANSICAO_COR_HOVER = `color ${tokens.movimento.duracaoCurtaMs}ms ${tokens.movimento.easing}`;
+const realcaLink = (e: React.MouseEvent<HTMLElement>) => {
+  e.currentTarget.style.color = tokens.cor.destaqueVerde;
+};
+const apagaLink = (e: React.MouseEvent<HTMLElement>) => {
+  e.currentTarget.style.color = tokens.cor.tinta;
+};
+const realcaLinha = (e: React.MouseEvent<HTMLElement>) => {
+  e.currentTarget.style.backgroundColor = tokens.cor.linha;
+};
+const apagaLinha = (e: React.MouseEvent<HTMLElement>) => {
+  e.currentTarget.style.backgroundColor = "transparent";
+};
+
 /** Seleção do mapa → sigla UF p/ focar o filtro (fail-closed: EXTERIOR e
  *  seleções desconhecidas retornam null em vez de focar errado). Aceita
  *  sigla UF (fallback em lista/teclado) ou IBGE7 (clique no canvas).
@@ -485,7 +502,17 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
             </thead>
             <tbody>
               {ufs.map((r) => (
-                <tr key={r.uf}><td><a href={`/regiao/${r.uf}`}>{r.uf}</a></td><td style={NUM_TABULAR}>{formatVotes(r.votos)}</td></tr>
+                <tr
+                  key={r.uf}
+                  style={{ backgroundColor: "transparent" }}
+                  onMouseEnter={realcaLinha}
+                  onMouseLeave={apagaLinha}
+                ><td><a
+                  href={`/regiao/${r.uf}`}
+                  style={{ color: tokens.cor.tinta, transition: TRANSICAO_COR_HOVER }}
+                  onMouseEnter={realcaLink}
+                  onMouseLeave={apagaLink}
+                >{r.uf}</a></td><td style={NUM_TABULAR}>{formatVotes(r.votos)}</td></tr>
               ))}
             </tbody>
           </table>
@@ -541,7 +568,12 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
             </thead>
             <tbody>
               {cands.map((r) => (
-                <tr key={r.candidato_id}>
+                <tr
+                  key={r.candidato_id}
+                  style={{ backgroundColor: "transparent" }}
+                  onMouseEnter={realcaLinha}
+                  onMouseLeave={apagaLinha}
+                >
                   <td>{r.nome_urna}</td><td>{r.partido}</td><td style={NUM_TABULAR}>{formatVotes(r.votos)}</td>
                 </tr>
               ))}
@@ -597,7 +629,12 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
               </thead>
               <tbody>
                 {ev.map((r) => (
-                  <tr key={r.ano}><td style={NUM_TABULAR}>{r.ano}</td><td style={NUM_TABULAR}>{formatVotes(r.votos)}</td></tr>
+                  <tr
+                    key={r.ano}
+                    style={{ backgroundColor: "transparent" }}
+                    onMouseEnter={realcaLinha}
+                    onMouseLeave={apagaLinha}
+                  ><td style={NUM_TABULAR}>{r.ano}</td><td style={NUM_TABULAR}>{formatVotes(r.votos)}</td></tr>
                 ))}
               </tbody>
             </table>

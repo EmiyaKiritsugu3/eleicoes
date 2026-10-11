@@ -34,7 +34,20 @@ export default function Nav() {
             {link.label}
           </a>
         ) : (
-          <a key={link.href} href={link.href}>
+          <a
+            key={link.href}
+            href={link.href}
+            style={{
+              color: tokens.cor.tinta,
+              transition: `color ${tokens.movimento.duracaoCurtaMs}ms ${tokens.movimento.easing}`,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = tokens.cor.destaqueVerde;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = tokens.cor.tinta;
+            }}
+          >
             {link.label}
           </a>
         ),
