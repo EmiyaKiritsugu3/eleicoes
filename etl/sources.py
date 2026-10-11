@@ -35,6 +35,35 @@ V1_DATASETS: list[dict] = [
 ]
 
 
+"""De-para oficial TSE→IBGE7 (EVOLVE-15, desbloqueio do fato real).
+
+Fonte (catálogo, rastreabilidade):
+https://dadosabertos.tse.jus.br/dataset/codigos-oficiais-de-uf-e-municipios-segundo-o-tse-e-o-ibge
+Recurso (CDN oficial): municipio_tse_ibge.zip — CSV Latin-1 `;`-quoted
+com CD_MUNICIPIO_TSE (4–5 dígitos) ↔ CD_MUNICIPIO_IBGE (IBGE7).
+Verificado em 2026-10-11: 5571 linhas, bijeção 5571↔5571, DT_GERACAO
+04/10/2026, `leiame.pdf` com o layout. `sha256` é `None` até a primeira
+ingestão — o hash real é calculado por `etl.fetch.download_dataset` e
+registrado via `etl.depara.register_depara_ingest`. Parsing + gates em
+`etl.depara.parse_depara_csv` (fail-closed, sem chute de mapeamento).
+"""
+
+DEPARA_CATALOG = (
+    "https://dadosabertos.tse.jus.br/dataset/"
+    "codigos-oficiais-de-uf-e-municipios-segundo-o-tse-e-o-ibge"
+)
+
+DEPARA_DATASET: dict = {
+    "nome": "municipio_tse_ibge",
+    "url": (
+        "https://cdn.tse.jus.br/estatistica/sead/odsele/"
+        "municipio_tse_ibge/municipio_tse_ibge.zip"
+    ),
+    "dataset": DEPARA_CATALOG,
+    "sha256": None,
+}
+
+
 """Tabela do Censo Demográfico IBGE 2022 por município.
 
 Fonte (catálogo, rastreabilidade):

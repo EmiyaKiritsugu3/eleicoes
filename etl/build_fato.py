@@ -254,7 +254,7 @@ def _float_or_none(v):
 
 
 def build_fato(duckdb_path, out_dir, ano, turno, cargo,
-               censo_total_oficial=None) -> str:
+               censo_total_oficial=None, depara_url=None) -> str:
     """Gera o fato municipal de (ano, turno, cargo); devolve o path do JSON."""
     try:
         ano = int(ano)
@@ -437,6 +437,9 @@ def build_fato(duckdb_path, out_dir, ano, turno, cargo,
     # mirror servido (porta reprovada levanta com o mirror intocado).
     _write_json_atomico(out_path, payload)
     sha = hashlib.sha256(out_path.read_bytes()).hexdigest()
+    fontes = [tse_url, CENSO_DATASETS[0]["dataset"]]
+    if depara_url:  # EVOLVE-15: join TSE→IBGE7 aplicado no pipeline
+        fontes.append(depara_url)
     ingestion = {
         "source_url": tse_url,
         "sha256": sha,
@@ -449,7 +452,7 @@ def build_fato(duckdb_path, out_dir, ano, turno, cargo,
         "cargo": cargo_slug,
         "tipo": "fato_municipal",
         "rows": len(municipios),
-        "fontes": [tse_url, CENSO_DATASETS[0]["dataset"]],
+        "fontes": fontes,
     }
     db_manifest_path = db_path.parent / "manifest.json"
     _atualizar_manifest_db(db_manifest_path, ingestion)
