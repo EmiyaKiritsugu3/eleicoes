@@ -8,7 +8,7 @@ import SourceBadge from "./SourceBadge";
 import SealSlot from "./SealSlot";
 import CopyShare from "./CopyShare";
 import ExportCsv from "./ExportCsv";
-import { ENTRADAS_CURADA } from "../lib/export";
+import { ENTRADAS_HOME } from "../lib/export";
 import perguntasJson from "../data/perguntas.json";
 import {
   evolucaoAnual,
@@ -42,10 +42,13 @@ export function ufDeSelecaoMapa(sel: string): string | null {
 }
 
 /** Linhas do CSV da Home (EVOLVE-12, última superfície sem export):
- *  ranking por UF exibido no mapa + contexto de filtro (`f_*`, paridade
- *  com `/analisar`) + `entradas` (paridade com a Curada — fonte única
- *  `ENTRADAS_CURADA` em `lib/export`). Proveniência via `buildCsvExport`
- *  (gate oficial no botão — sem hash, desabilitado). */
+ *  ranking por UF exibido no mapa + contexto dos filtros que o ranking
+ *  aplica (`f_ano/f_cargo/f_uf`, paridade com `/analisar`) + `entradas`
+ *  (fonte única `ENTRADAS_HOME` em `lib/export` — só votos TSE, sem
+ *  demografia do Censo que o ranking não usa). Sem `f_candidato`: o
+ *  `rankingUf` ignora candidato no V1 (cf. `NOTA_CANDIDATO_GLOBAL`), então
+ *  a coluna implicaria filtragem que não houve. Proveniência via
+ *  `buildCsvExport` (gate oficial no botão — sem hash, desabilitado). */
 export function homeCsvRows(
   ufs: { uf: string; votos: number }[],
   filtros: Filtros,
@@ -53,11 +56,10 @@ export function homeCsvRows(
   return (Array.isArray(ufs) ? ufs : []).map((r) => ({
     uf: r?.uf ?? "",
     votos: r?.votos ?? null,
-    entradas: ENTRADAS_CURADA,
+    entradas: ENTRADAS_HOME,
     f_ano: filtros?.ano ?? "",
     f_cargo: filtros?.cargo ?? "",
     f_uf: filtros?.uf ?? "",
-    f_candidato: filtros?.candidato ?? "",
   }));
 }
 

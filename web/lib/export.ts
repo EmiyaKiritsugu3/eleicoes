@@ -70,12 +70,17 @@ export function buildShareUrl(
   return qs ? `/analisar?${qs}` : "/analisar";
 }
 
-/** Famílias de entrada da resposta (fonte única — Curada, Explorar,
- *  Verificar e Home importam daqui; antes só a Curada definia e o CSV das
- *  demais atribuía tudo ao TSE — votos/eleitorado vêm do fato TSE, a
- *  demografia do Censo IBGE via `dim_municipio`; header fonte/url/hash/data
- *  segue do artefato auditado). */
+/** Famílias de entrada da resposta (fonte única — Curada, Explorar e
+ *  Verificar importam daqui; antes só a Curada definia e o CSV das demais
+ *  atribuía tudo ao TSE — votos/eleitorado vêm do fato TSE, a demografia
+ *  do Censo IBGE via `dim_municipio`; header fonte/url/hash/data segue do
+ *  artefato auditado). */
 export const ENTRADAS_CURADA = "votos TSE + demografia Censo IBGE (via fato auditado)";
+
+/** Famílias de entrada do ranking por UF da Home (fonte única): só votos
+ *  TSE do agregado por UF — sem demografia do Censo (o ranking não cruza
+ *  com `demo`; `ENTRADAS_CURADA` aqui super-reivindicaria). */
+export const ENTRADAS_HOME = "votos TSE (agregado por UF)";
 
 /** Filtros que o CSV do `/analisar` carrega como contexto (`f_*`). */
 export interface FiltrosCsvAnalisar {
@@ -164,7 +169,9 @@ function csvEscape(v: unknown): string {
   const s0 = v === null || v === undefined ? "" : String(v);
   // Neutraliza fórmula de planilha (M12): apóstrofo ANTES do quote CSV,
   // senão `'"=a,b"'` quebra em dois campos — o correto é `"'=a,b"`.
-  const s = /^[=+\-@]/.test(s0) ? `'${s0}` : s0;
+  // Inclui tab/CR inicial (fórmula com prefixo `\t=`/`\r=` passaria pelo
+  // teste só de `=+-@` e chegaria à planilha sem neutralização).
+  const s = /^[=+\-@\t\r]/.test(s0) ? `'${s0}` : s0;
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

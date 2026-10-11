@@ -19,7 +19,7 @@ import {
 import PainelRegiao from "../components/PainelRegiao";
 import { VerificarConteudo, verificarCsvRows, type Check } from "../app/verificar/Verificar";
 import { CuradaConteudo, curadaCsvRows, type PerguntaCurada } from "../app/perguntas/Curada";
-import { buildCsvExport, ENTRADAS_CURADA } from "../lib/export";
+import { buildCsvExport, ENTRADAS_CURADA, ENTRADAS_HOME } from "../lib/export";
 import type { SealState } from "../lib/data";
 import type { MunRow } from "../lib/motor";
 import {
@@ -77,17 +77,29 @@ function mockFetchAnalisar() {
 afterEach(teardownJsdom);
 
 describe("EVOLVE-12: coluna entradas (fonte única ENTRADAS_CURADA)", () => {
-  it("homeCsvRows carrega entradas + f_*", () => {
+  it("homeCsvRows carrega entradas honestas + só f_* aplicados (sem f_candidato)", () => {
     const rows = homeCsvRows(
       [{ uf: "SP", votos: 2000 }, { uf: "RJ", votos: 1000 }],
-      { ano: "2022", cargo: "presidente", uf: "", candidato: "" },
+      { ano: "2022", cargo: "presidente", uf: "", candidato: "lula" },
     );
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toMatchObject({ uf: "SP", votos: 2000, entradas: ENTRADAS_CURADA });
-    expect(rows[0]).toMatchObject({ f_ano: "2022", f_cargo: "presidente" });
+    // Ranking por UF não usa demografia do Censo nem filtra por candidato.
+    expect(rows[0]).toMatchObject({ uf: "SP", votos: 2000, entradas: ENTRADAS_HOME });
+    expect(rows[0]).toMatchObject({ f_ano: "2022", f_cargo: "presidente", f_uf: "" });
+    expect(rows[0]).not.toHaveProperty("f_candidato");
     const csv = buildCsvExport(rows, SEAL_OK.official);
     expect(csv.split("\n")[0]).toContain("entradas");
-    expect(csv).toContain("Censo IBGE");
+    expect(csv).toContain("agregado por UF");
+  });
+
+  it("csvEscape neutraliza fórmula com prefixo tab/CR (antes do quote)", () => {
+    const csv = buildCsvExport(
+      [{ uf: "SP", votos: 1, entradas: "\t=1+1" }, { uf: "RJ", votos: 2, entradas: "\r@x" }],
+      SEAL_OK.official,
+    );
+    const lines = csv.split("\n");
+    expect(lines[1]).toContain("'\t=1+1");
+    expect(lines[2]).toContain("'\r@x");
   });
 
   it("explorarCsvRows carrega entradas (paridade Curada)", () => {
