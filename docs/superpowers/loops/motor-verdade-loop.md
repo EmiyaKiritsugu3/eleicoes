@@ -167,3 +167,7 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 ## EVOLVE-10 mergeado (2026-10-11 ~01:25 UTC)
 - Merge PR #12 (merge commit e3e74d6): tudo verde — CI ×2, GitGuardian, CodeRabbit, cubic ("All reported issues were addressed"), Sonar. Branch evolve-10 deletada.
 - Total: 6 tasks + R1/R2 com re-reviews limpos. 5/5 superfícies gated. Suítes finais: pytest 202 + vitest 506 + tsc clean + build.
+
+## EVOLVE-11 mergeado (2026-10-11 ~01:30 UTC)
+- Merge PR #13 (merge commit 55645cd): tudo verde — CI ×2, GitGuardian, CodeRabbit (rate-limited, sem findings), cubic (19 findings triados: 16 corrigidos R1/R3/R4, 3 wont_fix justificados em thread), Sonar (dup 8.3%→1.7% via ExportCsv + fixtures fonte única). Branch evolve-11 deletada.
+- Total: 6 tasks (pleito switcher /regiao, comparador desabilitado, share Home, CSV /regiao, CSV curadas, staleness SSG) + R1 (ExportCsv fonte única) + R2 (dedupe testes) + R3 (10 findings) + R4 (re-review 8). Suítes finais: pytest 202 + vitest 547 + tsc clean + build 52/52.
