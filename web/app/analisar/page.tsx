@@ -21,6 +21,7 @@ import {
 import {
   buildCsvExport,
   buildShareUrl,
+  downloadCsv,
   emptyStateFor,
   parseAnalisarSearchParams,
   semCoberturaTurnoZona,
@@ -64,18 +65,6 @@ const CHAVE_SEM_PARTIDO = "__sem_partido__";
 
 function chavePartido(bruto: string): string {
   return bruto === "" ? CHAVE_SEM_PARTIDO : `partido:${bruto}`;
-}
-
-function downloadCsv(filename: string, csv: string) {
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
 }
 
 export default function Analisar() {

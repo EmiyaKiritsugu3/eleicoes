@@ -70,6 +70,21 @@ export function buildShareUrl(
   return qs ? `/analisar?${qs}` : "/analisar";
 }
 
+/** Download client-side do CSV (fonte única — Analisar, Explorar e
+ *  PainelRegiao importam daqui em vez de forkar; gate Sonar duplication).
+ *  Só executa em handler de clique (DOM), nunca em SSR. */
+export function downloadCsv(filename: string, csv: string) {
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 /** Zero linhas -> "sem dado oficial" (nunca tela branca / zero silencioso). */
 export function emptyStateFor(rows: unknown): string {
   if (!Array.isArray(rows) || rows.length === 0) return SEM_DADO;
