@@ -31,8 +31,34 @@ import { ALERTA_STYLE, MOTIVO_SEM_HASH, SEM_DADO } from "../lib/textos";
 import { tokens } from "../lib/tokens";
 
 const [giganteSize, giganteLine] = tokens.texto.gigante.split("/");
+const [tituloSize, tituloLine] = tokens.texto.titulo.split("/");
 const [secaoSize, secaoLine] = tokens.texto.secao.split("/");
+const [miudoSize, miudoLine] = tokens.texto.miudo.split("/");
 const FILETE = `1px solid ${tokens.cor.linha}`;
+
+// Task 5 (display-only): cabeçalhos de tabela editoriais + células
+// numéricas tabulares. Constantes de estilo puras, sem estado semântico.
+const TH_EDITORIAL: React.CSSProperties = {
+  textTransform: "uppercase",
+  fontSize: miudoSize,
+  lineHeight: miudoLine,
+  borderBottom: `3px double ${tokens.cor.linha}`,
+};
+const NUM_TABULAR: React.CSSProperties = {
+  fontVariantNumeric: "tabular-nums",
+};
+const INPUT_EDITORIAL: React.CSSProperties = {
+  border: `1px solid ${tokens.cor.linha}`,
+  borderRadius: tokens.raio.sm,
+};
+// Inline styles não fazem :focus — onFocus/onBlur alternam o outline
+// direto no nó (display-only, sem estado semântico).
+const focaInput = (e: React.FocusEvent<HTMLInputElement>) => {
+  e.currentTarget.style.outline = `2px solid ${tokens.cor.destaqueVerde}`;
+};
+const desfocaInput = (e: React.FocusEvent<HTMLInputElement>) => {
+  e.currentTarget.style.outline = "";
+};
 
 /** Seleção do mapa → sigla UF p/ focar o filtro (fail-closed: EXTERIOR e
  *  seleções desconhecidas retornam null em vez de focar errado). Aceita
@@ -301,7 +327,15 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
           {(["ano", "cargo", "uf", "candidato"] as const).map((k) => (
             <label key={k}>
               {k}{" "}
-              <input value={f[k] ?? ""} onChange={set(k)} placeholder={k} aria-label={k} />
+              <input
+                value={f[k] ?? ""}
+                onChange={set(k)}
+                placeholder={k}
+                aria-label={k}
+                style={INPUT_EDITORIAL}
+                onFocus={focaInput}
+                onBlur={desfocaInput}
+              />
             </label>
           ))}
           <label>
@@ -312,6 +346,9 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
               placeholder="município"
               aria-label="município"
               title="por município em breve — V1 agrega por UF"
+              style={INPUT_EDITORIAL}
+              onFocus={focaInput}
+              onBlur={desfocaInput}
             />
             <small>por município em breve — V1 agrega por UF</small>
           </label>
@@ -340,7 +377,15 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
           <p role="alert">{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
         ) : (
           <ul>
-            <li>Total de votos: {formatVotes(res.totalVotos)}</li>
+            <li
+              style={{
+                fontSize: tituloSize,
+                lineHeight: tituloLine,
+                color: tokens.cor.destaqueVerde,
+              }}
+            >
+              Total de votos: {formatVotes(res.totalVotos)}
+            </li>
             <li>Linhas: {formatVotes(resumo?.total_linhas ?? 0)}</li>
             <li>Anos: {(resumo?.anos ?? []).join(", ") || SEM_DADO}</li>
           </ul>
@@ -401,11 +446,11 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
           <table>
             <caption>Votos por UF</caption>
             <thead>
-              <tr><th scope="col">UF</th><th scope="col">Votos</th></tr>
+              <tr><th scope="col" style={TH_EDITORIAL}>UF</th><th scope="col" style={TH_EDITORIAL}>Votos</th></tr>
             </thead>
             <tbody>
               {ufs.map((r) => (
-                <tr key={r.uf}><td><a href={`/regiao/${r.uf}`}>{r.uf}</a></td><td>{formatVotes(r.votos)}</td></tr>
+                <tr key={r.uf}><td><a href={`/regiao/${r.uf}`}>{r.uf}</a></td><td style={NUM_TABULAR}>{formatVotes(r.votos)}</td></tr>
               ))}
             </tbody>
           </table>
@@ -449,12 +494,12 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
           <table>
             <caption>Ranking de candidatos por votos</caption>
             <thead>
-              <tr><th scope="col">Nome</th><th scope="col">Partido</th><th scope="col">Votos</th></tr>
+              <tr><th scope="col" style={TH_EDITORIAL}>Nome</th><th scope="col" style={TH_EDITORIAL}>Partido</th><th scope="col" style={TH_EDITORIAL}>Votos</th></tr>
             </thead>
             <tbody>
               {cands.map((r) => (
                 <tr key={r.candidato_id}>
-                  <td>{r.nome_urna}</td><td>{r.partido}</td><td>{formatVotes(r.votos)}</td>
+                  <td>{r.nome_urna}</td><td>{r.partido}</td><td style={NUM_TABULAR}>{formatVotes(r.votos)}</td>
                 </tr>
               ))}
             </tbody>
@@ -489,7 +534,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
                 <li key={r.ano} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
                   <span style={{ width: 48 }}>{r.ano}</span>
                   <Bar value={r.votos} max={maxEv} />
-                  <span>{formatVotes(r.votos)}</span>
+                  <span style={NUM_TABULAR}>{formatVotes(r.votos)}</span>
                 </li>
               ))}
             </ul>
@@ -497,11 +542,11 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
             <table>
               <caption>Evolução anual de votos (tabela equivalente)</caption>
               <thead>
-                <tr><th scope="col">Ano</th><th scope="col">Votos</th></tr>
+                <tr><th scope="col" style={TH_EDITORIAL}>Ano</th><th scope="col" style={TH_EDITORIAL}>Votos</th></tr>
               </thead>
               <tbody>
                 {ev.map((r) => (
-                  <tr key={r.ano}><td>{r.ano}</td><td>{formatVotes(r.votos)}</td></tr>
+                  <tr key={r.ano}><td style={NUM_TABULAR}>{r.ano}</td><td style={NUM_TABULAR}>{formatVotes(r.votos)}</td></tr>
                 ))}
               </tbody>
             </table>
