@@ -141,30 +141,57 @@ describe("onda-2 task 3: skeletons + fade-in na Home", () => {
     }
   });
 
-  it("seções com fade + reduced-motion desliga transição", async () => {
+  it("loading: seção visível (opacity 1) com Skeleton; resolvido: wrapper com fade", async () => {
     fetchPendente();
     const div = await renderJsdom(<HomeContent />);
     for (const rotulo of ["Resumo", "Mapa por UF", "Ranking de candidatos", "Evolução"]) {
       const sec = div.querySelector(`section[aria-label="${rotulo}"]`) as HTMLElement | null;
       expect(sec).not.toBeNull();
-      expect(sec!.style.opacity).toBe("0");
-      expect(sec!.style.transition).toContain("250ms");
+      // O fade vive no wrapper do conteúdo resolvido — a seção fica
+      // opacity 1 p/ Skeleton + h2 renderizarem visíveis no loading.
+      expect(sec!.style.opacity).toBe("1");
+      const st = sec!.querySelector('[role="status"]');
+      expect(st).not.toBeNull();
+      expect(st!.querySelector('[aria-hidden="true"]')).not.toBeNull();
     }
     await teardownJsdom();
-    fetchPendente();
+    mockFetchHome(MANIFEST_OK, "ausente");
+    const pronto = await renderJsdom(<HomeContent />);
+    for (const rotulo of ["Resumo", "Mapa por UF", "Ranking de candidatos", "Evolução"]) {
+      const sec = pronto.querySelector(`section[aria-label="${rotulo}"]`) as HTMLElement | null;
+      expect(sec).not.toBeNull();
+      expect(sec!.style.opacity).toBe("1");
+      const fade = [...sec!.querySelectorAll("div")].find(
+        (d) =>
+          (d as HTMLElement).style.opacity === "1" &&
+          (d as HTMLElement).style.transition.includes("250ms"),
+      );
+      expect(fade).not.toBeUndefined();
+    }
+  });
+
+  it("reduced-motion desliga a transição do conteúdo resolvido (pós-effect)", async () => {
+    mockFetchHome(MANIFEST_OK, "ausente");
     const mm = vi.fn(() => ({ matches: true }));
     vi.stubGlobal("matchMedia", mm);
     const w = window as unknown as Record<string, unknown>;
     const prevMm = w["matchMedia"];
     w["matchMedia"] = mm;
     try {
+      // renderJsdom drena effects via act: semMovimento já flipou p/ true.
       const reduzido = await renderJsdom(<HomeContent />);
       const sec = reduzido.querySelector(
         'section[aria-label="Resumo"]',
       ) as HTMLElement | null;
       expect(sec).not.toBeNull();
-      expect(sec!.style.transition).toBe("none");
+      expect(sec!.style.opacity).toBe("1");
+      const fade = [...sec!.querySelectorAll("div")].find(
+        (d) => (d as HTMLElement).style.opacity === "1",
+      );
+      expect(fade).not.toBeUndefined();
+      expect((fade as HTMLElement).style.transition).toBe("none");
     } finally {
+      vi.unstubAllGlobals();
       if (prevMm === undefined) delete w["matchMedia"];
       else w["matchMedia"] = prevMm;
     }

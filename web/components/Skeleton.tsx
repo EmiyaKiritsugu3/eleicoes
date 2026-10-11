@@ -6,15 +6,12 @@ type SkeletonProps = {
   linhas?: number;
   /** True = bloco único 4:3 (mapa). Default false. */
   bloco?: boolean;
-  /** Texto exposto pelo CHAMADOR em `role=status`. Default "a carregar".
-   * Nunca renderizado aqui dentro (aria-hidden não leva texto visível). */
-  rotulo?: string;
 };
 
 /** Placeholder display-only de carregamento (Onda 2, movimento).
  *
  * Puro e SSR-safe: sem hooks, sem window, sem "use client". Renderiza um
- * `<span aria-hidden="true">` com barras em `tokens.cor.linha` + exatamente
+ * `<div aria-hidden="true">` com barras em `tokens.cor.linha` + exatamente
  * 1 tag `<style>` com `@keyframes skeleton-pulse` (nome via
  * `tokens.movimento.keyframePulso`) e media query
  * `prefers-reduced-motion: reduce` que desliga a animação.
@@ -22,10 +19,7 @@ type SkeletonProps = {
 export default function Skeleton({
   linhas = 3,
   bloco = false,
-  rotulo = "a carregar",
 }: SkeletonProps) {
-  // Default documentado p/ o chamador; nada de texto dentro do aria-hidden.
-  void rotulo;
   const quadro = tokens.movimento.keyframePulso;
   const classe = `${quadro}-barra`;
   const css =
@@ -40,7 +34,7 @@ export default function Skeleton({
   };
   return (
     <>
-      <span aria-hidden="true">
+      <div aria-hidden="true">
         {bloco ? (
           <div className={classe} style={{ ...base, width: "100%", aspectRatio: "4 / 3" }} />
         ) : (
@@ -52,7 +46,7 @@ export default function Skeleton({
             />
           ))
         )}
-      </span>
+      </div>
       <style>{css}</style>
     </>
   );

@@ -14,8 +14,8 @@ describe("Skeleton (placeholder display-only)", () => {
     expect(contar(html, "skeleton-pulse")).toBeGreaterThanOrEqual(1);
     // Exatamente uma tag <style> por render.
     expect(contar(html, "<style")).toBe(1);
-    // N barras pedidas.
-    expect(contar(html, "<div")).toBe(2);
+    // N barras pedidas + wrapper <div aria-hidden> (div>div válido).
+    expect(contar(html, "<div")).toBe(3);
   });
 
   it("aria-hidden sem texto visível", () => {
@@ -34,6 +34,6 @@ describe("Skeleton (placeholder display-only)", () => {
 
   it("linhas default = 3", () => {
     const html = renderToStaticMarkup(<Skeleton />);
-    expect(contar(html, "<div")).toBe(3);
+    expect(contar(html, "<div")).toBe(4);
   });
 });

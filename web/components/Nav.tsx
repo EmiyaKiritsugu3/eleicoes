@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { tokens } from "../lib/tokens";
 
@@ -17,6 +17,14 @@ const LINKS = [
 export default function Nav() {
   const path = usePathname();
   const current = path.split(/[?#]/)[0];
+  // Onda-2 final (display-only): hover com transição desliga com
+  // prefers-reduced-motion. useState(false) + effect: SSR + primeiro
+  // render do cliente idênticos (sem mismatch de hidratação).
+  const [semMovimento, setSemMovimento] = useState(false);
+  useEffect(() => {
+    if (typeof window !== "undefined" && typeof window.matchMedia === "function")
+      setSemMovimento(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  }, []);
   return (
     <nav aria-label="Principal" style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
       {LINKS.map((link) =>
@@ -39,7 +47,9 @@ export default function Nav() {
             href={link.href}
             style={{
               color: tokens.cor.tinta,
-              transition: `color ${tokens.movimento.duracaoCurtaMs}ms ${tokens.movimento.easing}`,
+              transition: semMovimento
+                ? "none"
+                : `color ${tokens.movimento.duracaoCurtaMs}ms ${tokens.movimento.easing}`,
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.color = tokens.cor.destaqueVerde;
