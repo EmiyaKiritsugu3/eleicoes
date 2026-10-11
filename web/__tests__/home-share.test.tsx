@@ -56,12 +56,13 @@ afterEach(async () => {
 });
 
 describe("home: share de proveniência (EVOLVE-11 Task 3)", () => {
-  it("com selo oficial: 'Copiar link' com hash do manifest", async () => {
+  it("com selo oficial: 'Copiar link' com hash do manifest (cubic R3)", async () => {
     manifestAtual = MANIFEST_OK;
     instalar();
     const div = await montar();
     expect(div.innerHTML).toContain("Copiar link");
-    expect(div.innerHTML).toContain("hash=");
+    // Proveniência real: o hash da ingestão oficial, não só `hash=` vazio.
+    expect(div.innerHTML).toContain(`hash=${"a".repeat(64)}`);
   });
 
   it("sem selo oficial: sem share (link sem hash não reproduziria nada)", async () => {
@@ -69,5 +70,29 @@ describe("home: share de proveniência (EVOLVE-11 Task 3)", () => {
     instalar();
     const div = await montar();
     expect(div.innerHTML).not.toContain("Copiar link");
+  });
+
+  it("?hash= divergente do manifest: alerta (cubic R3)", async () => {
+    window.history.replaceState(null, "", "/?hash=" + "0".repeat(64));
+    try {
+      manifestAtual = MANIFEST_OK;
+      instalar();
+      const div = await montar();
+      expect(div.innerHTML).toContain("diverge do manifest atual");
+    } finally {
+      window.history.replaceState(null, "", "/");
+    }
+  });
+
+  it("?hash= igual ao manifest: sem alerta", async () => {
+    window.history.replaceState(null, "", "/?hash=" + "a".repeat(64));
+    try {
+      manifestAtual = MANIFEST_OK;
+      instalar();
+      const div = await montar();
+      expect(div.innerHTML).not.toContain("diverge do manifest atual");
+    } finally {
+      window.history.replaceState(null, "", "/");
+    }
   });
 });

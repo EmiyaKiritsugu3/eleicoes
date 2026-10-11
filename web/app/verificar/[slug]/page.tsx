@@ -14,7 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { VerificarConteudo, type Check } from "../Verificar";
 import SeloStaleness from "../../../components/SeloStaleness";
-import { fatoDatasetDe, getSealParaDataset, vereditoTemProva } from "../../../lib/regiao";
+import { fatoDatasetDe, getSealParaDataset, hashResumoSeal, vereditoTemProva } from "../../../lib/regiao";
 import type { FatoRegiao } from "../../../components/PainelRegiao";
 import checksJson from "../../../data/checks.json";
 
@@ -60,7 +60,7 @@ export default function PaginaVerificar({ params }: { params: { slug: string } }
       {/* Congelamento documentado + staleness display-only (EVOLVE-11 Task 6:
           SSG congela o pleito default do build; o alerta abaixo acusa
           divergência do manifest sem tocar em números/selo/fato). */}
-      <SeloStaleness dataset={dataset} hashBuild={seal.official?.hash ?? ""} />
+      <SeloStaleness dataset={dataset} hashBuild={hashResumoSeal(seal)} />
       <VerificarConteudo
         check={check}
         slug={params.slug}

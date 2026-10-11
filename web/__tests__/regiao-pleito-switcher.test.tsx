@@ -25,6 +25,8 @@ vi.mock("next/navigation", () => ({
 
 const DS_A = "fato_2022_1_presidente";
 const DS_B = "fato_2022_2_governador";
+// Bem-formado (passa no allowlist) mas sem registro no manifest.
+const DS_SEM_REGISTRO = "fato_2020_1_presidente";
 
 // FATO mínimo p/ o fetch roteado (demo via `demoCurada` de ./helpers).
 const FATO = {
@@ -128,12 +130,31 @@ describe("/regiao: pleito switcher (EVOLVE-11 Task 1)", () => {
     expect(div.querySelector('select[aria-label="pleito"]')).toBe(null);
   });
 
-  it("?fato= inválido: select marca o default (fail-closed)", async () => {
+  it("?fato= inválido: select marca o default e nenhum fetch com traversal (cubic R3)", async () => {
     fatoParamAtual = "fato_../etc-passwd";
     instalar();
     const div = await montar();
     const sel = div.querySelector('select[aria-label="pleito"]') as HTMLSelectElement | null;
     expect(sel).not.toBe(null);
     expect(sel?.value).toBe(DS_A);
+    // Override malformado cai no default: o único fato buscado é o default.
+    expect(chamadas.filter((c) => c.includes("/data/fato_"))).toEqual([`/data/${DS_A}.json`]);
+    expect(chamadas.some((c) => c.includes(".."))).toBe(false);
+  });
+
+  it("?fato= bem-formado mas sem registro: select exibe o default (cubic R3)", async () => {
+    fatoParamAtual = DS_SEM_REGISTRO;
+    instalar();
+    const div = await montar();
+    const sel = div.querySelector('select[aria-label="pleito"]') as HTMLSelectElement | null;
+    expect(sel).not.toBe(null);
+    expect(sel?.value).toBe(DS_A);
+    // Fail-closed preservado: sem registro, sem números do dataset alheio
+    // (o fetch do override bem-formado volta com selo vazio → suprimido).
+    expect(div.innerHTML).toContain("sem dado oficial");
+    expect(div.innerHTML).not.toContain("Cand A");
+    const chamadasFato = chamadas.filter((c) => c.includes("/data/fato_"));
+    expect(chamadasFato).toEqual([`/data/${DS_SEM_REGISTRO}.json`]);
+    expect(chamadas.some((c) => c.includes(".."))).toBe(false);
   });
 });

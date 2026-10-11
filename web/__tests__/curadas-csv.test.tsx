@@ -1,11 +1,13 @@
 // EVOLVE-11 Task 5 (CSV nas curadas, paridade Analisar/Explorar/Regiao):
 // Verificar e Curada tinham share mas zero export. Botão "Exportar CSV"
 // desabilitado sem `seal.official` (gate oficial); habilitado exporta os
-// números do veredito com header de proveniência. Componentes puros:
-// SSR estático basta.
+// números do veredito com header de proveniência. Marcações via SSR;
+// download real via clique jsdom (cubic R3).
+// @vitest-environment jsdom
 import React from "react";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { act } from "react-dom/test-utils";
 import {
   VerificarConteudo,
   verificarCsvRows,
@@ -22,8 +24,12 @@ import {
   CANDIDATOS_EXEMPLO as CANDIDATOS,
   esperarBotaoExport,
   linhas40Municipio as linhas40,
+  renderJsdom,
+  teardownJsdom,
 } from "./helpers";
 import type { MunRow } from "../lib/motor";
+
+(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 const HASH = "d".repeat(64);
 const SEAL_OK: SealState = {
@@ -37,6 +43,37 @@ const SEAL_NULO: SealState = { official: null, hasFixture: false, fixtureHash: "
 function fato() {
   const municipios: MunRow[] = linhas40();
   return { candidatos: CANDIDATOS, municipios };
+}
+
+afterEach(teardownJsdom);
+
+// Download real via clique (cubic R3): jsdom não tem createObjectURL —
+// stub captura o Blob e o teste lê o CSV (pin da fiação botão→CSV).
+async function clicarExportar(node: React.ReactElement): Promise<string> {
+  const vistos: Blob[] = [];
+  const U = URL as unknown as Record<string, unknown>;
+  const prevCreate = U["createObjectURL"];
+  const prevRevoke = U["revokeObjectURL"];
+  U["createObjectURL"] = (b: Blob) => {
+    vistos.push(b);
+    return "blob:mock";
+  };
+  U["revokeObjectURL"] = () => {};
+  try {
+    const div = await renderJsdom(node);
+    const btn = [...div.querySelectorAll("button")].find(
+      (b) => b.textContent === "Exportar CSV",
+    );
+    expect(btn).not.toBe(undefined);
+    await act(async () => {
+      btn!.click();
+    });
+    expect(vistos.length).toBe(1);
+    return await vistos[0].text();
+  } finally {
+    U["createObjectURL"] = prevCreate;
+    U["revokeObjectURL"] = prevRevoke;
+  }
 }
 
 const CHECK: Check = {
@@ -69,10 +106,11 @@ describe("verificarCsvRows / curadaCsvRows (linhas do CSV das curadas)", () => {
   it("curada: resumo da resposta numa linha + proveniência", () => {
     const rows = curadaCsvRows({
       titulo: "Quem venceu onde", nMunicipios: 40, shareMedio: 0.55,
-      rPearson: 0.1, rSpearman: 0.2, veredito: "padrão sustentado entre os estratos",
+      rPearson: 0.1, rSpearman: 0.2, nPearson: 38, nSpearman: 38,
+      veredito: "padrão sustentado entre os estratos",
     });
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ n_municipios: 40 });
+    expect(rows[0]).toMatchObject({ n_municipios: 40, n_pearson: 38 });
     const csv = buildCsvExport(rows, SEAL_OK.official);
     expect(csv.split("\n")[0]).toContain("fonte,url,hash,data");
     expect(csv).toContain(HASH);
@@ -137,4 +175,28 @@ describe("curadas: botão Exportar CSV (EVOLVE-11 Task 5)", () => {
       for (const html of s.semNumeros()) esperarBotaoExport(html, "ausente");
     });
   }
+});
+
+describe("curadas: download do CSV via clique (cubic R3)", () => {
+  it("verificar: CSV baixado com números do veredito + hash oficial", async () => {
+    const csv = await clicarExportar(
+      React.createElement(VerificarConteudo, {
+        check: CHECK, slug: CHECK.slug, checks: [], fato: fato(), seal: SEAL_OK, manifestChecked: true,
+      }),
+    );
+    expect(csv.split("\n")[0]).toContain("fonte,url,hash,data");
+    expect(csv).toContain(HASH);
+    expect(csv).toContain("sint-vencedor");
+  });
+
+  it("curada: CSV baixado com resumo + n amostral + hash oficial", async () => {
+    const csv = await clicarExportar(
+      React.createElement(CuradaConteudo, {
+        pergunta: PERGUNTA, fato: fato(), seal: SEAL_OK, manifestChecked: true,
+      }),
+    );
+    expect(csv.split("\n")[0]).toContain("fonte,url,hash,data");
+    expect(csv).toContain(HASH);
+    expect(csv).toContain("n_pearson");
+  });
 });

@@ -105,6 +105,10 @@ export interface ResumoCuradaCsv {
   shareMedio: number | null;
   rPearson: number | null;
   rSpearman: number | null;
+  /** n amostral de cada r (cubic R3: filtradas inclui linhas com dado
+   *  ausente que Pearson/Spearman descartam — sem n, o r não é auditável). */
+  nPearson: number | null;
+  nSpearman: number | null;
   veredito: string;
 }
 
@@ -119,6 +123,8 @@ export function curadaCsvRows(r: ResumoCuradaCsv): Record<string, unknown>[] {
       share_medio: r.shareMedio,
       r_pearson: r.rPearson,
       r_spearman: r.rSpearman,
+      n_pearson: r.nPearson,
+      n_spearman: r.nSpearman,
       veredito: r.veredito,
     },
   ];
@@ -610,6 +616,8 @@ export function CuradaConteudo({
               shareMedio,
               rPearson: corrP ? corrP.r : null,
               rSpearman: corrS ? corrS.r : null,
+              nPearson: corrP ? corrP.n : null,
+              nSpearman: corrS ? corrS.n : null,
               veredito: VEREDITO_PT[veredito] ?? veredito,
             })}
             seal={seal.official}

@@ -9,14 +9,18 @@
  * nota fixa de pleito congelado + alerta quando o manifest servido diverge
  * do hash do build (mount + focus/visibility, mesmo padrão das superfícies
  * runtime). Blip (manifest ilegível/malformado) ≠ rotação: mantém o build
- * sem alerta falso (stale-while-revalidate). Comparação só no hash oficial:
- * fixture sem oficial nos dois lados também é igualdade (sem alerta).
+ * sem alerta falso (stale-while-revalidate). Compara o hash oficial, com
+ * fallback p/ hash de fixture quando não há oficial nos dois lados (cubic
+ * R3: rotação só-fixture também alerta); sem prova em ambos, igualdade.
  * `dataset` nulo (build sem manifest) nunca alerta — caso degenerado.
+ * Checks concorrentes (mount/focus/visibility) têm geração: resposta
+ * superada nunca publica (cubic R3, mesmo padrão do `geracaoRef` da
+ * /regiao — sem estado stale por resolução fora de ordem).
  */
 
 import React, { useEffect, useRef, useState } from "react";
 import { fetchJson } from "../lib/fetchJson";
-import { getSealParaDataset, manifestoValidoParaRotacao } from "../lib/regiao";
+import { getSealParaDataset, hashResumoSeal, manifestoValidoParaRotacao } from "../lib/regiao";
 
 /** Nota estática das páginas SSG (fonte única p/ os 2 slugs). */
 export const NOTA_PLEITO_CONGELADO =
@@ -40,16 +44,18 @@ export default function SeloStaleness({
   buildRef.current = hashBuild;
   const datasetRef = useRef(dataset);
   datasetRef.current = dataset;
+  const geracaoRef = useRef(0);
 
   useEffect(() => {
     let vivo = true;
     const conferir = async () => {
+      const minha = ++geracaoRef.current;
       const leitura = await fetchJson("/data/manifest.json");
-      if (!vivo) return;
+      if (!vivo || geracaoRef.current !== minha) return;
       if (leitura.status !== "ok" || !manifestoValidoParaRotacao(leitura.data)) return;
       const atual = getSealParaDataset(leitura.data, datasetRef.current);
-      if (!vivo) return;
-      setDivergiu((atual.official?.hash ?? "") !== buildRef.current);
+      if (!vivo || geracaoRef.current !== minha) return;
+      setDivergiu(hashResumoSeal(atual) !== buildRef.current);
     };
     void conferir();
     const aoFocar = () => {

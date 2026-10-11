@@ -23,7 +23,7 @@ import {
   type ResumoJson,
   type SealState,
 } from "../lib/data";
-import { manifestoValidoParaRotacao, vereditoTemProva } from "../lib/regiao";
+import { isHashDivergente, manifestoValidoParaRotacao, vereditoTemProva } from "../lib/regiao";
 import { fetchJson } from "../lib/fetchJson";
 import { MOTIVO_SEM_HASH, SEM_DADO } from "../lib/textos";
 
@@ -68,6 +68,10 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   const [manifestChecked, setManifestChecked] = useState(false);
   const [malhaFeatures, setMalhaFeatures] = useState<MalhaFeature[] | null>(null);
   const [f, setF] = useState<Filtros>(initialFiltros ?? {});
+  // Hash da URL compartilhada (`/?hash=` do CopyShare — cubic R3): sem
+  // hidratação de filtros na Home, o link ainda é verificável — divergente
+  // do manifest atual, alerta em vez de citar número stale.
+  const [urlHash, setUrlHash] = useState("");
   // EVOLVE-7 Task 6 — trigger vivo de rotação de manifest: `sealRef` é a
   // verdade comparável fora do closure (o effect de foco monta uma vez e
   // nunca veria o `seal` novo); `ocupadoRef` evita fetch duplicado entre o
@@ -107,6 +111,11 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   }, [carregarPesados]);
 
   useEffect(() => {
+    try {
+      setUrlHash(new URLSearchParams(window.location.search).get("hash") ?? "");
+    } catch {
+      setUrlHash("");
+    }
     void carregarDados();
   }, [carregarDados]);
 
@@ -233,6 +242,11 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
           reproduziria nada (fail-closed, sem link vazio). */}
       {manifestChecked && seal.official && (
         <p><CopyShare url={`/?hash=${seal.official.hash}`} /></p>
+      )}
+      {isHashDivergente(urlHash, seal.official?.hash ?? "", manifestChecked) && (
+        <p role="alert" className="badge badge-warn" style={ALERTA_STYLE}>
+          hash da URL diverge do manifest atual — revalide a fonte antes de citar
+        </p>
       )}
 
       <section aria-label="Busca">

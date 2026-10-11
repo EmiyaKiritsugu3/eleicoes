@@ -72,7 +72,9 @@ export function buildShareUrl(
 
 /** Download client-side do CSV (fonte única — Analisar, Explorar e
  *  PainelRegiao importam daqui em vez de forkar; gate Sonar duplication).
- *  Só executa em handler de clique (DOM), nunca em SSR. */
+ *  Só executa em handler de clique (DOM), nunca em SSR. A revogação do
+ *  Blob URL é diferida (cubic P1: revogar logo após `click()` pode
+ *  invalidar antes do navegador consumir o CSV). */
 export function downloadCsv(filename: string, csv: string) {
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -82,7 +84,7 @@ export function downloadCsv(filename: string, csv: string) {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 100);
 }
 
 /** Zero linhas -> "sem dado oficial" (nunca tela branca / zero silencioso). */

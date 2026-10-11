@@ -13,7 +13,7 @@ import path from "node:path";
 import { notFound } from "next/navigation";
 import { CuradaConteudo, type PerguntaCurada } from "../Curada";
 import SeloStaleness from "../../../components/SeloStaleness";
-import { fatoDatasetDe, getSealParaDataset } from "../../../lib/regiao";
+import { fatoDatasetDe, getSealParaDataset, hashResumoSeal } from "../../../lib/regiao";
 import type { FatoRegiao } from "../../../components/PainelRegiao";
 import perguntasJson from "../../../data/perguntas.json";
 
@@ -56,7 +56,7 @@ export default function PaginaPergunta({ params }: { params: { slug: string } })
       {/* Congelamento documentado + staleness display-only (EVOLVE-11 Task 6:
           SSG congela o pleito default do build; o alerta abaixo acusa
           divergência do manifest sem tocar em números/selo/fato). */}
-      <SeloStaleness dataset={dataset} hashBuild={seal.official?.hash ?? ""} />
+      <SeloStaleness dataset={dataset} hashBuild={hashResumoSeal(seal)} />
       <CuradaConteudo pergunta={pergunta} fato={fato} seal={seal} manifestChecked />
     </>
   );

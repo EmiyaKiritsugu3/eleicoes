@@ -241,6 +241,14 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
     };
   }, []);
 
+  // Switcher honesto (cubic R3): `?fato=` bem-formado mas sem registro no
+  // manifest resolve p/ SEM_DADO (fail-closed, sem fetch arbitrário) — e o
+  // select exibe o default em vez de um valor sem opção (paridade com o
+  // caso malformado, que já cai no default via `fatoDatasetDe`).
+  const pleitoExibido =
+    dataset !== null && (opcoesFato.length === 0 || opcoesFato.includes(dataset))
+      ? dataset
+      : (opcoesFato[0] ?? dataset ?? "");
   // Loading honesto (Task 5): manifest pendente mostra "a carregar"
   // com role="status"; SEM_DADO do painel só após resolve.
   if (!manifestChecked) {
@@ -259,7 +267,7 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
             <select
               name="fato"
               aria-label="pleito"
-              value={dataset ?? ""}
+              value={pleitoExibido}
               onChange={(e) => e.currentTarget.form?.requestSubmit()}
             >
               {opcoesFato.map((ds) => (

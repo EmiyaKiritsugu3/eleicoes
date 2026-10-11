@@ -133,6 +133,16 @@ export function vereditoTemProva(seal: SealState): boolean {
   return seal.hasFixture && isAudited({ sha256: seal.fixtureHash });
 }
 
+/** Hash-resumo do selo p/ comparação de staleness (fonte única — as 2
+ *  rotas SSG passam o mesmo resumo do build e `SeloStaleness` deriva o
+ *  resumo runtime igual; cubic R3: oficial vence, fixture com hash conta
+ *  quando não há oficial; sem prova → ""). */
+export function hashResumoSeal(seal: SealState): string {
+  if (seal.official !== null && typeof seal.official.hash === "string") return seal.official.hash;
+  if (seal.hasFixture && typeof seal.fixtureHash === "string") return seal.fixtureHash;
+  return "";
+}
+
 /** Manifest legível para rotação (FONTE ÚNICA — EVOLVE-9 R4, dedupe Sonar:
  *  as 6 superfícies com trigger vivo — Home, Explorar, Analisar, Verificar,
  *  /regiao e /auditoria — importam daqui em vez de forkar): objeto com

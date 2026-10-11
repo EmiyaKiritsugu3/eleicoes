@@ -29,6 +29,14 @@ function manifestCom(hash: string | null) {
   };
 }
 
+function manifestFixture(hash: string) {
+  return {
+    ingestions: [
+      { tipo: "fato_municipal", dataset: DS, sha256: hash, source_url: "https://cdn.tse.jus.br/x.zip", fixture: true },
+    ],
+  };
+}
+
 let el: HTMLDivElement | null = null;
 let root: Root | null = null;
 let manifestAtual: unknown = manifestCom(HASH_BUILD);
@@ -76,6 +84,10 @@ describe("SSG staleness display-only (EVOLVE-11 Task 6)", () => {
     const div = await montar();
     await focarRotacao();
     expect(div.innerHTML).not.toContain("diverge do build");
+    // Invariante sem-refetch (cubic R3): mount + foco emitem exatamente 2
+    // requests, ambos ao manifest — nenhum fato/número é buscado.
+    expect(chamadas.length).toBe(2);
+    expect(chamadas.every((c) => c.endsWith("/data/manifest.json"))).toBe(true);
   });
 
   it("manifest com hash novo: alerta após foco (display-only)", async () => {
@@ -101,6 +113,16 @@ describe("SSG staleness display-only (EVOLVE-11 Task 6)", () => {
     manifestAtual = manifestCom(HASH_NOVO);
     instalar();
     const div = await montar("");
+    expect(div.innerHTML).toContain("diverge do build");
+  });
+
+  it("rotação só-fixture: alerta quando o hash de amostra muda (cubic R3)", async () => {
+    manifestAtual = manifestFixture("f".repeat(64));
+    instalar();
+    const div = await montar("f".repeat(64));
+    expect(div.innerHTML).not.toContain("diverge do build");
+    manifestAtual = manifestFixture("e".repeat(64));
+    await focarRotacao();
     expect(div.innerHTML).toContain("diverge do build");
   });
 });
