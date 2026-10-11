@@ -37,31 +37,27 @@ _COL_TSE = "CD_MUNICIPIO_TSE"
 _COL_IBGE = "CD_MUNICIPIO_IBGE"
 
 
-def parse_depara_csv(content) -> dict[str, str]:
-    """Lê o CSV oficial e devolve `{tse5: ibge7}` validado (fail-closed).
+def _read_depara_frame(content):
+    """Lê o CSV oficial p/ DataFrame (fail-closed em ilegível/vazio)."""
+    if isinstance(content, str):
+        return pd.read_csv(io.StringIO(content), sep=";", dtype="string")
+    if not isinstance(content, (bytes, bytearray)):
+        raise TypeError(
+            f"de-para: esperado bytes ou str, veio {type(content).__name__}")
+    bruto = bytes(content)
+    for encoding in ("latin1", "utf-8-sig", "utf-8"):
+        try:
+            return pd.read_csv(io.BytesIO(bruto), sep=";", encoding=encoding,
+                               dtype="string")
+        except pd.errors.EmptyDataError:
+            raise ValueError("de-para: CSV vazio (sem dado oficial)")
+        except (UnicodeDecodeError, pd.errors.ParserError):
+            continue
+    raise ValueError("de-para: CSV ilegível (sem dado oficial)")
 
-    Aceita bytes (qualquer encoding entre latin1 — o oficial — utf-8-sig
-    e utf-8) ou str. Chaves TSE preservadas cruas (sem lstrip de zeros:
-    "01007" ≠ "1007"); valores IBGE7 com DV conferido um a um.
-    """
-    if isinstance(content, (bytes, bytearray)):
-        bruto = bytes(content)
-        df = None
-        for encoding in ("latin1", "utf-8-sig", "utf-8"):
-            try:
-                df = pd.read_csv(io.BytesIO(bruto), sep=";", encoding=encoding,
-                                 dtype="string")
-                break
-            except pd.errors.EmptyDataError:
-                raise ValueError("de-para: CSV vazio (sem dado oficial)")
-            except (UnicodeDecodeError, pd.errors.ParserError):
-                continue
-        if df is None:
-            raise ValueError("de-para: CSV ilegível (sem dado oficial)")
-    elif isinstance(content, str):
-        df = pd.read_csv(io.StringIO(content), sep=";", dtype="string")
-    else:
-        raise TypeError(f"de-para: esperado bytes ou str, veio {type(content).__name__}")
+
+def _colunas_depara(df):
+    """Extrai as séries TSE/IBGE validadas em shape (fail-closed)."""
     for exigida in (_COL_TSE, _COL_IBGE):
         if exigida not in set(df.columns):
             raise ValueError(f"de-para: coluna {exigida} ausente (sem dado oficial)")
@@ -75,6 +71,19 @@ def parse_depara_csv(content) -> dict[str, str]:
             f"de-para: {len(fora_shape)} código(s) TSE fora do padrão 4–5 "
             "dígitos (sem dado oficial)"
         )
+    return tse, ibge
+
+
+def parse_depara_csv(content) -> dict[str, str]:
+    """Lê o CSV oficial e devolve `{tse5: ibge7}` validado (fail-closed).
+
+    Aceita bytes (qualquer encoding entre latin1 — o oficial — utf-8-sig
+    e utf-8) ou str. Chaves TSE canônicas zfill(5) nos dois lados do join
+    (votos sem padding casam com o oficial). Valores IBGE7 com DV
+    conferido um a um; duplicata em qualquer lado quebra a bijection.
+    """
+    df = _read_depara_frame(content)
+    tse, ibge = _colunas_depara(df)
     # Chave canônica: zfill(5) nos dois lados do join — os votos reais
     # trazem o código sem padding ("3018"), o oficial pada ("03018").
     chaves = tse.str.zfill(5)

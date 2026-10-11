@@ -40,18 +40,18 @@ def test_parse_canoniza_chave_4_digitos():
 def test_parse_rejeita_dv_invalido():
     from etl.depara import parse_depara_csv
 
-    ruim = MINI_CSV.replace("3515350", "3515351")  # DV 1≠0
+    payload = MINI_CSV.replace("3515350", "3515351").encode("latin-1")  # DV 1≠0
     with pytest.raises(ValueError, match="DV|dígito|verificador|IBGE"):
-        parse_depara_csv(ruim.encode("latin-1"))
+        parse_depara_csv(payload)
 
 
 def test_parse_rejeita_duplicata():
     from etl.depara import parse_depara_csv
 
     linhas = MINI_CSV.strip().split("\n")
-    dup = "\n".join(linhas + [linhas[1]]) + "\n"
+    payload = ("\n".join(linhas + [linhas[1]]) + "\n").encode("latin-1")
     with pytest.raises(ValueError, match="duplicad|bijection|bijec"):
-        parse_depara_csv(dup.encode("latin-1"))
+        parse_depara_csv(payload)
 
 
 def test_parse_rejeita_vazio_e_sem_coluna():
@@ -59,9 +59,9 @@ def test_parse_rejeita_vazio_e_sem_coluna():
 
     with pytest.raises(ValueError, match="vazi|coluna|header"):
         parse_depara_csv(b"")
-    sem_col = MINI_CSV.replace("CD_MUNICIPIO_TSE", "CD_XX")
+    payload = MINI_CSV.replace("CD_MUNICIPIO_TSE", "CD_XX").encode("latin-1")
     with pytest.raises(ValueError, match="coluna"):
-        parse_depara_csv(sem_col.encode("latin-1"))
+        parse_depara_csv(payload)
 
 
 def test_normalize_com_depara_mapeia_sem_warning():

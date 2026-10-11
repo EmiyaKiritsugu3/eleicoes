@@ -79,6 +79,20 @@ def _pick_column(df: pd.DataFrame, field: str):
     return None
 
 
+def _aplicar_depara(digits, depara):
+    """Traduz códigos não-IBGE7 pelo de-para oficial (EVOLVE-15).
+
+    Só o que não é IBGE7 consulta o mapa (IBGE7 direto nunca é
+    remapeado); chave canônica zfill(5) — votos sem padding ("3018")
+    casam com o oficial com padding ("03018"). Sem par → "" (o
+    chamador valida e avisa fail-closed como antes).
+    """
+    mapa = dict(depara)
+    precisa = ~digits.str.fullmatch(r"\d{7}")
+    traduzidos = digits.str.zfill(5).map(mapa).fillna("")
+    return digits.where(~precisa, traduzidos)
+
+
 def normalize_resultados(df: pd.DataFrame, depara=None) -> pd.DataFrame:
     """Normaliza um DataFrame bruto do TSE para o schema canônico.
 
@@ -128,16 +142,8 @@ def normalize_resultados(df: pd.DataFrame, depara=None) -> pd.DataFrame:
     ibge_raw = df[col].astype("string").fillna("") if col is not None else pd.Series("", index=df.index)
     digits = ibge_raw.map(_fix_text).str.strip().str.replace(r"\D", "", regex=True)
     if depara is not None:
-        # EVOLVE-15: traduz códigos não-IBGE7 pelo de-para oficial antes
-        # de validar. Só o que não é IBGE7 consulta o mapa (IBGE7 direto
-        # nunca é remapeado); chave canônica zfill(5) — votos sem padding
-        # ("3018") casam com o oficial com padding ("03018"). Traduzido herda
-        # a validação abaixo, sem par cai no "" + warning existente
-        # (fail-closed).
-        mapa = dict(depara)
-        precisa = ~digits.str.fullmatch(r"\d{7}")
-        traduzidos = digits.str.zfill(5).map(mapa).fillna("")
-        digits = digits.where(~precisa, traduzidos)
+        # EVOLVE-15: traduzido herda a validação abaixo (fonte única).
+        digits = _aplicar_depara(digits, depara)
     # M1: só 7 dígitos é IBGE válido; valida os dígitos crus (antes do
     # zfill, que mascararia "123" como "0000123") e descarta o resto p/ "".
     # DV (ver etl/ibge_dv.py — fonte única; regra mod-10 no 7º dígito).
