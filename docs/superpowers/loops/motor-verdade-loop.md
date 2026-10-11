@@ -197,3 +197,15 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 ## Próxima sessão — EVOLVE-14 (backlog, design pendente de aprovação final)
 - Direção: **bloqueados remanescentes** (de-para TSE↔IBGE, instrução, GeoJSON) + varredura de minors.
 - Baseline main @3a8ef33 verde (pytest 202 + vitest 565).
+
+## EVOLVE-14 — verificação de bloqueadores + minors (2026-10-11, sem PR: zero mudança em código)
+- Testes de evidência verdes: `test_fato_real_e2e.py` + `test_escolaridade_bloqueada.py` (13 passed) — fail-closed segue pinado.
+- **De-para TSE↔IBGE: DESBLOQUEADO com evidência externa nova** (única novidade acionável do ciclo): dataset oficial `codigos-oficiais-de-uf-e-municipios-segundo-o-tse-e-o-ibge` (org TSE/SMG, CC-BY, metadados 24/06/2025), recurso `https://cdn.tse.jus.br/estatistica/sead/odsele/municipio_tse_ibge/municipio_tse_ibge.zip` (139KB, DT_GERACAO 04/10/2026). CSV Latin-1 `;`-quoted, 5571 linhas, colunas `CD_MUNICIPIO_TSE` (5 dígitos = formato dos votos reais que o `normalize` rejeita) ↔ `CD_MUNICIPIO_IBGE` (7 dígitos), bijeção 5571↔5571 ambos únicos; `leiame.pdf` documenta layout. Bytes inspecionados em `/tmp/opencode/depara/` (fora do repo). Ingestão no ETL (nova fonte, join em normalize/build_fato, gates, reescrita do teste fail-closed) é **arquitetural** → EVOLVE-15 com spec+plano, sem implementação neste ciclo (hard gate).
+- Instrução: segue BLOQUEADO — só lead (panorama/SIDRA citam nível de instrução, sem fonte ETL-ready confirmada; dicionário oficial cobre só alfabetização; alfabetização≠escolaridade).
+- GeoJSON: segue BLOQUEADO — só SHP oficial (Malha Municipal 2025); sem GeoJSON direto; conversão SHP→GeoJSON é pipeline próprio.
+- Minors: nada acionável (zero TODO/FIXME/XXX/HACK em app/components/lib/etl/scripts).
+- Terminal: verificação completa, 1 desbloqueio registrado, 0 churn (sem PR — sem mudança real).
+
+## Próxima sessão — EVOLVE-15 arquitetural: ingestão do de-para TSE→IBGE7 (design pendente — caminho architectural: perguntas → abordagens → spec escrita → plano)
+- Escopo provável: fonte `municipio_tse_ibge` no ETL (download SHA/retry/atômico, Latin-1, gates de bijeção 5571↔5571), join TSE→IBGE7 em `normalize`/`build_fato`, entries no manifest, reescrita de `test_fato_real_e2e.py` (fail-closed → join real), fato-real full e2e.
+- Baseline main @19ddc0f verde (pytest 202 + vitest 565). Evidência em `/tmp/opencode/depara/`.
