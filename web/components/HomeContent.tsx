@@ -29,12 +29,25 @@ import { isHashDivergente, manifestoValidoParaRotacao, vereditoTemProva } from "
 import { fetchJson } from "../lib/fetchJson";
 import { ALERTA_STYLE, MOTIVO_SEM_HASH, SEM_DADO } from "../lib/textos";
 import { tokens } from "../lib/tokens";
+import Skeleton from "./Skeleton";
 
 const [giganteSize, giganteLine] = tokens.texto.gigante.split("/");
 const [tituloSize, tituloLine] = tokens.texto.titulo.split("/");
 const [secaoSize, secaoLine] = tokens.texto.secao.split("/");
 const [miudoSize, miudoLine] = tokens.texto.miudo.split("/");
 const FILETE = `1px solid ${tokens.cor.linha}`;
+
+// Onda-2 Task 3 (display-only): texto de loading mantido p/ leitores de
+// tela (e p/ os asserts que casam "a carregar"), visualmente oculto — o
+// Skeleton aria-hidden ocupa o espaço visível.
+const TEXTO_OCULTO: React.CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  overflow: "hidden",
+  clipPath: "inset(50%)",
+  whiteSpace: "nowrap",
+};
 
 // Task 5 (display-only): cabeçalhos de tabela editoriais + células
 // numéricas tabulares. Constantes de estilo puras, sem estado semântico.
@@ -229,6 +242,12 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
   // role="status" nas seções de dados; SEM_DADO só após resolve.
   // Seções estáticas (biblioteca, abstenção) não dependem de fetch.
   const carregando = !manifestChecked;
+  // Onda-2 Task 3 (display-only): fade-in das seções desliga com
+  // prefers-reduced-motion (SSR-safe por guard; só estilo, sem semântica).
+  const semMovimento =
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   // Ruling EVOLVE-3 Task 4 (opção a): Home suprime como Explorar/Curada —
   // sem prova no selo (nem oficial nem fixture com hash, cf.
   // `vereditoTemProva` em lib/regiao — fonte única do gate), as seções de
@@ -357,7 +376,15 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
 
       <section
         aria-label="Resumo"
-        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+        style={{
+          borderTop: FILETE,
+          paddingTop: tokens.espaco[4],
+          marginTop: tokens.espaco[6],
+          opacity: carregando ? 0 : 1,
+          transition: semMovimento
+            ? "none"
+            : `opacity ${tokens.movimento.duracaoMediaMs}ms ${tokens.movimento.easing}`,
+        }}
       >
         <h2
           style={{
@@ -370,7 +397,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         </h2>
         {candidatoAtivo && <p role="note">{NOTA_CANDIDATO_GLOBAL}</p>}
         {carregando ? (
-          <p role="status">a carregar…</p>
+          <p role="status"><span style={TEXTO_OCULTO}>a carregar…</span><Skeleton linhas={3} /></p>
         ) : semDados || semProva ? (
           /* Alerta vivo único do estado sem-prova (compartilhado pelas 4
              seções — as demais anunciam como texto comum, cf. Mapa). */
@@ -399,7 +426,15 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
 
       <section
         aria-label="Mapa por UF"
-        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+        style={{
+          borderTop: FILETE,
+          paddingTop: tokens.espaco[4],
+          marginTop: tokens.espaco[6],
+          opacity: carregando ? 0 : 1,
+          transition: semMovimento
+            ? "none"
+            : `opacity ${tokens.movimento.duracaoMediaMs}ms ${tokens.movimento.easing}`,
+        }}
       >
         <h2
           style={{
@@ -413,7 +448,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         {candidatoAtivo && <p role="note">{NOTA_CANDIDATO_GLOBAL}</p>}
         {badge}
         {carregando ? (
-          <p role="status">a carregar…</p>
+          <p role="status"><span style={TEXTO_OCULTO}>a carregar…</span><Skeleton bloco /></p>
         ) : semProva || ufs.length === 0 ? (
           /* Alerta só no vazio local (cubic R2): com sem-prova, o alerta
              vivo do Resumo já cobre o estado compartilhado; sem ele, a
@@ -469,7 +504,15 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
 
       <section
         aria-label="Ranking de candidatos"
-        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+        style={{
+          borderTop: FILETE,
+          paddingTop: tokens.espaco[4],
+          marginTop: tokens.espaco[6],
+          opacity: carregando ? 0 : 1,
+          transition: semMovimento
+            ? "none"
+            : `opacity ${tokens.movimento.duracaoMediaMs}ms ${tokens.movimento.easing}`,
+        }}
       >
         <h2
           style={{
@@ -485,7 +528,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         )}
         {badge}
         {carregando ? (
-          <p role="status">a carregar…</p>
+          <p role="status"><span style={TEXTO_OCULTO}>a carregar…</span><Skeleton linhas={5} /></p>
         ) : semProva || cands.length === 0 ? (
           /* Alerta só no vazio local (cubic R2, paridade Mapa/Evolução). */
           <p role={semProva ? undefined : "alert"}>{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
@@ -510,7 +553,15 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
 
       <section
         aria-label="Evolução"
-        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+        style={{
+          borderTop: FILETE,
+          paddingTop: tokens.espaco[4],
+          marginTop: tokens.espaco[6],
+          opacity: carregando ? 0 : 1,
+          transition: semMovimento
+            ? "none"
+            : `opacity ${tokens.movimento.duracaoMediaMs}ms ${tokens.movimento.easing}`,
+        }}
       >
         <h2
           style={{
@@ -523,7 +574,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         </h2>
         {badge}
         {carregando ? (
-          <p role="status">a carregar…</p>
+          <p role="status"><span style={TEXTO_OCULTO}>a carregar…</span><Skeleton linhas={5} /></p>
         ) : semProva || ev.length === 0 ? (
           /* Alerta só no vazio local (cubic R2, paridade Mapa/Ranking). */
           <p role={semProva ? undefined : "alert"}>{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>

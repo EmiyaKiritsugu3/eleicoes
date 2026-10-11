@@ -120,6 +120,57 @@ describe("EVOLVE-13: valores pinados da fonte única (cubic R1: pina valores, un
   });
 });
 
+describe("onda-2 task 3: skeletons + fade-in na Home", () => {
+  function fetchPendente() {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})),
+    );
+  }
+
+  it("loading mostra Skeleton + status oculto (sem texto visível duplicado)", async () => {
+    fetchPendente();
+    const div = await renderJsdom(<HomeContent />);
+    const statuses = [...div.querySelectorAll('[role="status"]')].filter((el) =>
+      (el.textContent ?? "").includes("a carregar"),
+    );
+    expect(statuses).toHaveLength(4);
+    expect(div.innerHTML).toContain("a carregar");
+    for (const st of statuses) {
+      expect(st.querySelector('[aria-hidden="true"]')).not.toBeNull();
+    }
+  });
+
+  it("seções com fade + reduced-motion desliga transição", async () => {
+    fetchPendente();
+    const div = await renderJsdom(<HomeContent />);
+    for (const rotulo of ["Resumo", "Mapa por UF", "Ranking de candidatos", "Evolução"]) {
+      const sec = div.querySelector(`section[aria-label="${rotulo}"]`) as HTMLElement | null;
+      expect(sec).not.toBeNull();
+      expect(sec!.style.opacity).toBe("0");
+      expect(sec!.style.transition).toContain("250ms");
+    }
+    await teardownJsdom();
+    fetchPendente();
+    const mm = vi.fn(() => ({ matches: true }));
+    vi.stubGlobal("matchMedia", mm);
+    const w = window as unknown as Record<string, unknown>;
+    const prevMm = w["matchMedia"];
+    w["matchMedia"] = mm;
+    try {
+      const reduzido = await renderJsdom(<HomeContent />);
+      const sec = reduzido.querySelector(
+        'section[aria-label="Resumo"]',
+      ) as HTMLElement | null;
+      expect(sec).not.toBeNull();
+      expect(sec!.style.transition).toBe("none");
+    } finally {
+      if (prevMm === undefined) delete w["matchMedia"];
+      else w["matchMedia"] = prevMm;
+    }
+  });
+});
+
 describe("onda-1 task 5: tabelas e inputs editoriais", () => {
   it("inputs da Busca têm foco visível verde", async () => {
     mockFetchHome(MANIFEST_OK, "ausente");
