@@ -198,7 +198,9 @@ function downloadCsv(filename: string, csv: string) {
 
 /** Linhas do CSV: recorte filtrado + contexto de filtro (`f_*`, paridade
  *  com `/analisar` — o CSV é auto-descritivo). Células vazias seguem o
- *  contrato blank-cell de `buildCsvExport` (nunca "null"/"undefined"). */
+ *  contrato blank-cell de `buildCsvExport` (nunca "null"/"undefined").
+ *  `percentual` sai em pontos percentuais (0–100, ×100 sobre a fração
+ *  0–1 do display), paridade com ranking/quintis/foco; `null` → blank. */
 export function explorarCsvRows(
   filtradas: MunRow[],
   sel: Pick<ExplorarSelecao, "quem" | "onde" | "cruzar">,
@@ -206,16 +208,19 @@ export function explorarCsvRows(
 ): Record<string, unknown>[] {
   const lista = Array.isArray(filtradas) ? filtradas : [];
   const idx = Array.isArray(ordem) ? ordem.findIndex((c) => c?.id === sel.quem) : -1;
-  return lista.map((r) => ({
-    ibge: r?.ibge ?? "",
-    nome: r?.nome ?? "",
-    uf: r?.uf ?? "",
-    percentual: idx >= 0 ? shareCandidato(r, idx) : null,
-    [sel.cruzar]: r?.demo ? (r.demo[sel.cruzar as VarDemo] as unknown as number) : null,
-    f_quem: sel.quem ?? "",
-    f_onde: sel.onde ?? "",
-    f_cruzar: sel.cruzar ?? "",
-  }));
+  return lista.map((r) => {
+    const share = idx >= 0 ? shareCandidato(r, idx) : null;
+    return {
+      ibge: r?.ibge ?? "",
+      nome: r?.nome ?? "",
+      uf: r?.uf ?? "",
+      percentual: share === null ? null : share * 100,
+      [sel.cruzar]: r?.demo ? (r.demo[sel.cruzar as VarDemo] as unknown as number) : null,
+      f_quem: sel.quem ?? "",
+      f_onde: sel.onde ?? "",
+      f_cruzar: sel.cruzar ?? "",
+    };
+  });
 }
 
 /** Query → seleção: `?q=` vence; `?foco=` (link do painel da região) e

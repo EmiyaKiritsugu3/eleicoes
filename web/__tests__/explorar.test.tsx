@@ -499,4 +499,22 @@ describe("explorar (CSV export, EVOLVE-10 Task 4: paridade com /analisar)", () =
     );
     expect(csv.split("\n")[0]).toContain("fonte,url,hash,data");
   });
+  it("percentual sai em pontos percentuais (×100; null → blank)", () => {
+    const rows: MunRow[] = [
+      { ibge: "1", uf: "SP", nome: "Meio", votos: [50, 50], total: 100, abst: 0, demo: demo(10) },
+      { ibge: "2", uf: "SP", nome: "Tudo", votos: [100, 0], total: 100, abst: 0, demo: demo(10) },
+      { ibge: "3", uf: "SP", nome: "Nada", votos: [0, 100], total: 100, abst: 0, demo: demo(10) },
+      { ibge: "4", uf: "SP", nome: "SemVoto", votos: [], total: 0, abst: 0, demo: demo(10) },
+    ];
+    const out = explorarCsvRows(rows, SEL_VALIDA, CANDIDATOS);
+    expect(out[0].percentual).toBe(50);
+    expect(out[1].percentual).toBe(100);
+    expect(out[2].percentual).toBe(0);
+    expect(out[3].percentual).toBeNull();
+    // blank-cell no CSV final: null vira célula vazia, nunca "null".
+    const csv = buildCsvExport(out, SEAL_OK.official);
+    const lines = csv.split("\n");
+    expect(lines[1]).toMatch(/,50,/);
+    expect(lines[4]).not.toMatch(/null/);
+  });
 });

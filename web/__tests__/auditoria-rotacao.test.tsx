@@ -112,4 +112,19 @@ describe("auditoria: refetch em rotação de manifest (foco)", () => {
     await focarRotacao();
     expect(div.innerHTML).toContain("a".repeat(64));
   });
+
+  // rotfix3 Finding 1: `{ingestions:[null]}` passa no guard de array mas
+  // quebra o render (`e.sha256` em null) — o helper partilhado deve
+  // rejeitar entries não-dict (paridade ETL `verify_manifest`, que reprova
+  // malformada) e a rotação mantém o último display validado, sem crash.
+  it("{ingestions:[null]} mantém o último display validado (sem crash)", async () => {
+    instalarFetchMutavel();
+    const div = await montar();
+    expect(div.innerHTML).toContain("a".repeat(64));
+    manifestAtual = { ingestions: [null] };
+    await focarRotacao();
+    expect(div.innerHTML).toContain("a".repeat(64));
+    // Sem wipe e sem banner fail-closed: o display validado segue intacto.
+    expect(div.querySelector('[role="alert"]')).toBeNull();
+  });
 });

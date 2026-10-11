@@ -119,22 +119,27 @@ export function vereditoTemProva(seal: SealState): boolean {
 }
 
 /** Manifest legível para rotação (FONTE ÚNICA — EVOLVE-9 R4, dedupe Sonar:
- *  as 5 superfícies com trigger vivo — Home, Explorar, Analisar, Verificar,
- *  /regiao — importam daqui em vez de forkar): objeto com `ingestions`
- *  array. `200` com corpo null/array/texto OU `{}` sem ingestions NÃO é
- *  manifest (derivaria selo vazio e o wipe apagaria dado validado — os
- *  guards de rotação saem antes da comparação, stale-while-revalidate).
- *  Vazio (`{ingestions:[]}`) É válido: atesta nada e a rotação prossegue
- *  para suprimir por fail-closed. Semântica exata das 5 cópias anteriores
- *  (sem fortalecer nem enfraquecer).
+ *  as 6 superfícies com trigger vivo — Home, Explorar, Analisar, Verificar,
+ *  /regiao e /auditoria — importam daqui em vez de forkar): objeto com
+ *  `ingestions` array de ENTRIES DICT (objeto não-nulo, não-array). `200`
+ *  com corpo null/array/texto OU `{}` sem ingestions NÃO é manifest
+ *  (derivaria selo vazio e o wipe apagaria dado validado — os guards de
+ *  rotação saem antes da comparação, stale-while-revalidate). Entry
+ *  não-dict (`null`, string, número — ex. `{ingestions:[null]}`) TAMBÉM
+ *  não é manifest: o render da /auditoria lê `e.sha256` e quebraria, e o
+ *  ETL (`etl/manifest.py:_validate_entry`, via `verify_manifest` e
+ *  `verificar_fato_manifest`) reprova malformada — nenhum produtor
+ *  legítimo escreve não-dict (`write_manifest` valida antes do append,
+ *  seed só promove `isinstance(entry, dict)`). Vazio (`{ingestions:[]}`)
+ *  É válido: atesta nada e a rotação prossegue para suprimir por
+ *  fail-closed. Semântica exata das cópias anteriores, mais o strict
+ *  de entries (rotfix3 Finding 1).
  */
 export function manifestoValidoParaRotacao(d: unknown): d is Record<string, unknown> {
-  return (
-    typeof d === "object" &&
-    d !== null &&
-    !Array.isArray(d) &&
-    Array.isArray((d as { ingestions?: unknown }).ingestions)
-  );
+  if (typeof d !== "object" || d === null || Array.isArray(d)) return false;
+  const ing = (d as { ingestions?: unknown }).ingestions;
+  if (!Array.isArray(ing)) return false;
+  return ing.every((e) => typeof e === "object" && e !== null && !Array.isArray(e));
 }
 
 /** Arquivo servido do Censo (espelho de

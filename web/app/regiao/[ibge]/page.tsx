@@ -159,6 +159,22 @@ function ConteudoRegiao({ ibge }: { ibge: string }) {
         // ausente. sha ausente (entry removida) → null ≠ sha anterior.
         const novoCenso = entradaCensoAuditada(manifest)?.sha256 ?? null;
         if (JSON.stringify({ ds, seal: novoSeal, censo: novoCenso }) === seloRef.current) return;
+        // Fail-closed imediato (rotfix3 Finding 2): manifest sem prova não
+        // sustenta os números antigos durante o fetch lento — publica a
+        // supressão (selo+dataset+fato null) ANTES de aguardar os artefatos.
+        // Sem isso, o `setFato` pós-`Promise.all` mantinha números sem hash
+        // visíveis até o fato/Censo assentarem. O Censo mantém seu próprio
+        // gate pós-await (não tocado aqui — independência preservada).
+        if (
+          !vereditoTemProva(novoSeal) &&
+          fatoParamRef.current === param &&
+          geracaoRef.current === minha
+        ) {
+          setSeal(novoSeal);
+          setDataset(ds);
+          seloRef.current = JSON.stringify({ ds, seal: novoSeal, censo: novoCenso });
+          setFato(null);
+        }
         // Selo runtime do Censo (EVOLVE-8 Task 1): sem entry auditada, o
         // artefato nem é buscado (custo zero no caso forjado) e a pop cai
         // p/ SEM_DADO junto com os votos.
