@@ -12,6 +12,7 @@ import { HomeContent } from "../components/HomeContent";
 import { UF_POR_PREFIXO_IBGE } from "../components/PainelRegiao";
 import { finito } from "../lib/motor";
 import { ALERTA_STYLE, SEM_DADO } from "../lib/textos";
+import { tokens } from "../lib/tokens";
 import {
   MANIFEST_INVALIDO,
   MANIFEST_OK,
@@ -116,5 +117,21 @@ describe("EVOLVE-13: valores pinados da fonte única (cubic R1: pina valores, un
     expect(UF_POR_PREFIXO_IBGE["11"]).toBe("RO");
     expect(UF_POR_PREFIXO_IBGE["53"]).toBe("DF");
     expect(Object.keys(UF_POR_PREFIXO_IBGE)).toHaveLength(27);
+  });
+});
+
+describe("onda-1 task 5: tabelas e inputs editoriais", () => {
+  it("inputs da Busca têm foco visível verde", async () => {
+    mockFetchHome(MANIFEST_OK, "ausente");
+    const div = await renderJsdom(<HomeContent />);
+    const input = div.querySelector('input[aria-label="ano"]') as HTMLInputElement;
+    input.focus();
+    expect(input.style.outline).toContain("2px");
+    expect(input.style.outline).toContain(tokens.cor.destaqueVerde);
+  });
+  it("números de tabela são tabulares (SSR basta)", async () => {
+    mockFetchHome(MANIFEST_OK, "ausente");
+    const div = await renderJsdom(<HomeContent />);
+    expect(div.innerHTML).toContain("tabular-nums");
   });
 });

@@ -28,6 +28,37 @@ import {
 import { isHashDivergente, manifestoValidoParaRotacao, vereditoTemProva } from "../lib/regiao";
 import { fetchJson } from "../lib/fetchJson";
 import { ALERTA_STYLE, MOTIVO_SEM_HASH, SEM_DADO } from "../lib/textos";
+import { tokens } from "../lib/tokens";
+
+const [giganteSize, giganteLine] = tokens.texto.gigante.split("/");
+const [tituloSize, tituloLine] = tokens.texto.titulo.split("/");
+const [secaoSize, secaoLine] = tokens.texto.secao.split("/");
+const [miudoSize, miudoLine] = tokens.texto.miudo.split("/");
+const FILETE = `1px solid ${tokens.cor.linha}`;
+
+// Task 5 (display-only): cabeçalhos de tabela editoriais + células
+// numéricas tabulares. Constantes de estilo puras, sem estado semântico.
+const TH_EDITORIAL: React.CSSProperties = {
+  textTransform: "uppercase",
+  fontSize: miudoSize,
+  lineHeight: miudoLine,
+  borderBottom: `3px double ${tokens.cor.linha}`,
+};
+const NUM_TABULAR: React.CSSProperties = {
+  fontVariantNumeric: "tabular-nums",
+};
+const INPUT_EDITORIAL: React.CSSProperties = {
+  border: `1px solid ${tokens.cor.linha}`,
+  borderRadius: tokens.raio.sm,
+};
+// Inline styles não fazem :focus — onFocus/onBlur alternam o outline
+// direto no nó (display-only, sem estado semântico).
+const focaInput = (e: React.FocusEvent<HTMLInputElement>) => {
+  e.currentTarget.style.outline = `2px solid ${tokens.cor.destaqueVerde}`;
+};
+const desfocaInput = (e: React.FocusEvent<HTMLInputElement>) => {
+  e.currentTarget.style.outline = "";
+};
 
 /** Seleção do mapa → sigla UF p/ focar o filtro (fail-closed: EXTERIOR e
  *  seleções desconhecidas retornam null em vez de focar errado). Aceita
@@ -69,9 +100,9 @@ function Bar({ value, max }: { value: number; max: number }) {
     <div
       role="img"
       aria-label={`${pct}% do máximo`}
-      style={{ background: "#eee", height: 10, minWidth: 120 }}
+      style={{ background: tokens.cor.linha, height: 10, minWidth: 120 }}
     >
-      <div style={{ background: "#1a5fb4", height: 10, width: `${pct}%` }} />
+      <div style={{ background: tokens.cor.graficoBarra, height: 10, width: `${pct}%` }} />
     </div>
   );
 }
@@ -246,7 +277,16 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
 
   return (
     <>
-      <h1>SAD Eleições — resultados</h1>
+      <h1
+        style={{
+          fontFamily: tokens.fonte.display,
+          fontSize: giganteSize,
+          lineHeight: giganteLine,
+          color: tokens.cor.tinta,
+        }}
+      >
+        SAD Eleições — resultados
+      </h1>
 
       {manifestChecked && !seal.official && !seal.hasFixture && (
         <p role="alert" className="badge badge-warn" style={ALERTA_STYLE}>
@@ -270,13 +310,32 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         </p>
       )}
 
-      <section aria-label="Busca">
-        <h2>Busca</h2>
+      <section
+        aria-label="Busca"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Busca
+        </h2>
         <form onSubmit={(e) => e.preventDefault()} style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
           {(["ano", "cargo", "uf", "candidato"] as const).map((k) => (
             <label key={k}>
               {k}{" "}
-              <input value={f[k] ?? ""} onChange={set(k)} placeholder={k} aria-label={k} />
+              <input
+                value={f[k] ?? ""}
+                onChange={set(k)}
+                placeholder={k}
+                aria-label={k}
+                style={INPUT_EDITORIAL}
+                onFocus={focaInput}
+                onBlur={desfocaInput}
+              />
             </label>
           ))}
           <label>
@@ -287,14 +346,28 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
               placeholder="município"
               aria-label="município"
               title="por município em breve — V1 agrega por UF"
+              style={INPUT_EDITORIAL}
+              onFocus={focaInput}
+              onBlur={desfocaInput}
             />
             <small>por município em breve — V1 agrega por UF</small>
           </label>
         </form>
       </section>
 
-      <section aria-label="Resumo">
-        <h2>Resumo</h2>
+      <section
+        aria-label="Resumo"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Resumo
+        </h2>
         {candidatoAtivo && <p role="note">{NOTA_CANDIDATO_GLOBAL}</p>}
         {carregando ? (
           <p role="status">a carregar…</p>
@@ -304,7 +377,15 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
           <p role="alert">{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
         ) : (
           <ul>
-            <li>Total de votos: {formatVotes(res.totalVotos)}</li>
+            <li
+              style={{
+                fontSize: tituloSize,
+                lineHeight: tituloLine,
+                color: tokens.cor.destaqueVerde,
+              }}
+            >
+              Total de votos: {formatVotes(res.totalVotos)}
+            </li>
             <li>Linhas: {formatVotes(resumo?.total_linhas ?? 0)}</li>
             <li>Anos: {(resumo?.anos ?? []).join(", ") || SEM_DADO}</li>
           </ul>
@@ -316,8 +397,19 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         )}
       </section>
 
-      <section aria-label="Mapa por UF">
-        <h2>Mapa por UF</h2>
+      <section
+        aria-label="Mapa por UF"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Mapa por UF
+        </h2>
         {candidatoAtivo && <p role="note">{NOTA_CANDIDATO_GLOBAL}</p>}
         {badge}
         {carregando ? (
@@ -354,11 +446,11 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
           <table>
             <caption>Votos por UF</caption>
             <thead>
-              <tr><th scope="col">UF</th><th scope="col">Votos</th></tr>
+              <tr><th scope="col" style={TH_EDITORIAL}>UF</th><th scope="col" style={TH_EDITORIAL}>Votos</th></tr>
             </thead>
             <tbody>
               {ufs.map((r) => (
-                <tr key={r.uf}><td><a href={`/regiao/${r.uf}`}>{r.uf}</a></td><td>{formatVotes(r.votos)}</td></tr>
+                <tr key={r.uf}><td><a href={`/regiao/${r.uf}`}>{r.uf}</a></td><td style={NUM_TABULAR}>{formatVotes(r.votos)}</td></tr>
               ))}
             </tbody>
           </table>
@@ -375,8 +467,19 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         />
       </section>
 
-      <section aria-label="Ranking de candidatos">
-        <h2>Ranking de candidatos</h2>
+      <section
+        aria-label="Ranking de candidatos"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Ranking de candidatos
+        </h2>
         {candidatoAtivo && escopoIgnoradoNoRanking && (
           <p role="note">{NOTA_RANKING_SEM_COBERTURA}</p>
         )}
@@ -391,12 +494,12 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
           <table>
             <caption>Ranking de candidatos por votos</caption>
             <thead>
-              <tr><th scope="col">Nome</th><th scope="col">Partido</th><th scope="col">Votos</th></tr>
+              <tr><th scope="col" style={TH_EDITORIAL}>Nome</th><th scope="col" style={TH_EDITORIAL}>Partido</th><th scope="col" style={TH_EDITORIAL}>Votos</th></tr>
             </thead>
             <tbody>
               {cands.map((r) => (
                 <tr key={r.candidato_id}>
-                  <td>{r.nome_urna}</td><td>{r.partido}</td><td>{formatVotes(r.votos)}</td>
+                  <td>{r.nome_urna}</td><td>{r.partido}</td><td style={NUM_TABULAR}>{formatVotes(r.votos)}</td>
                 </tr>
               ))}
             </tbody>
@@ -405,8 +508,19 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         )}
       </section>
 
-      <section aria-label="Evolução">
-        <h2>Evolução anual</h2>
+      <section
+        aria-label="Evolução"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Evolução anual
+        </h2>
         {badge}
         {carregando ? (
           <p role="status">a carregar…</p>
@@ -420,7 +534,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
                 <li key={r.ano} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
                   <span style={{ width: 48 }}>{r.ano}</span>
                   <Bar value={r.votos} max={maxEv} />
-                  <span>{formatVotes(r.votos)}</span>
+                  <span style={NUM_TABULAR}>{formatVotes(r.votos)}</span>
                 </li>
               ))}
             </ul>
@@ -428,11 +542,11 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
             <table>
               <caption>Evolução anual de votos (tabela equivalente)</caption>
               <thead>
-                <tr><th scope="col">Ano</th><th scope="col">Votos</th></tr>
+                <tr><th scope="col" style={TH_EDITORIAL}>Ano</th><th scope="col" style={TH_EDITORIAL}>Votos</th></tr>
               </thead>
               <tbody>
                 {ev.map((r) => (
-                  <tr key={r.ano}><td>{r.ano}</td><td>{formatVotes(r.votos)}</td></tr>
+                  <tr key={r.ano}><td style={NUM_TABULAR}>{r.ano}</td><td style={NUM_TABULAR}>{formatVotes(r.votos)}</td></tr>
                 ))}
               </tbody>
             </table>
@@ -441,8 +555,19 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         )}
       </section>
 
-      <section aria-label="Biblioteca curada">
-        <h2>Biblioteca curada — 30 perguntas</h2>
+      <section
+        aria-label="Biblioteca curada"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Biblioteca curada — 30 perguntas
+        </h2>
         {badge}
         <p>
           Respostas pré-computadas com fonte e hash quando há dado oficial auditado; sem dado
@@ -457,8 +582,19 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         </ul>
       </section>
 
-      <section aria-label="Abstenção, nulos e brancos">
-        <h2>Abstenção / nulos / brancos</h2>
+      <section
+        aria-label="Abstenção, nulos e brancos"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Abstenção / nulos / brancos
+        </h2>
         <p>{SEM_DADO} — fato_eleitorado sem fonte no V1 (só votação nominal)</p>
       </section>
     </>
