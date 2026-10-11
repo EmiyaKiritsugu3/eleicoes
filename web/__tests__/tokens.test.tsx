@@ -36,4 +36,10 @@ describe("tokens editoriais", () => {
       contraste(tokens.cor.destaqueVerde, tokens.cor.fundo),
     ).toBeGreaterThanOrEqual(4.5);
   });
+  it("tokens de movimento aditivos e estáveis", () => {
+    expect(tokens.movimento.duracaoCurtaMs).toBe(150);
+    expect(tokens.movimento.duracaoMediaMs).toBe(250);
+    expect(tokens.movimento.easing).toBe("ease-out");
+    expect(tokens.movimento.keyframePulso).toBe("skeleton-pulse");
+  });
 });

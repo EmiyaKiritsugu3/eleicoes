@@ -43,6 +43,12 @@ export const tokens = {
   largura: {
     conteudo: 960,
   },
+  movimento: {
+    duracaoCurtaMs: 150,
+    duracaoMediaMs: 250,
+    easing: "ease-out",
+    keyframePulso: "skeleton-pulse",
+  },
 } as const;
 
 export type Tokens = typeof tokens;
