@@ -169,3 +169,32 @@ def test_zip_sem_csv_sai_2_com_msg_curada(tmp_path, monkeypatch, capsys):
     err = capsys.readouterr().err
     assert "erro:" in err
     assert ("sem membro .csv" in err or "esperado 1 CSV" in err)
+
+
+_MISTO_2022 = (
+    "ANO_ELEICAO;DS_CARGO;SG_UF;CD_MUNICIPIO;NM_URNA;QT_VOTOS\n"
+    "2022;PRESIDENTE;SP;3550308;CANDIDATO EXEMPLO A;10\n"
+    "2022;DEPUTADO FEDERAL;SP;3550308;CANDIDATO EXEMPLO C;7\n"
+    "2022;SENADOR;SP;3550308;CANDIDATO EXEMPLO D;3\n"
+    "2022;GOVERNADOR;SP;3550308;CANDIDATO EXEMPLO E;5\n"
+)
+
+_SO_DEP_2022 = (
+    "ANO_ELEICAO;DS_CARGO;SG_UF;CD_MUNICIPIO;NM_URNA;QT_VOTOS\n"
+    "2022;DEPUTADO ESTADUAL;SP;3550308;CANDIDATO EXEMPLO F;9\n"
+)
+
+
+def test_filtrar_v1_mantem_so_pares_v1(tmp_path):
+    from scripts import ingestao_real
+
+    cur = tmp_path / "cur"
+    cur.mkdir()
+    (cur / "misto.csv").write_text(_MISTO_2022, encoding="latin-1")
+    (cur / "so_dep.csv").write_text(_SO_DEP_2022, encoding="latin-1")
+    resumo = ingestao_real._filtrar_v1(cur)
+    assert resumo == {"mantidas": 2, "descartadas": 3, "arquivos_removidos": 1}
+    sobrou = (cur / "misto.csv").read_text(encoding="latin-1").splitlines()
+    assert len(sobrou) == 3  # header + PRESIDENTE + GOVERNADOR
+    assert "DEPUTADO" not in "\n".join(sobrou) and "SENADOR" not in "\n".join(sobrou)
+    assert not (cur / "so_dep.csv").exists()

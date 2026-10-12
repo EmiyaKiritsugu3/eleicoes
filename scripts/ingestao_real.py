@@ -194,6 +194,76 @@ def _extrair_csvs_de_zip(zip_path: Path, dest_dir: Path,
     return saidas
 
 
+def _filtrar_v1(curated_dir: Path) -> dict:
+    """Reescreve os CSVs do curated mantendo SÓ pares (ano, cargo) do V1.
+
+    Os zips nacionais do TSE trazem todos os cargos (deputados, senador…
+    — prova: run 2022-presidente, `build_marts` reprovando
+    `(2022, DEPUTADO FEDERAL)` e cia.); sem este filtro o `build_all`
+    abaixo reprova fail-closed antes de qualquer escrita. Linhas fora do
+    V1 são descartadas (fora de escopo, nunca chute de mapeamento);
+    arquivos sem nenhuma linha V1 são removidos. Devolve
+    `{"mantidas", "descartadas", "arquivos_removidos"}` e imprime o
+    resumo (auditoria do que ficou de fora).
+    """
+    from etl.sources import V1_DATASETS
+
+    validos = {(int(e["ano"]), str(e["cargo"]).upper())
+               for e in V1_DATASETS}
+    mantidas = descartadas = removidos = 0
+    for csv_path in sorted(Path(curated_dir).glob("*.csv")):
+        bruto = csv_path.read_bytes()
+        texto = enc = None
+        for encoding in ("utf-8-sig", "utf-8", "latin1"):
+            try:
+                texto = bruto.decode(encoding)
+                enc = encoding
+                break
+            except UnicodeDecodeError:
+                continue
+        if texto is None:  # pragma: no cover — só com CSV ilegível
+            raise ValueError(
+                f"filtro V1: CSV ilegível em {csv_path} (sem dado oficial)"
+            )
+        linhas = texto.splitlines()
+        if not linhas:
+            csv_path.unlink()
+            removidos += 1
+            continue
+        header, corpos = linhas[0], linhas[1:]
+        idx_ano = idx_cargo = None
+        cols = [c.strip().strip('"').upper() for c in header.split(";")]
+        if "ANO_ELEICAO" in cols:
+            idx_ano = cols.index("ANO_ELEICAO")
+        if "DS_CARGO" in cols:
+            idx_cargo = cols.index("DS_CARGO")
+        keep = []
+        for linha in corpos:
+            if idx_ano is None or idx_cargo is None:
+                keep.append(linha)
+                continue
+            cels = linha.split(";")
+            try:
+                par = (int(cels[idx_ano].strip().strip('"')),
+                       cels[idx_cargo].strip().strip('"').upper())
+            except (IndexError, ValueError):
+                continue
+            if par in validos:
+                keep.append(linha)
+        descartadas += len(corpos) - len(keep)
+        mantidas += len(keep)
+        if keep:
+            csv_path.write_text("\n".join([header, *keep]) + "\n",
+                                encoding=enc)
+        else:
+            csv_path.unlink()
+            removidos += 1
+    print(f"filtro V1: {mantidas} linhas mantidas, {descartadas} "
+          f"descartadas (fora de escopo), {removidos} arquivo(s) removido(s)")
+    return {"mantidas": mantidas, "descartadas": descartadas,
+            "arquivos_removidos": removidos}
+
+
 def _extrair_csv_unico(zip_path: Path, dest_dir: Path) -> Path:
     """Extrai o único membro `.csv` esperado de um zip; devolve o path.
 
@@ -286,6 +356,9 @@ def main(argv=None) -> int:
         # os marts com o join ativo; `source_shas` amarra a ingestão ao
         # sha do zip de origem (mesmo contrato de `etl/__main__`).
         _extrair_csvs_de_zip(fetched["tse"]["path"], Path(args.curated_dir))
+        # Zips nacionais trazem todos os cargos; `build_all` só aceita
+        # pares V1 (fail-closed) — filtra antes, sem chute.
+        _filtrar_v1(Path(args.curated_dir))
         source_shas = {(args.ano, str(args.cargo).upper()):
                        fetched["tse"]["sha256"]}
         build_all(args.curated_dir, args.db, manifest,
