@@ -266,3 +266,11 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 - Rounds no PR: R1 (Sonar new_security_rating E — 8× S8707/S2083 mesma-família no script novo → won't-fix justificado via API, ruling EVOLVE-1/15: batch local, só auto-ataque; + nit docs que triggou re-análise). CI ×2 + Sonar + GitGuardian verdes no head. CodeRabbit só summary. cubic skipping (quota, neutro, precedente).
 - Suítes finais: pytest 230 (229 passed + 1 skipped; 222 baseline + 8 novos) + vitest 580 + tsc + build.
 - Backlog: run real 2022-presidente ainda não executado (sem números registrados); workflow_dispatch c/ artifacts (candidato próximo ciclo); rem-vs-px; E5 empty-build.
+
+## Run real 2022-presidente verificado (2026-10-12, sem PR: operação local)
+- Pré-req: PR #22 (3 bugs silenciosos achados pelo run anterior que somou 473M/4x: NR_TURNO sem alias fundia T1+T2; BR.csv ⊂ BRASIL.csv somava 2x; exterior agregava em ZZ fantasma).
+- Comando: `ingestao_real.py --ano 2022 --cargo presidente --turno 1 --censo-total-esperado 203080756` (dirs isolados /tmp; zips via data/raw movidos p/ /tmp pós-run; árvore limpa).
+- Resultado: exit 0, gates verdes. Filtro V1: 140.449 mantidas + 140.449 duplicadas + 22 arquivos removidos. Fato: 117.935.194 votos, 5570 municípios, zero ZZ.
+- Prova vs oficial TSE T1: LULA 57.120.571 (-0,24%), BOLSONARO 50.949.797 (-0,24%), TEBET -0,27%, CIRO -0,37% — Δ uniforme = exterior excluído do fato (1.991 linhas fora, documentado).
+- SHAs: votos 398d2310a898… / censo 0adc228e… / de-para 22518445… (5571 pares).
+- Backlog: 2024-prefeito_texto precisa re-verificação T1/T2 (fato_2024_1 pode conter T2 — bug pré-fix); SyntaxWarning `\d` em normalize.py:91 (docstring, ruído); rem-vs-px; E5 empty-build; workflow_dispatch.
