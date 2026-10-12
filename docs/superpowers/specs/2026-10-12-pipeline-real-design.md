@@ -5,7 +5,7 @@ Data: 2026-10-12. Status: design aprovado em chat; aguarda review da spec.
 ## Entendimento (brief)
 
 - **O que o usuário disse:** continuar o loop; frente escolhida = pipeline real end-to-end; triples = ambos parametrizados (2024-prefeito capitais + 2022-presidente); modo de publicação = recomendação do executor.
-- **Assunções confirmadas:** (1) reproduzir o real-run já provado em `/tmp/opencode/real-run` (2024-prefeito, 22.886.213 votos, 24 linhas fato, 5570 Censo, 5571 de-para), não inventar pipeline novo; (2) custo zero e "free-tier nunca no caminho crítico v1" seguem valendo; (3) abordagem A (script local + docs), sem fetch no build Vercel.
+- **Assunções confirmadas:** (1) reproduzir o real-run já provado em `/tmp/opencode/real-run` (2024-prefeito, 22.886.213 votos, 25 linhas fato, 5570 Censo, 5571 de-para), não inventar pipeline novo; (2) custo zero e "free-tier nunca no caminho crítico v1" seguem valendo; (3) abordagem A (script local + docs), sem fetch no build Vercel.
 - **Sucesso:** `scripts/ingestao_real.py --ano --cargo --turno` roda do zero ao `ok: pipeline concluído, gates verdes` nos dois triples, com manifest real (`fixture!=true`, 3 fontes, `artifacts` com sha) e servidos ~100KB dentro dos budgets; CI normal intacto com fixtures.
 
 ## §1 — Arquitetura (só orquestra, sem lógica nova de ETL)
@@ -34,7 +34,7 @@ Data: 2026-10-12. Status: design aprovado em chat; aguarda review da spec.
 ## §5 — Verificação
 
 - `pytest tests/etl/test_ingestao_real.py -q` verde + suíte completa `pytest tests/ -q` (baseline 222 passed) + `vitest`/`tsc`/`build` intactos.
-- Runs manuais documentados (fora do CI): `2024 1 prefeito` (esperado: 22.886.213 votos, 25/25 capitais menos BSB-sem-prefeito, 24 linhas fato) e `2022 1 presidente` (triple V1 nacional); ambos com `verify_manifest` + `_gate_fatos` verdes e SHAs registrados.
+- Runs manuais documentados (fora do CI): `2024 1 prefeito` (esperado: 22.886.213 votos, 25/25 capitais menos BSB-sem-prefeito, 25 linhas fato) e `2022 1 presidente` (triple V1 nacional); ambos com `verify_manifest` + `_gate_fatos` verdes e SHAs registrados.
 - Budgets: `du -sh web/public/data` < 15MB; cada `*.topojson` < 3MB (malha real segue via `scripts/malha.py`, fora deste ciclo).
 
 ## Fora de escopo
