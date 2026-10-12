@@ -170,7 +170,7 @@ export default function Metodologia() {
             <code>censo_ibge_2022</code> do IBGE), consumido pelas seções de
             perfil e correlação. Sem Censo auditado, essas seções exibem “sem
             dado oficial”. Note que o script acima já inclui{" "}
-            <code>build_fato</code> sobre Censo auditado; o item abaixo
+            <code>build_fato</code> sobre Censo auditado; o trecho acima
             descreve o fallback manual.
           </li>
         </ul>
