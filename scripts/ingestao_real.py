@@ -4,7 +4,7 @@
 Orquestra a ingestão dos dados oficiais (TSE + Censo IBGE + de-para
 TSE→IBGE7) para um triple (`--ano --cargo --turno`), sem duplicar
 lógica de ETL: só chama os entrypoints existentes, na mesma ordem de
-`etl/__main__.py` (mesma ordem de `etl/__main__.py`: guard → fetch → de-para → build → censo → fato → gates).
+`etl/__main__.py` (guard → fetch → de-para → build → censo → fato → gates).
 
 Combos válidos = interseção com `V1_DATASETS` (`etl/sources.py`:
 presidente 2014/2018/2022, governador 2014/2018/2022, prefeito
@@ -194,6 +194,23 @@ def _extrair_csvs_de_zip(zip_path: Path, dest_dir: Path,
     return saidas
 
 
+def _extrair_csv_unico(zip_path: Path, dest_dir: Path) -> Path:
+    """Extrai o único membro `.csv` esperado de um zip; devolve o path.
+
+    Invólucro de `_extrair_csvs_de_zip(..., so_maior=True)` (Censo/de-para:
+    um CSV por zip) com guarda explícita de cardinalidade: se a extração
+    não devolver exatamente 1 CSV, levanta `ValueError` curado
+    (`esperado 1 CSV em …, obtido N`) em vez do `ValueError` críptico do
+    desempacotamento de tupla.
+    """
+    saidas = _extrair_csvs_de_zip(zip_path, dest_dir, so_maior=True)
+    if len(saidas) != 1:
+        raise ValueError(
+            f"esperado 1 CSV em {zip_path}, obtido {len(saidas)}"
+        )
+    return saidas[0]
+
+
 def _resumo_fato(fato_path: Path) -> str:
     """Lê o fato gerado; devolve `<N> votos, <M> municípios` p/ o resumo."""
     doc = json.loads(Path(fato_path).read_text(encoding="utf-8"))
@@ -204,7 +221,12 @@ def _resumo_fato(fato_path: Path) -> str:
 
 
 def main(argv=None) -> int:
-    """Valida o triple e orquestra a ingestão; devolve 0/1/2."""
+    """Valida o triple e orquestra a ingestão; devolve 0/1/2.
+
+    "Sem escrita" em falha (p.ex. zip inválido) = sem CSV/DB/JSON
+    downstream; os `mkdir`s de `curated`/DB/`web-data-dir` ocorrem antes
+    da validação de conteúdo, então dirs vazios podem existir.
+    """
     args = _parse_args(argv)
     if str(_REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(_REPO_ROOT))
@@ -256,8 +278,8 @@ def main(argv=None) -> int:
         # De-para: extrai o membro CSV do zip e registra/parseia NOS MESMOS
         # bytes hasheados (`_passo_depara`: lê uma vez, hasheia e parseia
         # a mesma leitura — sem TOCTOU).
-        (depara_csv,) = _extrair_csvs_de_zip(
-            fetched["depara"]["path"], Path(args.raw_dir), so_maior=True)
+        depara_csv = _extrair_csv_unico(
+            fetched["depara"]["path"], Path(args.raw_dir))
         depara = _passo_depara(depara_csv, manifest)
         print("de-para: join TSE→IBGE7 ativo nos marts")
         # TSE: extrai os membros CSV (um por UF) p/ o curated e constrói
@@ -274,8 +296,8 @@ def main(argv=None) -> int:
         # (dentro de `_passo_censo`); diverge → saída 1 sem fato adiante.
         # Sem flag, vale o total oficial do Censo 2022 (spec §1: triples
         # 2024 e 2022 usam o mesmo Censo).
-        (censo_csv,) = _extrair_csvs_de_zip(
-            fetched["censo"]["path"], Path(args.raw_dir), so_maior=True)
+        censo_csv = _extrair_csv_unico(
+            fetched["censo"]["path"], Path(args.raw_dir))
         total = (args.censo_total_esperado if args.censo_total_esperado
                  is not None else TOTAL_CENSO_2022)
         erros_censo = _passo_censo(censo_csv, Path(args.db), manifest,

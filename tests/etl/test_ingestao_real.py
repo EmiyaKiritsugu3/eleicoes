@@ -1,4 +1,4 @@
-"""Ingestão oficial: CLI da Task 1 (bloco 1: --help + validação V1)."""
+"""Ingestão oficial: CLI + guards + e2e sintético offline (Tasks 1–3)."""
 
 import pytest
 
@@ -107,7 +107,7 @@ def test_censo_total_divergente_sai_1_sem_fato(tmp_path, monkeypatch):
     assert list((tmp_path / "w").glob("fato_*.json")) == []
 
 
-def test_help_cita_triples_e_exits(tmp_path=None):
+def test_help_cita_triples_e_exits():
     import subprocess, sys
     from pathlib import Path
     repo = Path(__file__).resolve().parents[2]
@@ -145,3 +145,27 @@ def test_fetch_falha_e_exit_2_sem_escrita(tmp_path, monkeypatch):
         "--db", str(tmp_path / "s.duckdb"), "--web-data-dir", str(tmp_path / "w")])
     assert rc == 2
     assert not (tmp_path / "cur").exists()
+
+
+def test_zip_sem_csv_sai_2_com_msg_curada(tmp_path, monkeypatch, capsys):
+    import hashlib
+    from pathlib import Path
+
+    import etl.fetch as fetch
+    from etl.sources import DEPARA_DATASET
+    from scripts import ingestao_real
+
+    def _fake_depara_sem_csv(url, dest):
+        if url == DEPARA_DATASET["url"]:
+            payload = _zip_bytes("leia.txt", b"sem csv aqui")
+            dest = Path(dest)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(payload)
+            return hashlib.sha256(payload).hexdigest()
+        return _fake_download_3_zips(url, dest)
+
+    monkeypatch.setattr(fetch, "download_dataset", _fake_depara_sem_csv)
+    assert ingestao_real.main(_argv_e2e(tmp_path)) == 2
+    err = capsys.readouterr().err
+    assert "erro:" in err
+    assert ("sem membro .csv" in err or "esperado 1 CSV" in err)
