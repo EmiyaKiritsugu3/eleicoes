@@ -259,3 +259,10 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 - Suítes: pytest 229 + vitest 580 + tsc + build verdes.
 - Real-run provado (2024-prefeito): 22.886.213 votos, fato 25 municípios; SHAs do manifest (CSV extraído/derivado, não do zip) `1024537a…` votacao_2024, `22518445…` de-para, `0adc228e…` Censo.
 - 2022-presidente: comando documentado, run real ainda NÃO executado neste ciclo (sem números registrados).
+
+## Pipeline real parametrizado mergeado (2026-10-12, PR #21, commit a526cec)
+- Escopo: `scripts/ingestao_real.py --ano --cargo --turno` (só orquestra entrypoints: fetch→depara→build_all→censo→fato→gates + resumo) + 8 testes offline + docs deploy real (metodologia + loop). Combos validados contra V1; fail-closed 0/1/2; guarda anti-perda.
+- Execução subagent-driven (4 tasks + reviews por task + final review Ready-to-merge + 1 fix wave).
+- Rounds no PR: R1 (Sonar new_security_rating E — 8× S8707/S2083 mesma-família no script novo → won't-fix justificado via API, ruling EVOLVE-1/15: batch local, só auto-ataque; + nit docs que triggou re-análise). CI ×2 + Sonar + GitGuardian verdes no head. CodeRabbit só summary. cubic skipping (quota, neutro, precedente).
+- Suítes finais: pytest 230 (229 passed + 1 skipped; 222 baseline + 8 novos) + vitest 580 + tsc + build.
+- Backlog: run real 2022-presidente ainda não executado (sem números registrados); workflow_dispatch c/ artifacts (candidato próximo ciclo); rem-vs-px; E5 empty-build.
