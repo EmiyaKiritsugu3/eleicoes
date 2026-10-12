@@ -245,3 +245,10 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 - Prova: fato refeito com 25/25 capitais esperadas (só BSB sem-prefeito e AJU sem-turno-1-na-fonte fora, ambas corretas), 22,9M votos, demo nula 0, gates verdes.
 - Gap de fonte documentado: arquivo nacional TSE sem prefeito-turno-1 de Aracaju (só 6 linhas turno 2).
 - Rounds no PR: ZERO — CI ×2 + Sonar + GitGuardian verdes + CodeRabbit sem threads. Suite: pytest 222.
+
+## Preview real na UI (2026-10-12, sem PR: operação local reversível)
+- Swap dos artefatos reais de /tmp/opencode/real-run sobre web/public/data (+backup em /tmp/opencode/served-backup), build + serve local, screenshots Playwright, restore + kill server.
+- Home com dado oficial: "Total de votos: 22.886.213", "Anos: 2024", selo "fonte auditada" + URL TSE + hash. /regiao/3550308?fato=fato_2024_1_prefeito: RICARDO NUNES (MDB), 1.801.139 votos, margem 0,4%, total 6.109.051, selo oficial.
+- Erros de console só benignos: favicon 404 + malha topojson ausente (fallback em lista, fail-closed por design).
+- Incidente: `pkill -f` casou com o próprio comando (suicídio do shell) — restore refeito com kill por porta (ss); backup estava intacto; servido de volta às fixtures 2022, árvore limpa.
+- Para dado real no ar (deploy): CI regenera fixtures via seed --force; é preciso job de ingestão real publicando JSONs no deploy (ver metodologia/seção deploy). Backlog.
