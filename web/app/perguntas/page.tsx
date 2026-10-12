@@ -1,4 +1,4 @@
-/** Rota /perguntas: índice da biblioteca curada (30 cards). */
+/** Rota /perguntas: índice de exemplos de consulta (30 cards). */
 
 import React from "react";
 import perguntasJson from "../../data/perguntas.json";
@@ -20,13 +20,14 @@ export default function Perguntas() {
           color: tokens.cor.tinta,
         }}
       >
-        Biblioteca curada — 30 perguntas
+        Exemplos de consulta
       </h1>
       <p>
-        Cada pergunta tem resposta completa pré-computada, com fonte e hash quando há dado
-        oficial auditado; sem dado oficial, a página da pergunta mostra sem dado oficial em
-        vez de número. Correlação nunca é apresentada como causa; perfis são sempre de
-        municípios, nunca de pessoas.
+        Cada exemplo tem resposta completa pré-computada, com fonte e hash quando há dado
+        oficial auditado; sem dado oficial, a página do exemplo mostra sem dado oficial em
+        vez de número. Para perguntar o que você quiser, <a href="/analisar">consulte
+        direto</a> com filtros. Correlação nunca é apresentada como causa; perfis são
+        sempre de municípios, nunca de pessoas.
       </p>
       <ul>
         {perguntas.map((p) => (

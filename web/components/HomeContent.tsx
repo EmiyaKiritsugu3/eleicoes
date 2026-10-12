@@ -9,7 +9,6 @@ import SealSlot from "./SealSlot";
 import CopyShare from "./CopyShare";
 import ExportCsv from "./ExportCsv";
 import { ENTRADAS_HOME } from "../lib/export";
-import perguntasJson from "../data/perguntas.json";
 import {
   evolucaoAnual,
   filtrarCandidatos,
@@ -346,7 +345,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
           color: tokens.cor.tinta,
         }}
       >
-        SAD Eleições — resultados
+        Consulte os resultados auditados
       </h1>
 
       {manifestChecked && !seal.official && !seal.hasFixture && (
@@ -371,6 +370,8 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         </p>
       )}
 
+      {/* Consulta-herói: a Busca (filtros ano/cargo/UF/candidato) é a
+          primeira seção — a Home é ferramenta de consulta, não vitrine. */}
       <section
         aria-label="Busca"
         style={{ borderTop: FILETE, paddingTop: tokens.espaco[4] }}
@@ -414,6 +415,12 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
             <small>por município em breve — V1 agrega por UF</small>
           </label>
         </form>
+        <p>
+          <small>
+            Quer ir além dos filtros? <a href="/analisar">Análise avançada</a> (pivô,
+            comparador, série histórica) · <a href="/explorar">Explorar</a> por blocos
+          </small>
+        </p>
       </section>
 
       <section
@@ -672,8 +679,10 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         )}
       </section>
 
+      {/* Consulta-herói: o curado mora em /perguntas (exemplos/atalhos);
+          na Home fica só o atalho — sem a lista de 30. */}
       <section
-        aria-label="Biblioteca curada"
+        aria-label="Exemplos de consulta"
         style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
       >
         <h2
@@ -683,20 +692,14 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
             lineHeight: secaoLine,
           }}
         >
-          Biblioteca curada — 30 perguntas
+          Exemplos de consulta
         </h2>
         {badge}
         <p>
-          Respostas pré-computadas com fonte e hash quando há dado oficial auditado; sem dado
-          oficial, cada pergunta mostra sem dado oficial em vez de número.
+          Prefere começar por um exemplo? <a href="/perguntas">30 exemplos de consulta</a> com
+          fonte e hash quando há dado oficial auditado — ou <a href="/analisar">consulte
+          direto</a> com os filtros acima.
         </p>
-        <ul>
-          {(perguntasJson as { slug: string; titulo: string }[]).map((p) => (
-            <li key={p.slug}>
-              <a href={`/perguntas/${p.slug}`}>{p.titulo}</a>
-            </li>
-          ))}
-        </ul>
       </section>
 
       <section

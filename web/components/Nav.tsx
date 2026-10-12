@@ -8,8 +8,8 @@ const LINKS = [
   { href: "/", label: "Início" },
   { href: "/analisar", label: "Analisar" },
   { href: "/explorar", label: "Explorar" },
-  { href: "/perguntas", label: "Perguntas" },
   { href: "/verificar", label: "Verificar" },
+  { href: "/perguntas", label: "Perguntas" },
   { href: "/metodologia", label: "Metodologia" },
   { href: "/auditoria", label: "Auditoria" },
 ] as const;
