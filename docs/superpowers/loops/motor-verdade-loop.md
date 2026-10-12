@@ -231,3 +231,10 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 - Incidentes: fade escondia skeleton (fix: fade só no conteúdo resolvido); div-in-p inválido (fix: div role=status); fade morto em opacity 1 (micro: keyframes, hydration-safe por construção — SSR sempre loading).
 - Suítes finais: pytest 221 + vitest 579 + tsc + build.
 - Backlog: Onda 3 (demais superfícies herdam tokens) + row-hover transition (deferido) + style-hoist (parkado).
+
+## Onda 3 mergeada (2026-10-12, PR #19, commit 4be3819) — tokens nas restantes
+- Escopo: Analisar+Comparator, Explorar (cores de dados intactas), Verificar/Curada/PainelRegiao/Auditoria/índices — só valores de estilo. Selos/vereditos/dados byte-idênticos.
+- Execução subagent-driven (4 tasks + reviews + final clean). Task 4 extra (receita do reviewer): relax matchers h1/h2 + H1/H2 PainelRegiao, 2-commit split.
+- Rounds no PR: ZERO — CI ×2 + Sonar + GitGuardian verdes + CodeRabbit sem threads no head. cubic skipping (quota, neutro).
+- Suítes finais: pytest 221 + vitest 579 + tsc + build.
+- Backlog: rem-vs-px nos tokens espaco (herança Onda 1) + pipeline real end-to-end (maior valor pendente).
