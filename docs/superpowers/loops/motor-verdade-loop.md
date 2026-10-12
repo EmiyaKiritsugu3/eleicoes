@@ -252,3 +252,10 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 - Erros de console só benignos: favicon 404 + malha topojson ausente (fallback em lista, fail-closed por design).
 - Incidente: `pkill -f` casou com o próprio comando (suicídio do shell) — restore refeito com kill por porta (ss); backup estava intacto; servido de volta às fixtures 2022, árvore limpa.
 - Para dado real no ar (deploy): CI regenera fixtures via seed --force; é preciso job de ingestão real publicando JSONs no deploy (ver metodologia/seção deploy). Backlog.
+
+## Pipeline real parametrizado (2026-10-12, branch `pipeline-real`: script + docs, sem PR ainda)
+- `scripts/ingestao_real.py --ano --cargo --turno` (só orquestra entrypoints de `etl/__main__.py`; combos validados contra `V1_DATASETS`; guarda anti-perda espelha `seed --force`).
+- Tasks 1–4: CLI + fetch + wiring + docs deploy (`/metodologia` item Produção com comandos dos 2 triples + SHAs do manifest + nota publish manual).
+- Suítes: pytest 229 + vitest 580 + tsc + build verdes.
+- Real-run provado (2024-prefeito): 22.886.213 votos, fato 25 municípios; SHAs do manifest (CSV extraído/derivado, não do zip) `1024537a…` votacao_2024, `22518445…` de-para, `0adc228e…` Censo.
+- 2022-presidente: comando documentado, run real ainda NÃO executado neste ciclo (sem números registrados).

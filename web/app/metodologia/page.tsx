@@ -141,21 +141,37 @@ export default function Metodologia() {
             <code>cd web &amp;&amp; npm test -- --run &amp;&amp; npm run build</code>.
           </li>
           <li>
-            <strong>Produção (dados oficiais):</strong> rode a ingestão real do
-            TSE (<code>etl.build_marts.build_all</code> sobre os zips oficiais) e
-            publique os JSONs junto ao deploy — ou removendo a linha do gitignore
-            para versioná-los, ou enviando <code>web/public/data/</code> pelo
-            mecanismo de deploy. Sem dados oficiais publicados, o site exibe o
-            banner “dado não auditado”, que é o comportamento correto.
+            <strong>Produção (dados oficiais):</strong>{" "}
+            <code>
+              python scripts/ingestao_real.py --ano 2024 --cargo prefeito
+              --turno 1
+            </code>{" "}
+            e{" "}
+            <code>
+              python scripts/ingestao_real.py --ano 2022 --cargo presidente
+              --turno 1
+            </code>{" "}
+            — o script baixa os 3 zips oficiais, roda o ETL real e gera os
+            JSONs em <code>web/public/data/</code> (run 2024 provado:
+            22.886.213 votos, fato com 25 municípios; SHAs do manifest (CSV
+            extraído/derivado, não do zip) <code>1024537a…</code>{" "}
+            votacao_2024, <code>22518445…</code> de-para,{" "}
+            <code>0adc228e…</code> Censo; run 2022 ainda não
+            executado neste ciclo, sem números registrados). O publish é
+            manual: copie os JSONs gerados localmente para o host junto ao
+            deploy (o build não baixa nada; o CI segue regenerando fixtures
+            via <code>seed_fixture_data.py --force</code>). Sem dados oficiais
+            publicados, o site exibe o banner “dado não auditado”, que é o
+            comportamento correto.
           </li>
           <li>
             <strong>Fato municipal + Censo:</strong> o ETL também gera{" "}
             <code>fato_ano_turno_cargo.json</code> (junção TSE + ingestões{" "}
             <code>censo_ibge_2022</code> do IBGE), consumido pelas seções de
             perfil e correlação. Sem Censo auditado, essas seções exibem “sem
-            dado oficial”. Note que o fato integrado TSE×Censo exige{" "}
-            <code>build_fato</code> separado sobre Censo auditado — passo
-            ainda não automatizado no fluxo normal acima.
+            dado oficial”. Note que o script acima já inclui{" "}
+            <code>build_fato</code> sobre Censo auditado; o trecho acima
+            descreve o fallback manual.
           </li>
         </ul>
       </section>
