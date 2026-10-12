@@ -15,13 +15,15 @@ saída 2 ANTES de qualquer download (fail-closed, custo zero).
 Códigos de saída (fail-closed, como `etl/__main__.py`):
   0 — ok;
   1 — gates reprovados (versão anterior mantida; nada publicado)
-  (Tasks 2-3; inalcançável nesta task);
-  2 — erro (combo fora do V1, `--turno` inválido, exceção).
+  (Task 3; inalcançável nesta task);
+  2 — erro (combo fora do V1, `--turno` inválido, guarda anti-perda
+  sem `--force-real`, exceção no fetch).
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -71,6 +73,87 @@ def _parse_args(argv=None):
     return parser.parse_args(argv)
 
 
+def _guard_webdata(web_data_dir: Path, force_real: bool) -> None:
+    """Recusa sobrescrever manifest oficial sem `--force-real` (anti-perda).
+
+    Lê `<web-data-dir>/manifest.json` se existir; manifest ausente,
+    inválido (não-JSON/não-dict), sem lista `ingestions`, ou com SÓ
+    ingestões `fixture: true` passa sem fazer nada. Se qualquer ingestão
+    for não-fixture (`fixture != true`, incluindo entrada sem a flag ou
+    malformada — ingestão real nunca marca a flag, mesmo predicado de
+    `scripts/seed_fixture_data.py:_has_official_entries`) e `force_real`
+    for falso, imprime `erro:` em stderr e levanta `SystemExit(2)`.
+    """
+    if force_real:
+        return
+    manifest_path = Path(web_data_dir) / "manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError):
+        return  # ausente/inválido passa
+    if not isinstance(manifest, dict):
+        return
+    ingestions = manifest.get("ingestions")
+    if not isinstance(ingestions, list):
+        return
+    oficial = any(
+        not isinstance(e, dict) or e.get("fixture") is not True
+        for e in ingestions
+    )
+    if oficial:
+        print(
+            f"erro: {manifest_path} contém ingestão oficial "
+            f"(fixture!=true) — recusando sobrescrever sem --force-real; "
+            f"nada foi baixado",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+
+def _passo_fetch(raw_dir: Path, ano: int, cargo: str) -> dict:
+    """Baixa os 3 zips oficiais do triple p/ `raw_dir`; devolve o mapa.
+
+    As 3 URLs: `V1` do triple (`(ano, cargo)` em `V1_DATASETS`) + Censo
+    (`CENSO_DATASETS[0]`) + de-para (`DEPARA_DATASET`), via
+    `etl.fetch.download_dataset(url, dest)` com
+    `dest = raw_dir/<basename da url>`. Imprime
+    `fetch: <nome> ok (sha256=<12>…)` por arquivo (mesmo formato de
+    `etl/__main__._passo_fetch`). Devolve
+    `{nome: {"url", "path", "sha256"}}` com nomes `tse`/`censo`/`depara`
+    (Task 3 consome `path` p/ de-para/Censo e `sha256` p/ o manifest).
+    Combo fora do V1 levanta `ValueError` antes de qualquer download;
+    erro de rede propaga p/ o chamador (que converte em saída 2).
+    """
+    if str(_REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(_REPO_ROOT))
+    from etl import fetch
+    from etl.sources import CENSO_DATASETS, DEPARA_DATASET, V1_DATASETS
+
+    v1 = next(
+        (e for e in V1_DATASETS
+         if e["ano"] == ano and str(e["cargo"]).lower() == str(cargo).lower()),
+        None,
+    )
+    if v1 is None:
+        raise ValueError(
+            f"combo fora do V1 (--ano {ano} --cargo {str(cargo).lower()}): "
+            f"o triple precisa estar em V1_DATASETS; nada foi baixado"
+        )
+    alvos = (
+        ("tse", v1["url"]),
+        ("censo", CENSO_DATASETS[0]["url"]),
+        ("depara", DEPARA_DATASET["url"]),
+    )
+    raw_dir = Path(raw_dir)
+    saida: dict = {}
+    for nome, url in alvos:
+        dest = raw_dir / (url.rsplit("/", 1)[-1] or f"{nome}.zip")
+        sha = fetch.download_dataset(url, dest)
+        print(f"fetch: {dest.name} ok (sha256={sha[:12]}…)")
+        saida[nome] = {"url": url, "path": dest, "sha256": sha}
+    return saida
+
+
 def main(argv=None) -> int:
     """Valida o triple e (Tasks 2–3) orquestra a ingestão; devolve 0/1/2."""
     args = _parse_args(argv)
@@ -95,12 +178,22 @@ def main(argv=None) -> int:
             file=sys.stderr,
         )
         return 2
-    # Task 1: só validação (sem I/O de rede). O wiring guard → fetch →
-    # de-para → build → censo → fato → gates chega nas Tasks 2–3.
+    # Task 2: guarda anti-perda ANTES de qualquer download, depois fetch
+    # das 3 fontes. O wiring de-para \u2192 build \u2192 censo \u2192 fato \u2192 gates
+    # chega na Task 3.
+    try:
+        _guard_webdata(args.web_data_dir, args.force_real)
+    except SystemExit as exc:
+        return exc.code if isinstance(exc.code, int) else 2
+    try:
+        _passo_fetch(args.raw_dir, args.ano, args.cargo)
+    except Exception as exc:
+        print(f"erro: {exc}", file=sys.stderr)
+        return 2
     print(
         f"combo V1 válido (--ano {args.ano} --cargo {str(args.cargo).lower()} "
-        f"--turno {args.turno}); wiring da ingestão chega nas Tasks 2–3 "
-        "(nada executado)"
+        f"--turno {args.turno}); fetch das 3 fontes ok em {args.raw_dir}; "
+        f"wiring de-para \u2192 build \u2192 censo \u2192 fato \u2192 gates chega na Task 3"
     )
     return 0
 
