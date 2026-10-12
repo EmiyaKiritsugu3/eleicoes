@@ -37,6 +37,7 @@ import { ENTRADAS_CURADA } from "../lib/export";
 import { MALHA_MUNICIPIOS_URL } from "../lib/malha";
 import { vereditoTemProva } from "../lib/regiao";
 import { ALERTA_STYLE, MOTIVO_SEM_HASH } from "../lib/textos";
+import { tokens } from "../lib/tokens";
 import {
   VAR_DEMO,
   PISO_CORRELACAO_N,
@@ -79,6 +80,10 @@ const DEBOUNCE_MS = 250;
 /** Valores `ver` conhecidos; `?q=` adulterado com visões fora do set é
  *  descartado no parse (fail-closed) e na renderização (`verSeguro`). */
 const VER_VALIDOS = new Set<string>(VER_OPCOES.map((o) => o.value));
+
+const [giganteSize, giganteLine] = tokens.texto.gigante.split("/");
+const [secaoSize, secaoLine] = tokens.texto.secao.split("/");
+const FILETE = `1px solid ${tokens.cor.linha}`;
 
 // `ALERTA_STYLE` vive em `lib/textos` e `finito` em `lib/motor`
 // (fontes únicas, EVOLVE-13).
@@ -446,15 +451,32 @@ export function ExplorarConteudo({
 
   return (
     <>
-      <h1>Motor Verdade — explorar em blocos</h1>
+      <h1
+        style={{
+          fontFamily: tokens.fonte.display,
+          fontSize: giganteSize,
+          lineHeight: giganteLine,
+          color: tokens.cor.tinta,
+        }}
+      >
+        Motor Verdade — explorar em blocos
+      </h1>
       {seal.official && (
         <SourceBadge hash={seal.official.hash} url={seal.official.url} date={seal.official.date} />
       )}
 
-      <section aria-label="Blocos">
-        <h2>Blocos — quem · onde · cruzar com · ver como</h2>
+      <section aria-label="Blocos" style={{ borderTop: FILETE, paddingTop: tokens.espaco[4] }}>
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Blocos — quem · onde · cruzar com · ver como
+        </h2>
         {badge}
-        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: tokens.espaco[2], flexWrap: "wrap" }}>
           <label>
             quem{" "}
             <select
@@ -510,7 +532,7 @@ export function ExplorarConteudo({
           <fieldset>
             <legend>ver como (máx. {MAX_VISOES})</legend>
             {VER_OPCOES.map((o) => (
-              <label key={o.value} style={{ marginRight: "0.5rem" }}>
+              <label key={o.value} style={{ marginRight: tokens.espaco[2] }}>
                 <input
                   type="checkbox"
                   checked={verSeguro.includes(o.value)}
@@ -541,8 +563,17 @@ export function ExplorarConteudo({
         </p>
       </section>
 
-      <section aria-label="Resultado">
-        <h2>
+      <section
+        aria-label="Resultado"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
           Resultado — {quemNome} · {ondeLabel} · {sel.cruzar}
         </h2>
         {badge}
@@ -576,8 +607,19 @@ export function ExplorarConteudo({
       </section>
 
       {(sel.foco ?? "").trim() !== "" && (
-        <section aria-label="Foco da região">
-          <h2>Foco da região</h2>
+        <section
+          aria-label="Foco da região"
+          style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+        >
+          <h2
+            style={{
+              fontFamily: tokens.fonte.display,
+              fontSize: secaoSize,
+              lineHeight: secaoLine,
+            }}
+          >
+            Foco da região
+          </h2>
           {badge}
           {!focoRow ? (
             <p role="alert" style={ALERTA_STYLE}>{SEM_DADO} — foco {(sel.foco ?? "").trim()} fora do fato municipal</p>
@@ -594,8 +636,19 @@ export function ExplorarConteudo({
       )}
 
       {verSeguro.includes("dispersao") && (
-        <section aria-label="Dispersão">
-          <h2>Dispersão — {sel.cruzar} × percentual de votos de {quemNome}</h2>
+        <section
+          aria-label="Dispersão"
+          style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+        >
+          <h2
+            style={{
+              fontFamily: tokens.fonte.display,
+              fontSize: secaoSize,
+              lineHeight: secaoLine,
+            }}
+          >
+            Dispersão — {sel.cruzar} × percentual de votos de {quemNome}
+          </h2>
           {badge}
           <p role="note">{ECO_SEAL} — cada ponto é um município, nunca uma pessoa.</p>
           {!coberto ? (
@@ -700,8 +753,19 @@ export function ExplorarConteudo({
       )}
 
       {verSeguro.includes("ranking") && (
-        <section aria-label="Ranking">
-          <h2>Ranking — maior percentual de votos de {quemNome}</h2>
+        <section
+          aria-label="Ranking"
+          style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+        >
+          <h2
+            style={{
+              fontFamily: tokens.fonte.display,
+              fontSize: secaoSize,
+              lineHeight: secaoLine,
+            }}
+          >
+            Ranking — maior percentual de votos de {quemNome}
+          </h2>
           {badge}
           {!coberto || ranking.length === 0 ? (
             <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}{!hashAuditado ? ` — ${MOTIVO_SEM_HASH}` : " — sem cobertura neste recorte"}</p>
@@ -732,8 +796,17 @@ export function ExplorarConteudo({
       )}
 
       {verSeguro.includes("tabela") && (
-        <section aria-label={sel.onde === "segundo" ? "Perfil do recorte" : "Perfil de onde venceu"}>
-          <h2>
+        <section
+          aria-label={sel.onde === "segundo" ? "Perfil do recorte" : "Perfil de onde venceu"}
+          style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+        >
+          <h2
+            style={{
+              fontFamily: tokens.fonte.display,
+              fontSize: secaoSize,
+              lineHeight: secaoLine,
+            }}
+          >
             {sel.onde === "segundo"
               ? `Perfil — ${quemNome} em 2º lugar (sem perfil de vitória)`
               : `Perfil de onde ${quemNome} venceu`}
@@ -792,8 +865,19 @@ export function ExplorarConteudo({
       )}
 
       {verSeguro.includes("mapa") && (
-        <section aria-label="Mapa">
-          <h2>Mapa — vencedor por município</h2>
+        <section
+          aria-label="Mapa"
+          style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+        >
+          <h2
+            style={{
+              fontFamily: tokens.fonte.display,
+              fontSize: secaoSize,
+              lineHeight: secaoLine,
+            }}
+          >
+            Mapa — vencedor por município
+          </h2>
           {badge}
           {!fato || !hashAuditado ? (
             <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}{!hashAuditado ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
@@ -808,8 +892,19 @@ export function ExplorarConteudo({
         </section>
       )}
 
-      <section aria-label="Export reproduzível">
-        <h2>Export reproduzível</h2>
+      <section
+        aria-label="Export reproduzível"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Export reproduzível
+        </h2>
         {badge}
         <p>
           <CopyShare url={shareUrl} />
