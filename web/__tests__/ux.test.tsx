@@ -182,7 +182,7 @@ describe("ux H1 legível", () => {
       <PainelRegiao ibge="3550308" fato={FATO_NOMEADO} seal={SEAL_OK} manifestChecked />,
     );
     expect(html).toContain("São Paulo (SP)");
-    expect(html).toMatch(/<h1>[\s\S]*<small>[\s\S]*3550308[\s\S]*<\/small>[\s\S]*<\/h1>/);
+    expect(html).toMatch(/<h1[^>]*>[\s\S]*<small>[\s\S]*3550308[\s\S]*<\/small>[\s\S]*<\/h1>/);
   });
 });
 

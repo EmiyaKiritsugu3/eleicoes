@@ -89,7 +89,7 @@ async function montar(nodo: React.ReactElement): Promise<HTMLDivElement> {
 }
 
 function perfil(html: string): string {
-  return html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+  return html.split(/<h2[^>]*>Perfil do lugar<\/h2>/)[1] ?? "";
 }
 
 const SEAL_NULO = { official: null, hasFixture: false, fixtureHash: "" };

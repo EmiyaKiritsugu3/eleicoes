@@ -78,7 +78,7 @@ const CENSO = { "3550308": 12345 };
 const SEAL_NULO = { official: null, hasFixture: false, fixtureHash: "" };
 
 function perfil(html: string): string {
-  return html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+  return html.split(/<h2[^>]*>Perfil do lugar<\/h2>/)[1] ?? "";
 }
 
 // Roteadores mutáveis: a rotação troca manifest/dados SEM remontar a página.

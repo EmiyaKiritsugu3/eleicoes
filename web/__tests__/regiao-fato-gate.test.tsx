@@ -110,11 +110,11 @@ async function montar(): Promise<HTMLDivElement> {
 }
 
 function resultado(html: string): string {
-  return html.split("<h2>Resultado")[1]?.split("<section")[0] ?? "";
+  return html.split(/<h2[^>]*>Resultado/)[1]?.split("<section")[0] ?? "";
 }
 
 function perfil(html: string): string {
-  return html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+  return html.split(/<h2[^>]*>Perfil do lugar<\/h2>/)[1] ?? "";
 }
 
 afterEach(async () => {
@@ -198,8 +198,8 @@ describe("/regiao: fato sem prova é suprimido (EVOLVE-10 Task 1)", () => {
     const html = renderToStaticMarkup(
       <PainelRegiao ibge="SP" fato={null} seal={SEAL_NULO} manifestChecked censo={CENSO} />,
     );
-    const res = html.split("<h2>Resultado</h2>")[1]?.split("<section")[0] ?? "";
-    const p = html.split("<h2>Perfil do lugar</h2>")[1]?.split("<section")[0] ?? "";
+    const res = html.split(/<h2[^>]*>Resultado<\/h2>/)[1]?.split("<section")[0] ?? "";
+    const p = html.split(/<h2[^>]*>Perfil do lugar<\/h2>/)[1]?.split("<section")[0] ?? "";
     expect(res).toContain(SEM_DADO);
     expect(html).not.toContain("Cand A");
     expect(p).toContain("População (Censo 2022)");
