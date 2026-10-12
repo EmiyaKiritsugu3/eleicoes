@@ -155,7 +155,8 @@ export default function Metodologia() {
             JSONs em <code>web/public/data/</code> (run 2024 provado:
             22.886.213 votos, fato com 25 municípios; SHAs do manifest (CSV
             extraído/derivado, não do zip) <code>1024537a…</code>{" "}
-            de-para, <code>0adc228e…</code> Censo; run 2022 ainda não
+            votacao_2024, <code>22518445…</code> de-para,{" "}
+            <code>0adc228e…</code> Censo; run 2022 ainda não
             executado neste ciclo, sem números registrados). O publish é
             manual: copie os JSONs gerados localmente para o host junto ao
             deploy (o build não baixa nada; o CI segue regenerando fixtures
