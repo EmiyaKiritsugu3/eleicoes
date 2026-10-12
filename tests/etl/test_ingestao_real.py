@@ -3,6 +3,110 @@
 import pytest
 
 
+# Bloco 3 (Task 3): e2e sintético offline — mesmo shape de
+# `test_orquestrador.py` (TSE `;` com `CD_MUNICIPIO` curto + de-para mini
+# + Censo 2 linhas), mas 2024/PREFEITO e chegando via zips no raw-dir
+# (rede substituída por monkeypatch de `download_dataset`).
+_FIXTURE_TSE_2024 = (
+    "ANO_ELEICAO;DS_CARGO;SG_UF;CD_MUNICIPIO;NM_URNA;QT_VOTOS\n"
+    "2024;PREFEITO;SP;35;CANDIDATO EXEMPLO A;10\n"
+    "2024;PREFEITO;RJ;299;CANDIDATO EXEMPLO B;5\n"
+)
+
+_FIXTURE_DEPARA_MINI = (
+    '"DT_GERACAO";"HH_GERACAO";"CD_UF_TSE";"CD_UF_IBGE";"SG_UF";"NM_UF";'
+    '"CD_MUNICIPIO_TSE";"NM_MUNICIPIO_TSE";'
+    '"CD_MUNICIPIO_IBGE";"NM_MUNICIPIO_IBGE"\n'
+    '"04/10/2026";"09:00:06";35;35;"SP";"Sao Paulo";'
+    '"00035";"Exemplo SP";3550308;"Exemplo SP"\n'
+    '"04/10/2026";"09:00:06";33;33;"RJ";"Rio de Janeiro";'
+    '"00299";"Exemplo RJ";3304557;"Exemplo RJ"\n'
+)
+
+_FIXTURE_CENSO_2 = (
+    "CD_MUN;P_SUPERIOR;P_MEDIO;P_FUNDAMENTAL;RENDIMENTO_MEDIO;TX_POBREZA;"
+    "IDADE_MEDIANA;TX_URBANIZACAO;POP_RESIDENTE\n"
+    "3550308;20.0;35.0;45.0;2500.0;15.0;33.0;90.0;10000\n"
+    "3304557;25.0;35.0;40.0;2600.0;18.0;34.0;85.0;12000\n"
+)
+
+
+def _zip_bytes(membro: str, dados: bytes) -> bytes:
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(membro, dados)
+    return buf.getvalue()
+
+
+def _fake_download_3_zips(url, dest):
+    """`download_dataset` sem rede: escreve o fixture certo por URL."""
+    import hashlib
+    from pathlib import Path
+
+    from etl.sources import CENSO_DATASETS, DEPARA_DATASET
+
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if url == DEPARA_DATASET["url"]:
+        payload = _zip_bytes(
+            "municipio_tse_ibge.csv",
+            _FIXTURE_DEPARA_MINI.encode("latin-1"))
+    elif url == CENSO_DATASETS[0]["url"]:
+        payload = _zip_bytes(
+            "censo_municipios.csv", _FIXTURE_CENSO_2.encode("utf-8"))
+    else:  # V1 do triple (2024-prefeito): 15 votos em 2 municípios
+        payload = _zip_bytes(
+            "votacao_candidato_munzona_2024_SP.csv",
+            _FIXTURE_TSE_2024.encode("utf-8"))
+    dest.write_bytes(payload)
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _argv_e2e(tmp_path, total="22000"):
+    return [
+        "--ano", "2024", "--cargo", "prefeito", "--turno", "1",
+        "--raw-dir", str(tmp_path / "raw"),
+        "--curated-dir", str(tmp_path / "cur"),
+        "--db", str(tmp_path / "s.duckdb"),
+        "--web-data-dir", str(tmp_path / "w"),
+        "--censo-total-esperado", total,
+    ]
+
+
+def test_e2e_sintetico_sai_0_com_resumo(tmp_path, monkeypatch, capsys):
+    import json
+
+    import etl.fetch as fetch
+    from scripts import ingestao_real
+
+    monkeypatch.setattr(
+        fetch, "download_dataset", _fake_download_3_zips)
+    assert ingestao_real.main(_argv_e2e(tmp_path)) == 0
+    out = capsys.readouterr().out
+    assert "ok: pipeline concluído" in out
+    assert ("fato: fato_2024_1_prefeito.json ok "
+            "(15 votos, 2 municípios)") in out
+    fato = tmp_path / "w" / "fato_2024_1_prefeito.json"
+    assert fato.exists()
+    payload = json.loads(fato.read_text(encoding="utf-8"))
+    assert len(payload["municipios"]) == 2
+    assert sum(m["total"] for m in payload["municipios"]) == 15
+
+
+def test_censo_total_divergente_sai_1_sem_fato(tmp_path, monkeypatch):
+    import etl.fetch as fetch
+    from scripts import ingestao_real
+
+    monkeypatch.setattr(
+        fetch, "download_dataset", _fake_download_3_zips)
+    # Fixture: pop 10000 + 12000 = 22000; 1 diverge fail-closed.
+    assert ingestao_real.main(_argv_e2e(tmp_path, total="1")) == 1
+    assert list((tmp_path / "w").glob("fato_*.json")) == []
+
+
 def test_help_cita_triples_e_exits(tmp_path=None):
     import subprocess, sys
     from pathlib import Path

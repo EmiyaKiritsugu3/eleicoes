@@ -4,8 +4,7 @@
 Orquestra a ingestão dos dados oficiais (TSE + Censo IBGE + de-para
 TSE→IBGE7) para um triple (`--ano --cargo --turno`), sem duplicar
 lógica de ETL: só chama os entrypoints existentes, na mesma ordem de
-`etl/__main__.py` (o wiring completo chega nas Tasks 2–3; esta Task 1
-entrega o CLI + a validação do combo V1).
+`etl/__main__.py` (mesma ordem de `etl/__main__.py`: guard → fetch → de-para → build → censo → fato → gates).
 
 Combos válidos = interseção com `V1_DATASETS` (`etl/sources.py`:
 presidente 2014/2018/2022, governador 2014/2018/2022, prefeito
@@ -13,11 +12,11 @@ presidente 2014/2018/2022, governador 2014/2018/2022, prefeito
 saída 2 ANTES de qualquer download (fail-closed, custo zero).
 
 Códigos de saída (fail-closed, como `etl/__main__.py`):
-  0 — ok;
-  1 — gates reprovados (versão anterior mantida; nada publicado)
-  (Task 3; inalcançável nesta task);
+  0 — ok, gates verdes;
+  1 — gates reprovados (gate de soma do Censo ou `run_gates`;
+  versão anterior mantida; nada publicado);
   2 — erro (combo fora do V1, `--turno` inválido, guarda anti-perda
-  sem `--force-real`, exceção no fetch).
+  sem `--force-real`, exceção no fetch ou em qualquer passo).
 """
 
 from __future__ import annotations
@@ -64,8 +63,10 @@ def _parse_args(argv=None):
                              "(padrão: web/public/data)")
     parser.add_argument("--censo-total-esperado", type=int, default=None,
                         help="total oficial esperado p/ a soma de pop do Censo "
-                             "(gate fail-closed; sem ele, o artefato Censo não "
-                             "é servido)")
+                             "(gate fail-closed ANTES de gravar dim_municipio; "
+                             "diverge → saída 1 sem fato; omitido, vale "
+                             "TOTAL_CENSO_2022 do Censo 2022, usado pelos "
+                             "triples 2024 e 2022)")
     parser.add_argument("--force-real", action="store_true",
                         help="permitir sobrescrever <web-data-dir>/manifest.json "
                              "quando ele contém ingestão não-fixture (dados "
@@ -154,8 +155,56 @@ def _passo_fetch(raw_dir: Path, ano: int, cargo: str) -> dict:
     return saida
 
 
+def _extrair_csvs_de_zip(zip_path: Path, dest_dir: Path,
+                       so_maior: bool = False) -> list[Path]:
+    """Extrai os membros `.csv` de um zip p/ `dest_dir`; devolve os paths.
+
+    Com `so_maior=False` extrai todos (TSE: um CSV por UF p/ o curated);
+    com `True` só o maior membro (Censo/de-para: um CSV por zip, mesma
+    regra determinística de `etl.censo.ingerir_censo`). Zip sem membro
+    `.csv` levanta `ValueError` antes de qualquer escrita downstream.
+    Arquivo que não é zip é copiado como CSV único (robustez p/
+    fixtures — o fluxo oficial sempre baixa zips).
+    """
+    import zipfile
+
+    zip_path = Path(zip_path)
+    dest_dir = Path(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    if not zipfile.is_zipfile(zip_path):
+        unico = dest_dir / (zip_path.stem + ".csv")
+        unico.write_bytes(zip_path.read_bytes())
+        return [unico]
+    with zipfile.ZipFile(zip_path) as zf:
+        infos = [i for i in zf.infolist()
+                 if not i.is_dir() and i.filename.lower().endswith(".csv")]
+        if not infos:
+            raise ValueError(
+                f"zip sem membro .csv em {zip_path} (sem dado oficial)"
+            )
+        if so_maior:
+            infos = [max(infos, key=lambda i: i.file_size)]
+        saidas: list[Path] = []
+        for info in infos:
+            nome = Path(info.filename).name or "membro.csv"
+            saida = dest_dir / nome
+            with zf.open(info.filename) as fh:
+                saida.write_bytes(fh.read())
+            saidas.append(saida)
+    return saidas
+
+
+def _resumo_fato(fato_path: Path) -> str:
+    """Lê o fato gerado; devolve `<N> votos, <M> municípios` p/ o resumo."""
+    doc = json.loads(Path(fato_path).read_text(encoding="utf-8"))
+    munis = doc.get("municipios", [])
+    total = sum((m.get("total") or 0) for m in munis
+                if isinstance(m, dict))
+    return f"{total} votos, {len(munis)} municípios"
+
+
 def main(argv=None) -> int:
-    """Valida o triple e (Tasks 2–3) orquestra a ingestão; devolve 0/1/2."""
+    """Valida o triple e orquestra a ingestão; devolve 0/1/2."""
     args = _parse_args(argv)
     if str(_REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(_REPO_ROOT))
@@ -178,24 +227,81 @@ def main(argv=None) -> int:
             file=sys.stderr,
         )
         return 2
-    # Task 2: guarda anti-perda ANTES de qualquer download, depois fetch
-    # das 3 fontes. O wiring de-para \u2192 build \u2192 censo \u2192 fato \u2192 gates
-    # chega na Task 3.
+    # Guarda anti-perda ANTES de qualquer download, depois fetch das 3
+    # fontes; o resto só orquestra entrypoints existentes, na mesma ordem
+    # de `etl/__main__.py` (sem duplicar lógica de ETL).
     try:
         _guard_webdata(args.web_data_dir, args.force_real)
     except SystemExit as exc:
         return exc.code if isinstance(exc.code, int) else 2
     try:
-        _passo_fetch(args.raw_dir, args.ano, args.cargo)
+        fetched = _passo_fetch(args.raw_dir, args.ano, args.cargo)
     except Exception as exc:
         print(f"erro: {exc}", file=sys.stderr)
         return 2
-    print(
-        f"combo V1 válido (--ano {args.ano} --cargo {str(args.cargo).lower()} "
-        f"--turno {args.turno}); fetch das 3 fontes ok em {args.raw_dir}; "
-        f"wiring de-para \u2192 build \u2192 censo \u2192 fato \u2192 gates chega na Task 3"
-    )
-    return 0
+    try:
+        from etl.__main__ import (_SAIDA_GATES, _SAIDA_OK, _passo_censo,
+                                  _passo_depara)
+        from etl.build_fato import build_fato
+        from etl.build_marts import build_all
+        from etl.depara import DEPARA_URL
+        from etl.sources import TOTAL_CENSO_2022
+        from etl.validate import run_gates
+
+        manifest = (Path(args.manifest) if args.manifest is not None
+                    else Path(args.db).parent / "manifest.json")
+        Path(args.curated_dir).mkdir(parents=True, exist_ok=True)
+        Path(args.db).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.web_data_dir).mkdir(parents=True, exist_ok=True)
+        # De-para: extrai o membro CSV do zip e registra/parseia NOS MESMOS
+        # bytes hasheados (`_passo_depara`: lê uma vez, hasheia e parseia
+        # a mesma leitura — sem TOCTOU).
+        (depara_csv,) = _extrair_csvs_de_zip(
+            fetched["depara"]["path"], Path(args.raw_dir), so_maior=True)
+        depara = _passo_depara(depara_csv, manifest)
+        print("de-para: join TSE→IBGE7 ativo nos marts")
+        # TSE: extrai os membros CSV (um por UF) p/ o curated e constrói
+        # os marts com o join ativo; `source_shas` amarra a ingestão ao
+        # sha do zip de origem (mesmo contrato de `etl/__main__`).
+        _extrair_csvs_de_zip(fetched["tse"]["path"], Path(args.curated_dir))
+        source_shas = {(args.ano, str(args.cargo).upper()):
+                       fetched["tse"]["sha256"]}
+        build_all(args.curated_dir, args.db, manifest,
+                  web_data_dir=args.web_data_dir, source_shas=source_shas,
+                  depara=depara)
+        print("build: marts ok")
+        # Censo: gate de soma fail-closed ANTES de gravar dim_municipio
+        # (dentro de `_passo_censo`); diverge → saída 1 sem fato adiante.
+        # Sem flag, vale o total oficial do Censo 2022 (spec §1: triples
+        # 2024 e 2022 usam o mesmo Censo).
+        (censo_csv,) = _extrair_csvs_de_zip(
+            fetched["censo"]["path"], Path(args.raw_dir), so_maior=True)
+        total = (args.censo_total_esperado if args.censo_total_esperado
+                 is not None else TOTAL_CENSO_2022)
+        erros_censo = _passo_censo(censo_csv, Path(args.db), manifest,
+                                   total,
+                                   web_data_dir=args.web_data_dir)
+        if erros_censo:
+            print(f"{_SAIDA_GATES}: {'; '.join(erros_censo)}", file=sys.stderr)
+            return 1
+        fato_path = build_fato(str(args.db), str(args.web_data_dir),
+                               args.ano, args.turno, args.cargo,
+                               depara_url=DEPARA_URL)
+        print(f"fato: {Path(fato_path).name} ok ({_resumo_fato(fato_path)})")
+        # Gates sobre o servido (DB + mirror irmão dos bytes + fato):
+        # o canônico acumula histórico e nunca atesta bytes — validar o
+        # mirror é o contrato byte-aware (mesmo de `etl/__main__`).
+        mirror = Path(args.web_data_dir) / "manifest.json"
+        erros = run_gates(str(args.db), manifest_path=str(mirror),
+                          fato_paths=[fato_path])
+        if erros:
+            print(f"{_SAIDA_GATES}: {'; '.join(erros)}", file=sys.stderr)
+            return 1
+        print(_SAIDA_OK)
+        return 0
+    except Exception as exc:
+        print(f"erro: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
