@@ -3,13 +3,25 @@
 import React from "react";
 import perguntasJson from "../../data/perguntas.json";
 import type { PerguntaCurada } from "./Curada";
+import { tokens } from "../../lib/tokens";
+
+const [giganteSize, giganteLine] = tokens.texto.gigante.split("/");
 
 const perguntas = perguntasJson as unknown as PerguntaCurada[];
 
 export default function Perguntas() {
   return (
     <>
-      <h1>Biblioteca curada — 30 perguntas</h1>
+      <h1
+        style={{
+          fontFamily: tokens.fonte.display,
+          fontSize: giganteSize,
+          lineHeight: giganteLine,
+          color: tokens.cor.tinta,
+        }}
+      >
+        Biblioteca curada — 30 perguntas
+      </h1>
       <p>
         Cada pergunta tem resposta completa pré-computada, com fonte e hash quando há dado
         oficial auditado; sem dado oficial, a página da pergunta mostra sem dado oficial em

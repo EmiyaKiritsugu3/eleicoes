@@ -19,6 +19,11 @@ import { fetchJson } from "../../lib/fetchJson";
 import { checksParaRegiao, type Check } from "./Verificar";
 import { UF_POR_PREFIXO_IBGE } from "../../components/PainelRegiao";
 import checksJson from "../../data/checks.json";
+import { tokens } from "../../lib/tokens";
+
+const [giganteSize, giganteLine] = tokens.texto.gigante.split("/");
+const [secaoSize, secaoLine] = tokens.texto.secao.split("/");
+const FILETE = `1px solid ${tokens.cor.linha}`;
 
 const checks = checksJson as unknown as Check[];
 
@@ -131,9 +136,29 @@ function PaginaVerificarIndice() {
 
   return (
     <>
-      <h1>Verificar afirmações</h1>
-      <section aria-label="Afirmações curadas">
-        <h2>{filtro !== "" ? `Afirmações sobre ${filtro}` : "Biblioteca"}</h2>
+      <h1
+        style={{
+          fontFamily: tokens.fonte.display,
+          fontSize: giganteSize,
+          lineHeight: giganteLine,
+          color: tokens.cor.tinta,
+        }}
+      >
+        Verificar afirmações
+      </h1>
+      <section
+        aria-label="Afirmações curadas"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          {filtro !== "" ? `Afirmações sobre ${filtro}` : "Biblioteca"}
+        </h2>
         {badge}
         {semCobertura ? (
           <p role="note">

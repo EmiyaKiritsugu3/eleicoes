@@ -136,7 +136,7 @@ describe("PainelRegiao (município)", () => {
     const html = renderToStaticMarkup(
       <PainelRegiao ibge="3550308" fato={fatoNull} seal={SEAL_OFICIAL} manifestChecked />,
     );
-    const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+    const perfil = html.split(/<h2[^>]*>Perfil do lugar<\/h2>/)[1] ?? "";
     expect(perfil).toContain("sem dado oficial");
     expect(html).toContain("Cand A");
     expect(html).toContain("600");
@@ -196,8 +196,8 @@ describe("pixel-mentiroso (toda resposta exibe fonte+hash)", () => {
       expect(secaoHonesta(s)).toBe(true);
     }
     expect(html).toContain("dado não auditado");
-    const resultado = html.split("<h2>Resultado</h2>")[1]?.split("<section")[0] ?? "";
-    const perfil = html.split("<h2>Perfil do lugar</h2>")[1]?.split("<section")[0] ?? "";
+    const resultado = html.split(/<h2[^>]*>Resultado<\/h2>/)[1]?.split("<section")[0] ?? "";
+    const perfil = html.split(/<h2[^>]*>Perfil do lugar<\/h2>/)[1]?.split("<section")[0] ?? "";
     expect(resultado).toContain("sem dado oficial");
     expect(perfil).toContain("sem dado oficial");
     expect(html).not.toContain("Cand A");
@@ -267,7 +267,7 @@ describe("População real do Censo no ramo UF (EVOLVE-7 Task 3)", () => {
     const html = renderToStaticMarkup(
       <PainelRegiao ibge="SP" fato={FATO_UF} seal={SEAL_OFICIAL} manifestChecked censo={CENSO_UF} />,
     );
-    const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+    const perfil = html.split(/<h2[^>]*>Perfil do lugar<\/h2>/)[1] ?? "";
     expect(perfil).toContain("População (Censo 2022)");
     expect(perfil).toContain("19.134"); // soma SP, nunca demo fixture
     expect(perfil).toContain("Brasil:");
@@ -280,7 +280,7 @@ describe("População real do Censo no ramo UF (EVOLVE-7 Task 3)", () => {
     const html = renderToStaticMarkup(
       <PainelRegiao ibge="SP" fato={FATO_UF} seal={SEAL_OFICIAL} manifestChecked censo={null} />,
     );
-    const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+    const perfil = html.split(/<h2[^>]*>Perfil do lugar<\/h2>/)[1] ?? "";
     expect(perfil).toContain("População (Censo 2022)");
     const linha = (perfil.split("População (Censo 2022)")[1] ?? "").split("</li>")[0];
     expect(linha).toContain("sem dado oficial");
@@ -297,7 +297,7 @@ describe("População real do Censo no ramo UF (EVOLVE-7 Task 3)", () => {
     const html = renderToStaticMarkup(
       <PainelRegiao ibge="SP" fato={null} seal={SEAL_NULO} manifestChecked censo={CENSO_UF} />,
     );
-    const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+    const perfil = html.split(/<h2[^>]*>Perfil do lugar<\/h2>/)[1] ?? "";
     expect(perfil).toContain("População (Censo 2022)");
     expect(perfil).toContain("19.134"); // soma SP das chaves do mapa, sem fato
     expect(perfil).toContain(ECO_SEAL);
@@ -310,7 +310,7 @@ describe("População real do Censo no ramo UF (EVOLVE-7 Task 3)", () => {
     const html = renderToStaticMarkup(
       <PainelRegiao ibge="SP" fato={fatoParcial} seal={SEAL_OFICIAL} manifestChecked censo={CENSO_UF} />,
     );
-    const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+    const perfil = html.split(/<h2[^>]*>Perfil do lugar<\/h2>/)[1] ?? "";
     const linha = (perfil.split("População (Censo 2022)")[1] ?? "").split("</li>")[0];
     expect(linha).toContain("19.134"); // 12345+6789 do mapa, não só o 3550308 do fato
   });
@@ -319,7 +319,7 @@ describe("População real do Censo no ramo UF (EVOLVE-7 Task 3)", () => {
     const html = renderToStaticMarkup(
       <PainelRegiao ibge="SP" fato={FATO_UF} seal={SEAL_OFICIAL} manifestChecked censo={censoFalha} />,
     );
-    const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+    const perfil = html.split(/<h2[^>]*>Perfil do lugar<\/h2>/)[1] ?? "";
     const linha = (perfil.split("População (Censo 2022)")[1] ?? "").split("</li>")[0];
     expect(linha).toContain("12.345");
     expect(linha).not.toContain("19.134"); // soma parcial honesta, sem completar
@@ -731,7 +731,7 @@ describe("População real do Censo (EVOLVE-7 Task 2)", () => {
     const html = renderToStaticMarkup(
       <PainelRegiao ibge="3550308" fato={FATO_POP_REAL} seal={SEAL_OFICIAL} manifestChecked censo={CENSO} />,
     );
-    const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+    const perfil = html.split(/<h2[^>]*>Perfil do lugar<\/h2>/)[1] ?? "";
     expect(perfil).toContain("População (Censo 2022)");
     expect(perfil).toContain("12.345"); // pop do artefato, nunca demo fixture
     expect(perfil).toContain("Brasil:");
@@ -754,7 +754,7 @@ describe("População real do Censo (EVOLVE-7 Task 2)", () => {
     const html = renderToStaticMarkup(
       <PainelRegiao ibge="3550308" fato={FATO} seal={SEAL_OFICIAL} manifestChecked censo={null} />,
     );
-    const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+    const perfil = html.split(/<h2[^>]*>Perfil do lugar<\/h2>/)[1] ?? "";
     expect(perfil).toContain("População (Censo 2022)");
     expect(linhaPop(perfil)).toContain("sem dado oficial");
   });
@@ -762,7 +762,7 @@ describe("População real do Censo (EVOLVE-7 Task 2)", () => {
     const html = renderToStaticMarkup(
       <PainelRegiao ibge="3550308" fato={FATO} seal={SEAL_OFICIAL} manifestChecked censo={{}} />,
     );
-    const perfil = html.split("<h2>Perfil do lugar</h2>")[1] ?? "";
+    const perfil = html.split(/<h2[^>]*>Perfil do lugar<\/h2>/)[1] ?? "";
     const linha = linhaPop(perfil);
     expect(linha).toContain("sem dado oficial");
     expect(linha).not.toContain("12.000"); // demo.pop fixture do FATO nunca vaza

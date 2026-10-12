@@ -58,6 +58,11 @@ import {
 import { resolverCandidato } from "../perguntas/Curada";
 import { ALERTA_STYLE, MOTIVO_SEM_HASH } from "../../lib/textos";
 import { vereditoTemProva } from "../../lib/regiao";
+import { tokens } from "../../lib/tokens";
+
+const [giganteSize, giganteLine] = tokens.texto.gigante.split("/");
+const [secaoSize, secaoLine] = tokens.texto.secao.split("/");
+const FILETE = `1px solid ${tokens.cor.linha}`;
 
 export type Veredito = "sustentado" | "enganoso" | "falso";
 
@@ -545,12 +550,29 @@ export function VerificarConteudo({
   if (!check) {
     return (
       <>
-        <h1>Verificar afirmação — sugestão</h1>
+        <h1
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: giganteSize,
+            lineHeight: giganteLine,
+            color: tokens.cor.tinta,
+          }}
+        >
+          Verificar afirmação — sugestão
+        </h1>
         {seal.official && (
           <SourceBadge hash={seal.official.hash} url={seal.official.url} date={seal.official.date} />
         )}
-        <section aria-label="Sugestão">
-          <h2>Sugestão</h2>
+        <section aria-label="Sugestão" style={{ borderTop: FILETE, paddingTop: tokens.espaco[4] }}>
+          <h2
+            style={{
+              fontFamily: tokens.fonte.display,
+              fontSize: secaoSize,
+              lineHeight: secaoLine,
+            }}
+          >
+            Sugestão
+          </h2>
           {badge}
           <p>
             Nenhuma afirmação curada com este nome (“{slug}”). Esta é uma sugestão a partir da
@@ -592,7 +614,16 @@ export function VerificarConteudo({
 
   return (
     <>
-      <h1>{check.titulo ?? check.frase}</h1>
+      <h1
+        style={{
+          fontFamily: tokens.fonte.display,
+          fontSize: giganteSize,
+          lineHeight: giganteLine,
+          color: tokens.cor.tinta,
+        }}
+      >
+        {check.titulo ?? check.frase}
+      </h1>
       {seal.official && (
         <SourceBadge hash={seal.official.hash} url={seal.official.url} date={seal.official.date} />
       )}
@@ -603,14 +634,33 @@ export function VerificarConteudo({
       )}
       {manifestChecked && !seal.official && seal.hasFixture && <SealSlot seal={seal} />}
 
-      <section aria-label="Afirmação">
-        <h2>Afirmação</h2>
+      <section aria-label="Afirmação" style={{ borderTop: FILETE, paddingTop: tokens.espaco[4] }}>
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Afirmação
+        </h2>
         {badge}
         <p>“{frase}”</p>
       </section>
 
-      <section aria-label="Veredito">
-        <h2>Veredito</h2>
+      <section
+        aria-label="Veredito"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Veredito
+        </h2>
         {badge}
         {v.veredito === null ? (
           <p role="alert" style={ALERTA_STYLE}>
@@ -618,7 +668,7 @@ export function VerificarConteudo({
             {v.nota ? ` — ${v.nota}` : ""}
           </p>
         ) : (
-          <p role="status" style={{ ...VEREDITO_STYLE[v.veredito], padding: "0.5rem", fontWeight: "bold" }}>
+          <p role="status" style={{ ...VEREDITO_STYLE[v.veredito], padding: tokens.espaco[2], fontWeight: "bold" }}>
             Veredito: {VEREDITO_LABEL[v.veredito]}
           </p>
         )}
@@ -630,8 +680,19 @@ export function VerificarConteudo({
         )}
       </section>
 
-      <section aria-label="Números que decidem">
-        <h2>Números que decidem</h2>
+      <section
+        aria-label="Números que decidem"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Números que decidem
+        </h2>
         {badge}
         {v.veredito === null ? (
           <p role="alert" style={ALERTA_STYLE}>
@@ -659,14 +720,36 @@ export function VerificarConteudo({
         )}
       </section>
 
-      <section aria-label="Método">
-        <h2>Método</h2>
+      <section
+        aria-label="Método"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Método
+        </h2>
         {badge}
         <p>{v.metodo}</p>
       </section>
 
-      <section aria-label="Fonte e reprodução">
-        <h2>Fonte e reprodução</h2>
+      <section
+        aria-label="Fonte e reprodução"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Fonte e reprodução
+        </h2>
         {badge}
         <ul>
           {check.fontes.map((f) => (
