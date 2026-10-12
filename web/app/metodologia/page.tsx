@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { tokens } from "../../lib/tokens";
 
 export const metadata: Metadata = {
   title: "SAD Eleições — metodologia",
@@ -6,13 +7,37 @@ export const metadata: Metadata = {
     "Pipeline, regras de auditoria e passo de dados do SAD Eleições.",
 };
 
+const [giganteSize, giganteLine] = tokens.texto.gigante.split("/");
+const [secaoSize, secaoLine] = tokens.texto.secao.split("/");
+const FILETE = `1px solid ${tokens.cor.linha}`;
+
 export default function Metodologia() {
   return (
     <>
-      <h1>SAD Eleições — metodologia</h1>
+      <h1
+        style={{
+          fontFamily: tokens.fonte.display,
+          fontSize: giganteSize,
+          lineHeight: giganteLine,
+          color: tokens.cor.tinta,
+        }}
+      >
+        SAD Eleições — metodologia
+      </h1>
 
-      <section aria-label="Pipeline">
-        <h2>Pipeline (offline-first, custo zero)</h2>
+      <section
+        aria-label="Pipeline"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Pipeline (offline-first, custo zero)
+        </h2>
         <ol>
           <li>
             <strong>Fetch:</strong> baixar os zips no CDN oficial do TSE
@@ -40,8 +65,19 @@ export default function Metodologia() {
         </ol>
       </section>
 
-      <section aria-label="Regras de auditoria">
-        <h2>Regras de auditoria</h2>
+      <section
+        aria-label="Regras de auditoria"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Regras de auditoria
+        </h2>
         <ul>
           <li>
             Um número só é apresentado como oficial quando há hash válido em
@@ -73,8 +109,19 @@ export default function Metodologia() {
         </p>
       </section>
 
-      <section aria-label="Passo de dados">
-        <h2>Passo de dados (CI, dev e deploy)</h2>
+      <section
+        aria-label="Passo de dados"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Passo de dados (CI, dev e deploy)
+        </h2>
         <p>
           Os JSONs servidos (<code>resumo.json</code>, <code>por_uf.json</code>,{" "}
           <code>por_candidato.json</code>, <code>manifest.json</code>) são
@@ -113,8 +160,19 @@ export default function Metodologia() {
         </ul>
       </section>
 
-      <section aria-label="Motor Verdade">
-        <h2>Motor Verdade (guardrails travados)</h2>
+      <section
+        aria-label="Motor Verdade"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Motor Verdade (guardrails travados)
+        </h2>
         <p>
           Toda tela de perfil ou correlação carrega o selo “dado de município,
           não de pessoa”: os perfis são SEMPRE ecológicos (município) e nunca
@@ -180,8 +238,19 @@ export default function Metodologia() {
         </ul>
       </section>
 
-      <section aria-label="Escopo V1">
-        <h2>Escopo V1</h2>
+      <section
+        aria-label="Escopo V1"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Escopo V1
+        </h2>
         <p>
           Votação nominal: presidentes + governadores (2014/2018/2022) e
           prefeitos das capitais (2016/2020/2024). Agregação por UF; município,

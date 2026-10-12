@@ -43,6 +43,7 @@ import { ENTRADAS_CURADA } from "../../lib/export";
 export { ENTRADAS_CURADA };
 import { vereditoTemProva } from "../../lib/regiao";
 import { ALERTA_STYLE, MOTIVO_SEM_HASH } from "../../lib/textos";
+import { tokens } from "../../lib/tokens";
 import {
   VAR_DEMO,
   PISO_CORRELACAO_N,
@@ -82,6 +83,10 @@ const VEREDITO_PT: Record<string, string> = {
 
 // `ALERTA_STYLE` vive em `lib/textos` e `finito` em `lib/motor`
 // (fontes únicas, EVOLVE-13).
+
+const [giganteSize, giganteLine] = tokens.texto.gigante.split("/");
+const [secaoSize, secaoLine] = tokens.texto.secao.split("/");
+const FILETE = `1px solid ${tokens.cor.linha}`;
 
 /** r com 3 casas em pt-BR; null (suprimido) → sem dado oficial. */
 function fmtR(r: number | null): string {
@@ -287,7 +292,16 @@ export function CuradaConteudo({
 
   return (
     <>
-      <h1>{pergunta.titulo}</h1>
+      <h1
+        style={{
+          fontFamily: tokens.fonte.display,
+          fontSize: giganteSize,
+          lineHeight: giganteLine,
+          color: tokens.cor.tinta,
+        }}
+      >
+        {pergunta.titulo}
+      </h1>
       {seal.official && (
         <SourceBadge hash={seal.official.hash} url={seal.official.url} date={seal.official.date} />
       )}
@@ -298,8 +312,16 @@ export function CuradaConteudo({
       )}
       {manifestChecked && !seal.official && seal.hasFixture && <SealSlot seal={seal} />}
 
-      <section aria-label="Pergunta">
-        <h2>Pergunta</h2>
+      <section aria-label="Pergunta" style={{ borderTop: FILETE, paddingTop: tokens.espaco[4] }}>
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Pergunta
+        </h2>
         {badge}
         <p>
           quem: <strong>{cand ? cand.nome : pergunta.blocos.quem}</strong> · onde:{" "}
@@ -313,8 +335,19 @@ export function CuradaConteudo({
         )}
       </section>
 
-      <section aria-label="Resultado">
-        <h2>Resultado</h2>
+      <section
+        aria-label="Resultado"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Resultado
+        </h2>
         {badge}
         {!hashAuditado || !fato || !cand ? (
           <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}{hashAuditado ? "" : ` — ${MOTIVO_SEM_HASH}`}</p>
@@ -351,8 +384,17 @@ export function CuradaConteudo({
       </section>
 
       {mostraTabela && (
-      <section aria-label={ehSegundo ? "Perfil do recorte" : "Perfil de onde venceu"}>
-        <h2>
+      <section
+        aria-label={ehSegundo ? "Perfil do recorte" : "Perfil de onde venceu"}
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
           {ehSegundo
             ? `Perfil — ${cand ? cand.nome : pergunta.blocos.quem} foi 2º lugar neste recorte`
             : `Perfil de onde ${cand ? cand.nome : pergunta.blocos.quem} venceu`}
@@ -416,8 +458,19 @@ export function CuradaConteudo({
       )}
 
       {mostraDispersao && (
-      <section aria-label="Correlação">
-        <h2>Correlação — {pergunta.blocos.cruzar} × percentual de votos de {cand ? cand.nome : "—"}</h2>
+      <section
+        aria-label="Correlação"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Correlação — {pergunta.blocos.cruzar} × percentual de votos de {cand ? cand.nome : "—"}
+        </h2>
         {badge}
         <p role="note">{ECO_SEAL} — cada ponto é um município, nunca uma pessoa.</p>
         {!hashAuditado || !fato || !cand ? (
@@ -465,8 +518,19 @@ export function CuradaConteudo({
       </section>
       )}
 
-      <section aria-label="Por quê">
-        <h2>Por quê? — estratificação</h2>
+      <section
+        aria-label="Por quê"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Por quê? — estratificação
+        </h2>
         {badge}
         <p role="note">
           {ECO_SEAL} — o padrão é testado dentro de cada região e faixa de renda; correlação
@@ -541,8 +605,19 @@ export function CuradaConteudo({
       </section>
 
       {mostraRanking && (
-      <section aria-label="Ranking">
-        <h2>Ranking — maior percentual de votos de {cand ? cand.nome : "—"}</h2>
+      <section
+        aria-label="Ranking"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Ranking — maior percentual de votos de {cand ? cand.nome : "—"}
+        </h2>
         {badge}
         {!hashAuditado || ranking.length === 0 ? (
           <p role="alert" style={ALERTA_STYLE}>
@@ -575,8 +650,19 @@ export function CuradaConteudo({
       </section>
       )}
 
-      <section aria-label="Método">
-        <h2>Método</h2>
+      <section
+        aria-label="Método"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Método
+        </h2>
         {badge}
         <p>{pergunta.texto_metodo}</p>
         <p>
@@ -592,8 +678,19 @@ export function CuradaConteudo({
         </p>
       </section>
 
-      <section aria-label="Fonte e reprodução">
-        <h2>Fonte e reprodução</h2>
+      <section
+        aria-label="Fonte e reprodução"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Fonte e reprodução
+        </h2>
         {badge}
         {shareUrl ? (
           <p>

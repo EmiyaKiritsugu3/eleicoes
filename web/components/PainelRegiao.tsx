@@ -18,6 +18,7 @@ import ExportCsv from "./ExportCsv";
 import { formatVotes, type SealState } from "../lib/data";
 import { isFatoDataset } from "../lib/regiao";
 import { ALERTA_STYLE, SEM_DADO } from "../lib/textos";
+import { tokens } from "../lib/tokens";
 import {
   finito,
   indiceVencedor,
@@ -320,6 +321,8 @@ export function regiaoCsvRows(regiao: string, r: LinhaRegiaoCsv): Record<string,
 
 // `ALERTA_STYLE` vive em `lib/textos` (fonte única, EVOLVE-13).
 
+const FILETE = `1px solid ${tokens.cor.linha}`;
+
 interface PainelRegiaoProps {
   ibge: string;
   fato: FatoRegiao | null;
@@ -389,7 +392,7 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
       <>
         <h1>Painel da região — {ibge}</h1>
         {topo}
-        <section aria-label="Resultado">
+        <section aria-label="Resultado" style={{ borderTop: FILETE, paddingTop: tokens.espaco[4] }}>
           <h2>Resultado</h2>
           {badge}
           <p role="alert" style={ALERTA_STYLE}>
@@ -397,7 +400,7 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
             {ehExterior ? " — votos do exterior fora do fato municipal" : ""}
           </p>
         </section>
-        <section aria-label="Perfil do lugar">
+        <section aria-label="Perfil do lugar" style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}>
           <h2>Perfil do lugar</h2>
           {badge}
           <p role="note">{ECO_SEAL}</p>
@@ -408,7 +411,7 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
           {!ehExterior && <ul>{ehUF ? liPopUF : liPop}</ul>}
           <p>{SEM_DADO}</p>
         </section>
-        <section aria-label="Ações">
+        <section aria-label="Ações" style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}>
           <h2>Ações</h2>
           {badge}
           <p>{SEM_DADO}</p>
@@ -427,19 +430,19 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
         <>
           <h1>Painel da região — {cod}</h1>
           {topo}
-          <section aria-label="Resultado">
+          <section aria-label="Resultado" style={{ borderTop: FILETE, paddingTop: tokens.espaco[4] }}>
             <h2>Resultado</h2>
             {badge}
             <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}</p>
           </section>
-          <section aria-label="Perfil do lugar">
+          <section aria-label="Perfil do lugar" style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}>
             <h2>Perfil do lugar</h2>
             {badge}
             <p role="note">{ECO_SEAL}</p>
             <ul>{liPopUF}</ul>
             <p>{SEM_DADO}</p>
           </section>
-          <section aria-label="Ações">
+          <section aria-label="Ações" style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}>
             <h2>Ações</h2>
             {badge}
             <p>{SEM_DADO}</p>
@@ -460,7 +463,7 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
       <>
         <h1>Painel da região — {cod}</h1>
         {topo}
-        <section aria-label="Resultado">
+        <section aria-label="Resultado" style={{ borderTop: FILETE, paddingTop: tokens.espaco[4] }}>
           <h2>Resultado — {ag.vencedorNome} ({ag.vencedorPartido})</h2>
           {badge}
           <ul>
@@ -470,7 +473,7 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
             <li>Municípios: {formatVotes(ag.nMun)}</li>
           </ul>
         </section>
-        <section aria-label="Perfil do lugar">
+        <section aria-label="Perfil do lugar" style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}>
           <h2>Perfil do lugar</h2>
           {badge}
           <p role="note">{ECO_SEAL} — médias de municípios onde {ag.vencedorNome} venceu, nunca de pessoas.</p>
@@ -490,7 +493,7 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
             </ul>
           )}
         </section>
-        <section aria-label="Ações">
+        <section aria-label="Ações" style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}>
           <h2>Ações</h2>
           {badge}
           <ul>
@@ -532,19 +535,19 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
       <>
         <h1>Painel da região — {ibge}</h1>
         {topo}
-        <section aria-label="Resultado">
+        <section aria-label="Resultado" style={{ borderTop: FILETE, paddingTop: tokens.espaco[4] }}>
           <h2>Resultado</h2>
           {badge}
           <p role="alert" style={ALERTA_STYLE}>{SEM_DADO}</p>
         </section>
-        <section aria-label="Perfil do lugar">
+        <section aria-label="Perfil do lugar" style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}>
           <h2>Perfil do lugar</h2>
           {badge}
           <p role="note">{ECO_SEAL}</p>
           <ul>{liPop}</ul>
           <p>{SEM_DADO}</p>
         </section>
-        <section aria-label="Ações">
+        <section aria-label="Ações" style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}>
           <h2>Ações</h2>
           {badge}
           <p>{SEM_DADO}</p>
@@ -578,7 +581,7 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
           com menção única ao IBGE. */}
       <h1>{nomeMun ? `${nomeMun} (${ufMun})` : "Painel da região"} <small>IBGE {ibge}</small></h1>
       {topo}
-      <section aria-label="Resultado">
+      <section aria-label="Resultado" style={{ borderTop: FILETE, paddingTop: tokens.espaco[4] }}>
         <h2>Resultado — {res.vencedorNome} ({res.vencedorPartido})</h2>
         {badge}
         <ul>
@@ -588,7 +591,7 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
           <li>Total de votos: {formatVotes(res.total)}</li>
         </ul>
       </section>
-      <section aria-label="Perfil do lugar">
+      <section aria-label="Perfil do lugar" style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}>
         <h2>Perfil do lugar</h2>
         {badge}
         <p role="note">{ECO_SEAL} — médias do município, nunca de pessoas.</p>
@@ -607,7 +610,7 @@ export default function PainelRegiao({ ibge, fato, seal, manifestChecked, fatoDa
           </ul>
         )}
       </section>
-      <section aria-label="Ações">
+      <section aria-label="Ações" style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}>
         <h2>Ações</h2>
         {badge}
         <ul>

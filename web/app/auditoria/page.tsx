@@ -19,6 +19,7 @@ import {
 import { fetchJson } from "../../lib/fetchJson";
 import { manifestoValidoParaRotacao } from "../../lib/regiao";
 import { ALERTA_STYLE, SEM_DADO } from "../../lib/textos";
+import { tokens } from "../../lib/tokens";
 
 /** Selo de amostra sintética compartilhado (components/FixtureBadge):
  *  tratamento de aviso, NUNCA o selo oficial — mesmo com hash presente.
@@ -29,6 +30,10 @@ import { ALERTA_STYLE, SEM_DADO } from "../../lib/textos";
  *  no fetch do manifest vira `role=status` visível — nunca .catch vazio. */
 const MENSAGEM_ERRO_DOWNLOAD_MANIFEST =
   "falha no download do manifest — tente novamente";
+
+const [giganteSize, giganteLine] = tokens.texto.gigante.split("/");
+const [secaoSize, secaoLine] = tokens.texto.secao.split("/");
+const FILETE = `1px solid ${tokens.cor.linha}`;
 
 function downloadManifest(onErro?: (mensagem: string) => void) {
   fetch("/data/manifest.json", { cache: "no-store" })
@@ -145,7 +150,16 @@ export default function Auditoria() {
 
   return (
     <>
-      <h1>SAD Eleições — auditoria</h1>
+      <h1
+        style={{
+          fontFamily: tokens.fonte.display,
+          fontSize: giganteSize,
+          lineHeight: giganteLine,
+          color: tokens.cor.tinta,
+        }}
+      >
+        SAD Eleições — auditoria
+      </h1>
 
       {checked && !official && !hasFixture && (
         <p role="alert" className="badge badge-warn" style={ALERTA_STYLE}>
@@ -157,8 +171,19 @@ export default function Auditoria() {
         <SourceBadge hash={official.hash} url={official.url} date={official.date} />
       )}
 
-      <section aria-label="Ingestões registradas">
-        <h2>Ingestões registradas</h2>
+      <section
+        aria-label="Ingestões registradas"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Ingestões registradas
+        </h2>
         {official ? (
           <SourceBadge hash={official.hash} url={official.url} date={official.date} />
         ) : checked && hasFixture ? (
@@ -248,8 +273,19 @@ export default function Auditoria() {
         )}
       </section>
 
-      <section aria-label="Arquivos servidos">
-        <h2>Arquivos servidos</h2>
+      <section
+        aria-label="Arquivos servidos"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Arquivos servidos
+        </h2>
         {!checked ? (
           /* Placeholder comum (o anúncio vivo vive na seção Ingestões —
              cubic R1: 2 status idênticos anunciam em duplicata). */
@@ -259,8 +295,19 @@ export default function Auditoria() {
         )}
       </section>
 
-      <section aria-label="Baixar manifest">
-        <h2>Baixar manifest</h2>
+      <section
+        aria-label="Baixar manifest"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Baixar manifest
+        </h2>
         <p>
           <button
             type="button"
@@ -293,8 +340,19 @@ export default function Auditoria() {
         )}
       </section>
 
-      <section aria-label="Como auditar">
-        <h2>Como auditar</h2>
+      <section
+        aria-label="Como auditar"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Como auditar
+        </h2>
         <p>
           Cada ingestão registra a URL oficial (TSE ou IBGE) e o sha256 do conteúdo. Um
           número só é apresentado como oficial quando há hash válido em ingestão
