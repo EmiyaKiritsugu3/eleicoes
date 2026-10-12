@@ -37,6 +37,31 @@ def test_parse_canoniza_chave_4_digitos():
     assert mapa["01007"] == "1200138"
 
 
+def test_normalize_codigo_curto_com_par_mapeia():
+    """Códigos 1–3 dígitos com par oficial mapeiam (zeros suprimidos no voto).
+
+    Prova real (2026-10-12, fato 2024-prefeito): "35" (Porto Velho) e "299"
+    têm pares oficiais ("00035"→1100205, "00299"→1100288); o gate cru
+    ^\\d{4,5}$ os descartava — falso-positivo do achado cubic R3/PR#16.
+    """
+    import pandas as pd
+
+    from etl.normalize import normalize_resultados
+
+    df = pd.DataFrame([{
+        "ANO_ELEICAO": 2024, "NR_TURNO": 1, "DS_CARGO": "PREFEITO",
+        "SG_UF": "RO", "CD_MUNICIPIO": "35", "SQ_CANDIDATO": "1",
+        "NM_URNA_CANDIDATO": "X", "SG_PARTIDO": "PA", "QT_VOTOS_NOMINAIS": 10,
+    }])
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        out = normalize_resultados(
+            df, depara={"00035": "1100205", "00299": "1100288"})
+    assert out["municipio_ibge"].tolist() == ["1100205"]
+
+
 def test_parse_rejeita_dv_invalido():
     from etl.depara import parse_depara_csv
 
@@ -84,8 +109,8 @@ def test_normalize_com_depara_mapeia_sem_warning():
     assert out["municipio_ibge"].tolist() == ["1200138"]
 
 
-def test_normalize_com_depara_codigo_curto_nao_mapeia():
-    """cubic R3: "12" nunca vira "00012" (lixo não casa com município)."""
+def test_normalize_com_depara_codigo_curto_sem_par_fail_closed():
+    """Curto SEM par oficial segue "" + warning (fail-closed preservado)."""
     import pandas as pd
 
     from etl.normalize import normalize_resultados
@@ -96,7 +121,7 @@ def test_normalize_com_depara_codigo_curto_nao_mapeia():
         "NM_URNA_CANDIDATO": "X", "SG_PARTIDO": "PA", "QT_VOTOS_NOMINAIS": 10,
     }])
     with pytest.warns(UserWarning, match="IBGE"):
-        out = normalize_resultados(df, depara={"00012": "1200138"})
+        out = normalize_resultados(df, depara={"00035": "1100205"})
     assert out["municipio_ibge"].tolist() == [""]
 
 
