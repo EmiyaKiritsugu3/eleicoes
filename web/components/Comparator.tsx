@@ -1,6 +1,7 @@
 import React from "react";
 import { formatVotes } from "../lib/data";
 import { SEM_DADO } from "../lib/textos";
+import { tokens } from "../lib/tokens";
 
 export interface CompareSide {
   titulo: string;
@@ -46,7 +47,7 @@ export default function Comparator({
   const diff =
     left && right ? (Number(left.votos) || 0) - (Number(right.votos) || 0) : null;
   return (
-    <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+    <div style={{ display: "flex", gap: tokens.espaco[4], flexWrap: "wrap" }}>
       <div style={{ flex: "1 1 200px" }}>
         <Side side={left} label={labelLeft} />
       </div>

@@ -29,6 +29,11 @@ import {
 import { manifestoValidoParaRotacao, vereditoTemProva } from "../../lib/regiao";
 import { fetchJson } from "../../lib/fetchJson";
 import { ALERTA_STYLE, MOTIVO_SEM_HASH, SEM_DADO } from "../../lib/textos";
+import { tokens } from "../../lib/tokens";
+
+const [giganteSize, giganteLine] = tokens.texto.gigante.split("/");
+const [secaoSize, secaoLine] = tokens.texto.secao.split("/");
+const FILETE = `1px solid ${tokens.cor.linha}`;
 
 const SEM_COBERTURA_AGG =
   " — filtro sem cobertura no agregado V1 (só ano/cargo/UF e partido)";
@@ -354,7 +359,16 @@ export default function Analisar() {
 
   return (
     <>
-      <h1>SAD Eleições — analisar</h1>
+      <h1
+        style={{
+          fontFamily: tokens.fonte.display,
+          fontSize: giganteSize,
+          lineHeight: giganteLine,
+          color: tokens.cor.tinta,
+        }}
+      >
+        SAD Eleições — analisar
+      </h1>
 
       {manifestChecked && !seal.official && !seal.hasFixture && (
         <p role="alert" className="badge badge-warn" style={ALERTA_STYLE}>
@@ -371,12 +385,20 @@ export default function Analisar() {
       )}
       {seal.official && <SourceBadge hash={seal.official.hash} url={seal.official.url} date={seal.official.date} />}
 
-      <section aria-label="Filtros">
-        <h2>Filtros</h2>
+      <section aria-label="Filtros" style={{ borderTop: FILETE, paddingTop: tokens.espaco[4] }}>
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Filtros
+        </h2>
         {badge}
         <form
           onSubmit={(e) => e.preventDefault()}
-          style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}
+          style={{ display: "flex", gap: tokens.espaco[2], flexWrap: "wrap" }}
         >
           {(["ano", "cargo", "uf", "turno", "zona", "partido", "candidato"] as const).map(
             (k) => (
@@ -412,8 +434,19 @@ export default function Analisar() {
         )}
       </section>
 
-      <section aria-label="Resumo filtrado">
-        <h2>Resumo filtrado</h2>
+      <section
+        aria-label="Resumo filtrado"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Resumo filtrado
+        </h2>
         {badge}
         {partidoIgnoradoUF && !semCob && <p role="note">{NOTA_PARTIDO}</p>}
         {carregando ? (
@@ -429,13 +462,24 @@ export default function Analisar() {
         )}
       </section>
 
-      <section aria-label="Pivô">
-        <h2>Pivô</h2>
+      <section
+        aria-label="Pivô"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Pivô
+        </h2>
         {badge}
         {partidoIgnoradoUF && !semCob && pivo !== "partido" && (
           <p role="note">{NOTA_PARTIDO}</p>
         )}
-        <div style={{ display: "flex", gap: "0.5rem" }}>
+        <div style={{ display: "flex", gap: tokens.espaco[2] }}>
           {(["uf", "partido", "ano"] as const).map((d) => (
             <label key={d}>
               <input
@@ -479,10 +523,21 @@ export default function Analisar() {
         )}
       </section>
 
-      <section aria-label="Comparador">
-        <h2>Comparador lado-a-lado</h2>
+      <section
+        aria-label="Comparador"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Comparador lado-a-lado
+        </h2>
         {badge}
-        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: tokens.espaco[2], flexWrap: "wrap" }}>
           {(["candidatos", "anos", "municipios"] as const).map((m) => {
             // EVOLVE-11 Task 2: modo `municipios` sem cobertura no V1 (sempre
             // null em `resolverComparador`) — opção desabilitada com título
@@ -533,7 +588,7 @@ export default function Analisar() {
           </>
         ) : (
           <>
-            <p style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+            <p style={{ display: "flex", gap: tokens.espaco[2], flexWrap: "wrap" }}>
               <label>
                 A{" "}
                 <input
@@ -558,8 +613,19 @@ export default function Analisar() {
         )}
       </section>
 
-      <section aria-label="Dispersão votos x financiamento">
-        <h2>Dispersão votos × financiamento</h2>
+      <section
+        aria-label="Dispersão votos x financiamento"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Dispersão votos × financiamento
+        </h2>
         {badge}
         {carregando ? (
           <p role="status">a carregar…</p>
@@ -596,8 +662,19 @@ export default function Analisar() {
         )}
       </section>
 
-      <section aria-label="Série histórica">
-        <h2>Série histórica</h2>
+      <section
+        aria-label="Série histórica"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Série histórica
+        </h2>
         {badge}
         {partidoIgnoradoUF && !semCob && <p role="note">{NOTA_PARTIDO}</p>}
         {carregando ? (
@@ -631,8 +708,19 @@ export default function Analisar() {
         )}
       </section>
 
-      <section aria-label="Export reproduzível">
-        <h2>Export reproduzível</h2>
+      <section
+        aria-label="Export reproduzível"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Export reproduzível
+        </h2>
         {badge}
         {/* Share só após o manifest resolver: com hash="" o ?hash= não
             ancora proveniência nenhuma. */}
