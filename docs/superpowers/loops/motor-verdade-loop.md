@@ -238,3 +238,10 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 - Rounds no PR: ZERO — CI ×2 + Sonar + GitGuardian verdes + CodeRabbit sem threads no head. cubic skipping (quota, neutro).
 - Suítes finais: pytest 221 + vitest 579 + tsc + build.
 - Backlog: rem-vs-px nos tokens espaco (herança Onda 1) + pipeline real end-to-end (maior valor pendente).
+
+## Fix de-para short-codes mergeado (2026-10-12, PR #20, commit c00554f)
+- Bug real achado rodando o pipeline 2024-prefeito nacional: gate cru ^\d{4,5}$ (do achado cubic R3/PR#16) descartava pares oficiais 1–3 dígitos — RO inteira fora do fato, incl. Porto Velho ("35"→1100205) e "299"→1100288.
+- Root cause: achado era falso-positivo; zeros à esquerda são suprimidos no arquivo de votos, e pertinência ao mapa já é fail-closed por construção. Gate agora: 1–5 dígitos → zfill(5) → lookup; sem par → "".
+- Prova: fato refeito com 25/25 capitais esperadas (só BSB sem-prefeito e AJU sem-turno-1-na-fonte fora, ambas corretas), 22,9M votos, demo nula 0, gates verdes.
+- Gap de fonte documentado: arquivo nacional TSE sem prefeito-turno-1 de Aracaju (só 6 linhas turno 2).
+- Rounds no PR: ZERO — CI ×2 + Sonar + GitGuardian verdes + CodeRabbit sem threads. Suite: pytest 222.
