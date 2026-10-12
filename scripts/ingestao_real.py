@@ -202,15 +202,19 @@ def _filtrar_v1(curated_dir: Path) -> dict:
     `(2022, DEPUTADO FEDERAL)` e cia.); sem este filtro o `build_all`
     abaixo reprova fail-closed antes de qualquer escrita. Linhas fora do
     V1 são descartadas (fora de escopo, nunca chute de mapeamento);
-    arquivos sem nenhuma linha V1 são removidos. Devolve
-    `{"mantidas", "descartadas", "arquivos_removidos"}` e imprime o
-    resumo (auditoria do que ficou de fora).
+    linhas idênticas em 2+ arquivos caem na segunda ocorrência (o TSE
+    duplica consolidados: `BR.csv` ⊂ `BRASIL.csv`, prova 2022 — sem
+    isso o fato somava 2×); arquivos sem nenhuma linha V1 são removidos.
+    Devolve `{"mantidas", "descartadas", "duplicadas",
+    "arquivos_removidos"}` e imprime o resumo (auditoria do que ficou
+    de fora).
     """
     from etl.sources import V1_DATASETS
 
     validos = {(int(e["ano"]), str(e["cargo"]).upper())
                for e in V1_DATASETS}
-    mantidas = descartadas = removidos = 0
+    mantidas = descartadas = removidos = duplicadas = 0
+    vistas: set[str] = set()  # linhas de voto já ingeridas (dedupe BR/BRASIL)
     for csv_path in sorted(Path(curated_dir).glob("*.csv")):
         bruto = csv_path.read_bytes()
         texto = enc = None
@@ -247,21 +251,32 @@ def _filtrar_v1(curated_dir: Path) -> dict:
                 par = (int(cels[idx_ano].strip().strip('"')),
                        cels[idx_cargo].strip().strip('"').upper())
             except (IndexError, ValueError):
+                descartadas += 1
                 continue
-            if par in validos:
-                keep.append(linha)
-        descartadas += len(corpos) - len(keep)
+            if par not in validos:
+                descartadas += 1
+                continue
+            if linha in vistas:
+                duplicadas += 1
+                continue
+            vistas.add(linha)
+            keep.append(linha)
         mantidas += len(keep)
-        if keep:
-            csv_path.write_text("\n".join([header, *keep]) + "\n",
-                                encoding=enc)
-        else:
+        if not keep:
             csv_path.unlink()
             removidos += 1
+        elif len(keep) == len(corpos):
+            pass  # intacto: não reescreve (preserva bytes/BOM originais)
+        else:
+            enc_out = ("utf-8-sig" if bruto.startswith(b"\xef\xbb\xbf")
+                       else ("utf-8" if enc == "utf-8-sig" else enc))
+            csv_path.write_text("\n".join([header, *keep]) + "\n",
+                                encoding=enc_out)
     print(f"filtro V1: {mantidas} linhas mantidas, {descartadas} "
-          f"descartadas (fora de escopo), {removidos} arquivo(s) removido(s)")
+          f"descartadas (fora de escopo), {duplicadas} duplicadas, "
+          f"{removidos} arquivo(s) removido(s)")
     return {"mantidas": mantidas, "descartadas": descartadas,
-            "arquivos_removidos": removidos}
+            "duplicadas": duplicadas, "arquivos_removidos": removidos}
 
 
 def _extrair_csv_unico(zip_path: Path, dest_dir: Path) -> Path:
