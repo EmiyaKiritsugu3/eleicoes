@@ -164,13 +164,14 @@ afterEach(teardownJsdom);
 // ---------- testes ----------
 
 describe("ux nav", () => {
-  it("nav renderiza Explorar/Perguntas/Verificar", () => {
+  it("nav renderiza Explorar/Exemplos/Verificar (curado secundário)", () => {
     // Fonte única `htmlShell` (shell-html.tsx, dedupe Sonar com shell.test).
     const html = htmlShell();
     expect(html).toContain('href="/explorar"');
     expect(html).toContain("Explorar");
     expect(html).toContain('href="/perguntas"');
-    expect(html).toContain("Perguntas");
+    expect(html).toContain("Exemplos");
+    expect(html).not.toContain(">Perguntas<");
     expect(html).toContain('href="/verificar"');
     expect(html).toContain("Verificar");
   });

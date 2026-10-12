@@ -9,7 +9,7 @@ const LINKS = [
   { href: "/analisar", label: "Analisar" },
   { href: "/explorar", label: "Explorar" },
   { href: "/verificar", label: "Verificar" },
-  { href: "/perguntas", label: "Perguntas" },
+  { href: "/perguntas", label: "Exemplos" },
   { href: "/metodologia", label: "Metodologia" },
   { href: "/auditoria", label: "Auditoria" },
 ] as const;
