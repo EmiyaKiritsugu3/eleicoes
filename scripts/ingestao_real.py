@@ -14,7 +14,8 @@ saída 2 ANTES de qualquer download (fail-closed, custo zero).
 
 Códigos de saída (fail-closed, como `etl/__main__.py`):
   0 — ok;
-  1 — gates reprovados (versão anterior mantida; nada publicado);
+  1 — gates reprovados (versão anterior mantida; nada publicado)
+  (Tasks 2-3; inalcançável nesta task);
   2 — erro (combo fora do V1, `--turno` inválido, exceção).
 """
 
@@ -73,13 +74,14 @@ def _parse_args(argv=None):
 def main(argv=None) -> int:
     """Valida o triple e (Tasks 2–3) orquestra a ingestão; devolve 0/1/2."""
     args = _parse_args(argv)
-    sys.path.insert(0, str(_REPO_ROOT))
+    if str(_REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(_REPO_ROOT))
     from etl.sources import V1_DATASETS
 
     validos = {(e["ano"], str(e["cargo"]).lower()) for e in V1_DATASETS}
     if (args.ano, str(args.cargo).lower()) not in validos:
         print(
-            f"erro: combo fora do V1 (--ano {args.ano} --cargo {args.cargo} "
+            f"erro: combo fora do V1 (--ano {args.ano} --cargo {str(args.cargo).lower()} "
             f"--turno {args.turno}): o triple precisa estar em V1_DATASETS "
             "(presidente 2014/2018/2022, governador 2014/2018/2022, prefeito "
             "2016/2020/2024); nada foi baixado",

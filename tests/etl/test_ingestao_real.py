@@ -14,3 +14,9 @@ def test_combo_fora_v1_aborta_antes_do_download(tmp_path):
     assert ingestao_real.main(["--ano", "2022", "--cargo", "prefeito", "--turno", "1",
         "--raw-dir", str(tmp_path), "--curated-dir", str(tmp_path),
         "--db", str(tmp_path / "x.duckdb"), "--web-data-dir", str(tmp_path)]) == 2
+
+def test_turno_invalido_retorna_2(tmp_path):
+    from scripts import ingestao_real
+    assert ingestao_real.main(["--ano", "2024", "--cargo", "prefeito", "--turno", "3",
+        "--raw-dir", str(tmp_path), "--curated-dir", str(tmp_path),
+        "--db", str(tmp_path / "x.duckdb"), "--web-data-dir", str(tmp_path)]) == 2
