@@ -280,3 +280,10 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 - Home: "Total de votos: 405.818.663" (marts T1+T2 pres+gov), selo "fonte auditada" + hash + URL TSE. /regiao/3550308?fato=fato_2022_1_presidente: LULA (PT), 3.276.512 votos, margem 9,5%, selo oficial.
 - Console só benigno (favicon 404 + topojson fallback, fail-closed por design). Incidente menor: screenshots salvos em .playwright-mcp foram apagados junto na limpeza — refeito o ciclo (swap→serve→shots→mover p/ /tmp→restore); daqui em diante mover antes de remover o dir.
 - Restaurado fixture (manifest todo fixture:true), árvore limpa.
+
+## Onda consulta-herói mergeada (2026-10-12, PR #24)
+- Direção do usuário: site é ferramenta de consulta (pessoa responde as perguntas dela), não P&R curado. Curado rebaixado a exemplo/atalho.
+- Escopo: H1 Home "Consulte os resultados auditados" + Busca hero (c/ atalhos Analisar/Explorar) + seção Biblioteca vira "Exemplos de consulta" + Nav Perguntas→Exemplos pós-Verificar + /perguntas "Exemplos de consulta" c/ atalho p/ /analisar. Rotas, dados, selos, auditoria intactos.
+- R1: CodeRabbit Minor (label Perguntas contradizia) → "Exemplos", thread resolvida.
+- Rulings: sem prefiltros por card (blocos abstratos, mapear seria chute); Busca da Home (filtros) é o herói, Analisar segue como ferramenta avançada (sem duplicar o componente).
+- Suites: pytest 234 + vitest 585 + tsc + build. Tudo verde no head.
