@@ -83,15 +83,20 @@ def _aplicar_depara(digits, depara):
     """Traduz códigos não-IBGE7 pelo de-para oficial (EVOLVE-15).
 
     Só o que não é IBGE7 consulta o mapa (IBGE7 direto nunca é
-    remapeado); chave canônica zfill(5) — votos sem padding ("3018")
-    casam com o oficial com padding ("03018"). Só valores no shape
-    documentado 4–5 dígitos consultam (cubic R3: "12" padado p/ "00012"
-    traduziria lixo p/ um município real). Sem par → "" (o chamador
-    valida e avisa fail-closed como antes).
+    remapeado); chave canônica zfill(5) — os votos trazem o código sem
+    padding ("35", "299") e o oficial pada ("00035", "00299").
+    O gate é a PERTINÊNCIA ao mapa: sem par → "" (o chamador valida e
+    avisa fail-closed como antes). Códigos fora de 1–5 dígitos nunca
+    consultam (não casariam com chave de 5 mesmo padados).
+    (Correção 2026-10-12: o gate cru ^\d{4,5}$ descartava pares reais
+    de 1–3 dígitos — "35"→1100205 Porto Velho e "299"→1100288 sumiram
+    do fato 2024-prefeito real. O achado cubic R3/PR#16 que o motivou
+    era falso-positivo: zeros à esquerda são suprimidos no arquivo de
+    votos, e traduzir "35"→"00035" é o join correto, não chute.)
     """
     mapa = dict(depara)
     precisa = digits.str.fullmatch(r"\d{7}")
-    cru = digits.str.fullmatch(r"\d{4,5}")
+    cru = digits.str.fullmatch(r"\d{1,5}")
     traduzidos = digits.str.zfill(5).map(mapa).fillna("")
     traduzidos = traduzidos.where(cru.fillna(False), "")
     return digits.where(precisa, traduzidos)
