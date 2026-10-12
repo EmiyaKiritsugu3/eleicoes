@@ -332,6 +332,14 @@ def build_fato(duckdb_path, out_dir, ano, turno, cargo,
             )
 
     triple["municipio_ibge"] = triple["municipio_ibge"].astype("string").fillna("")
+    # O fato é municipal: linhas sem IBGE7 (exterior ZZ — prova real
+    # 2026-10-12: 1.185.388 votos agregavam num fantasma {"ibge": ""})
+    # não viram entrada; seguem nos marts (totais nacionais intactos).
+    sem_ibge = int((triple["municipio_ibge"] == "").sum())
+    if sem_ibge:
+        print(f"build_fato: {sem_ibge} linha(s) sem IBGE7 fora do fato "
+              f"(exterior, sem município)")
+        triple = triple[triple["municipio_ibge"] != ""].reset_index(drop=True)
     censo_map: dict[str, dict] = {}
     for row in censo.itertuples():
         key = "" if _isna(row.ibge7) else str(row.ibge7).strip()

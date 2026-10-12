@@ -58,3 +58,19 @@ def test_fix_mojibake_sao_joao():
     assert _fix_text("SÃO PAULO") == "SÃO PAULO"  # correto intacto
     assert _fix_text("JOÃO".encode("utf-8").decode("latin1")) == "JOÃO"
     assert _fix_text("JOSÉ".encode("utf-8").decode("latin1")) == "JOSÉ"
+
+
+def test_turno_nr_turno_real_preservado():
+    """Arquivos reais usam NR_TURNO (não NUM_TURNO/TURNO): T2 não vira T1.
+
+    Prova real (2026-10-12, run 2022-presidente): sem este alias, todas as
+    linhas caíam no default M7 (turno=1) e o fato_2022_1 somava T1+T2.
+    """
+    from etl.normalize import normalize_resultados
+    import pandas as pd
+    df = pd.DataFrame([
+        {"ANO_ELEICAO": 2022, "NR_TURNO": 1, "DS_CARGO": "PRESIDENTE", "SG_UF": "SP", "CD_MUNICIPIO": "3550308", "NM_URNA": "X", "QT_VOTOS": 10},
+        {"ANO_ELEICAO": 2022, "NR_TURNO": 2, "DS_CARGO": "PRESIDENTE", "SG_UF": "SP", "CD_MUNICIPIO": "3550308", "NM_URNA": "X", "QT_VOTOS": 7},
+    ])
+    out = normalize_resultados(df)
+    assert sorted(out["turno"].tolist()) == [1, 2]

@@ -451,3 +451,27 @@ def test_gate_soma_censo_roda_no_build_fato(tmp_path):
             str(db), str(tmp_path / "out2"), 2022, 1, "PRESIDENTE",
             censo_total_oficial=1,
         )
+
+
+def test_exterior_sem_ibge_nao_vira_municipio_fantasma(tmp_path):
+    """Votos sem par municipal (exterior ZZ) não agregam em ibge "".
+
+    Prova real (2026-10-12, run 2022-presidente): 1.185.388 votos do
+    exterior agregaram num município fantasma {"ibge": "", "uf": "ZZ"}.
+    O fato é municipal: sem IBGE7 não há entrada (fail-closed).
+    """
+    from etl.build_fato import build_fato
+
+    ibges = [_ibge(1), _ibge(2)]
+    fato_df = _fato_rows(ibges)
+    zz = _fato_rows([""], uf="ZZ")
+    fato_df = pd.concat([fato_df, zz], ignore_index=True)
+    db = tmp_path / "t.duckdb"
+    _seed_duckdb(db, fato_df, _censo_raw(ibges))
+
+    out = build_fato(str(db), str(tmp_path / "out"), 2022, 1, "PRESIDENTE")
+    payload = json.loads(open(out, encoding="utf-8").read())
+
+    assert "" not in [m["ibge"] for m in payload["municipios"]]
+    assert "ZZ" not in [m["uf"] for m in payload["municipios"]]
+    assert len(payload["municipios"]) == 2

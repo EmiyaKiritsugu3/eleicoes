@@ -33,7 +33,7 @@ CANONICAL_COLUMNS = [
 # Variantes TSE por ano -> campo canônico (comparação upper + strip).
 _COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     "ano": ("ANO_ELEICAO", "ANO"),
-    "turno": ("NUM_TURNO", "TURNO"),
+    "turno": ("NR_TURNO", "NUM_TURNO", "TURNO"),
     "cargo": ("DS_CARGO", "CARGO"),
     "uf": ("SG_UF", "UF"),
     "municipio_ibge": ("CD_MUNICIPIO", "COD_MUNICIPIO_IBGE", "CD_MUNICIPIO_IBGE"),

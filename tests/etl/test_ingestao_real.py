@@ -193,8 +193,32 @@ def test_filtrar_v1_mantem_so_pares_v1(tmp_path):
     (cur / "misto.csv").write_text(_MISTO_2022, encoding="latin-1")
     (cur / "so_dep.csv").write_text(_SO_DEP_2022, encoding="latin-1")
     resumo = ingestao_real._filtrar_v1(cur)
-    assert resumo == {"mantidas": 2, "descartadas": 3, "arquivos_removidos": 1}
+    assert resumo == {"mantidas": 2, "descartadas": 3, "duplicadas": 0, "arquivos_removidos": 1}
     sobrou = (cur / "misto.csv").read_text(encoding="latin-1").splitlines()
     assert len(sobrou) == 3  # header + PRESIDENTE + GOVERNADOR
     assert "DEPUTADO" not in "\n".join(sobrou) and "SENADOR" not in "\n".join(sobrou)
     assert not (cur / "so_dep.csv").exists()
+
+
+_LINHA_PRES_SP = "2022;PRESIDENTE;SP;3550308;CANDIDATO EXEMPLO A;10\n"
+_LINHA_PRES_RJ = "2022;PRESIDENTE;RJ;3304557;CANDIDATO EXEMPLO B;5\n"
+
+
+def test_filtrar_v1_remove_linhas_duplicadas_entre_arquivos(tmp_path):
+    """TSE duplica consolidados (BR.csv ⊂ BRASIL.csv, prova 2026-10-12):
+    mesma linha em 2 arquivos somaria 2×. Segunda ocorrência cai."""
+    from scripts import ingestao_real
+
+    cur = tmp_path / "cur"
+    cur.mkdir()
+    header = "ANO_ELEICAO;DS_CARGO;SG_UF;CD_MUNICIPIO;NM_URNA;QT_VOTOS\n"
+    (cur / "a_BR.csv").write_text(header + _LINHA_PRES_SP + _LINHA_PRES_RJ, encoding="latin-1")
+    (cur / "b_BRASIL.csv").write_text(header + _LINHA_PRES_SP, encoding="latin-1")
+    resumo = ingestao_real._filtrar_v1(cur)
+    assert resumo["mantidas"] == 2
+    assert resumo["descartadas"] == 0
+    assert resumo["duplicadas"] == 1
+    assert resumo["arquivos_removidos"] == 1
+    assert not (cur / "b_BRASIL.csv").exists()  # virou só-header → removido
+    corpo_a = (cur / "a_BR.csv").read_text(encoding="latin-1").splitlines()
+    assert len(corpo_a) == 3  # header + 2 linhas únicas
