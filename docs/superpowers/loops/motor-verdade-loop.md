@@ -274,3 +274,9 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 - Prova vs oficial TSE T1: LULA 57.120.571 (-0,24%), BOLSONARO 50.949.797 (-0,24%), TEBET -0,27%, CIRO -0,37% — Δ uniforme = exterior excluído do fato (1.991 linhas fora, documentado).
 - SHAs: votos 398d2310a898… / censo 0adc228e… / de-para 22518445… (5571 pares).
 - Backlog: 2024-prefeito_texto precisa re-verificação T1/T2 (fato_2024_1 pode conter T2 — bug pré-fix); SyntaxWarning `\d` em normalize.py:91 (docstring, ruído); rem-vs-px; E5 empty-build; workflow_dispatch.
+
+## Preview real 2022 na UI (2026-10-12, sem PR: operação local reversível)
+- Swap dos artefatos de /tmp/opencode/real-run-2022/webdata sobre web/public/data (+backup em /tmp/opencode/served-backup-2022), build + serve, screenshots Playwright em /tmp/opencode/*2022-real.png, restore + kill por porta (fuser; sem pkill -f).
+- Home: "Total de votos: 405.818.663" (marts T1+T2 pres+gov), selo "fonte auditada" + hash + URL TSE. /regiao/3550308?fato=fato_2022_1_presidente: LULA (PT), 3.276.512 votos, margem 9,5%, selo oficial.
+- Console só benigno (favicon 404 + topojson fallback, fail-closed por design). Incidente menor: screenshots salvos em .playwright-mcp foram apagados junto na limpeza — refeito o ciclo (swap→serve→shots→mover p/ /tmp→restore); daqui em diante mover antes de remover o dir.
+- Restaurado fixture (manifest todo fixture:true), árvore limpa.
