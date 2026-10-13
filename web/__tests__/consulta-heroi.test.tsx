@@ -23,6 +23,16 @@ describe("consulta-herói", () => {
     expect(iResumo).toBeGreaterThan(-1);
     expect(iBusca).toBeLessThan(iResumo);
   });
+  it("Home: dashboard Mapa+Ranking antes do Resumo", () => {
+    const html = renderToStaticMarkup(<HomeContent />);
+    const iMapa = html.indexOf('aria-label="Mapa por UF"');
+    const iRanking = html.indexOf('aria-label="Ranking de candidatos"');
+    const iResumo = html.indexOf('aria-label="Resumo"');
+    expect(iMapa).toBeGreaterThan(-1);
+    expect(iRanking).toBeGreaterThan(-1);
+    expect(iMapa).toBeLessThan(iResumo);
+    expect(iRanking).toBeLessThan(iResumo);
+  });
   it("Home: sem lista de 30 perguntas (curado mora em /perguntas)", () => {
     const html = renderToStaticMarkup(<HomeContent />);
     expect(html).not.toContain("Biblioteca curada — 30 perguntas");
