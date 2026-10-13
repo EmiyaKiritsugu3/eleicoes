@@ -423,56 +423,7 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
         </p>
       </section>
 
-      <section
-        aria-label="Resumo"
-        style={{
-          borderTop: FILETE,
-          paddingTop: tokens.espaco[4],
-          marginTop: tokens.espaco[6],
-          opacity: 1,
-        }}
-      >
-        <h2
-          style={{
-            fontFamily: tokens.fonte.display,
-            fontSize: secaoSize,
-            lineHeight: secaoLine,
-          }}
-        >
-          Resumo
-        </h2>
-        {candidatoAtivo && <p role="note">{NOTA_CANDIDATO_GLOBAL}</p>}
-        {carregando ? (
-          <div role="status"><span style={TEXTO_OCULTO}>a carregar…</span><Skeleton linhas={3} /></div>
-        ) : (
-          <div className="home-fade" style={estiloFade}>
-            {semDados || semProva ? (
-              /* Alerta vivo único do estado sem-prova (compartilhado pelas 4
-                 seções — as demais anunciam como texto comum, cf. Mapa). */
-              <p role="alert">{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
-            ) : (
-              <ul>
-                <li
-                  style={{
-                    fontSize: tituloSize,
-                    lineHeight: tituloLine,
-                    color: tokens.cor.destaqueVerde,
-                  }}
-                >
-                  Total de votos: {formatVotes(res.totalVotos)}
-                </li>
-                <li>Linhas: {formatVotes(resumo?.total_linhas ?? 0)}</li>
-                <li>Anos: {(resumo?.anos ?? []).join(", ") || SEM_DADO}</li>
-              </ul>
-            )}
-          </div>
-        )}
-        {seal.official ? (
-          <SourceBadge hash={seal.official.hash} url={seal.official.url} date={seal.official.date} />
-        ) : (
-          <SealSlot seal={seal} />
-        )}
-      </section>
+      {/* (Resumo movido p/ após o Ranking — dashboard: Mapa+Ranking herói.) */}
 
       <section
         aria-label="Mapa por UF"
@@ -615,6 +566,58 @@ export function HomeContent({ initialFiltros }: { initialFiltros?: Filtros }) {
               </div>
             )}
           </div>
+        )}
+      </section>
+
+      {/* Dashboard: Resumo após o herói visual (Mapa+Ranking). */}
+      <section
+        aria-label="Resumo"
+        style={{
+          borderTop: FILETE,
+          paddingTop: tokens.espaco[4],
+          marginTop: tokens.espaco[6],
+          opacity: 1,
+        }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Resumo
+        </h2>
+        {candidatoAtivo && <p role="note">{NOTA_CANDIDATO_GLOBAL}</p>}
+        {carregando ? (
+          <div role="status"><span style={TEXTO_OCULTO}>a carregar…</span><Skeleton linhas={3} /></div>
+        ) : (
+          <div className="home-fade" style={estiloFade}>
+            {semDados || semProva ? (
+              /* Alerta vivo único do estado sem-prova (compartilhado pelas 4
+                 seções — as demais anunciam como texto comum, cf. Mapa). */
+              <p role="alert">{SEM_DADO}{semProva ? ` — ${MOTIVO_SEM_HASH}` : ""}</p>
+            ) : (
+              <ul>
+                <li
+                  style={{
+                    fontSize: tituloSize,
+                    lineHeight: tituloLine,
+                    color: tokens.cor.destaqueVerde,
+                  }}
+                >
+                  Total de votos: {formatVotes(res.totalVotos)}
+                </li>
+                <li>Linhas: {formatVotes(resumo?.total_linhas ?? 0)}</li>
+                <li>Anos: {(resumo?.anos ?? []).join(", ") || SEM_DADO}</li>
+              </ul>
+            )}
+          </div>
+        )}
+        {seal.official ? (
+          <SourceBadge hash={seal.official.hash} url={seal.official.url} date={seal.official.date} />
+        ) : (
+          <SealSlot seal={seal} />
         )}
       </section>
 
