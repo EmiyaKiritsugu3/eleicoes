@@ -298,3 +298,8 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 - OK: H1 "Consulte os resultados auditados", nav Verificar→Exemplos, selos em todas, sem SEM_DADO indevido; Explorar sem cobertura esc_* é fail-closed correto (Censo sem escolaridade).
 - Achado (não-bloqueante, follow-up): /verificar ainda chama sua lista de "Biblioteca" — mesmo padrão curado que motivou a onda consulta-herói. Renomear p/ "Exemplos de afirmações" fica p/ próximo micro-ciclo.
 - Restore + kill por porta; fixture restaurada; árvore limpa.
+
+## Deps segurança mergeadas (2026-10-12, PR #26, sem rounds)
+- 47 alertas Dependabot, todos em web/package-lock.json. Bump: next 14.2.5->14.2.35 (patch-only), postcss 8.4.31->8.5.30, vitest 1.6.0->1.6.1. Restantes (vite/vitest-dev/esbuild, só dev-server/Windows) exigem majors — backlog.
+- Exposição real baixa: app sem middleware/next-image/server-actions; produção tinha só 2 (postcss, build-time).
+- Suites: vitest 586 + tsc + build verdes. CodeRabbit sem threads.
