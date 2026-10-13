@@ -41,7 +41,9 @@ import { tokens } from "../lib/tokens";
 import {
   VAR_DEMO,
   PISO_CORRELACAO_N,
+  conclusaoLeiga,
   correlacao,
+  estratificar,
   finito,
   indiceVencedor,
   perfilOndeVenceu,
@@ -51,6 +53,17 @@ import {
   type MunRow,
   type VarDemo,
 } from "../lib/motor";
+
+const VEREDITO_PT: Record<string, string> = {
+  sustentado: "padrão sustentado entre os estratos",
+  misto: "evidência mista entre os estratos",
+  nao_sustentado: "padrão não sustentado pelos estratos",
+};
+
+/** r com 3 casas em pt-BR; null (suprimido) → sem dado oficial. */
+function fmtR(r: number | null): string {
+  return r === null || !finito(r) ? SEM_DADO : r.toFixed(3).replace(".", ",");
+}
 
 export interface ExplorarSelecao {
   quem: string;
@@ -324,6 +337,24 @@ export function ExplorarConteudo({
   const faixas = useMemo(
     () => (coberto && filtradas.length > 0 ? quintis(xs, ys) : []),
     [coberto, filtradas.length, xs, ys],
+  );
+  const estratosRegiao = useMemo(
+    () =>
+      coberto && filtradas.length > 0
+        ? estratificar(filtradas, sel.cruzar as VarDemo, { candidatoId: sel.quem, candidatos: ordem }, "regiao")
+        : [],
+    [coberto, filtradas, sel.cruzar, sel.quem, ordem],
+  );
+  const estratosRenda = useMemo(
+    () =>
+      coberto && filtradas.length > 0
+        ? estratificar(filtradas, sel.cruzar as VarDemo, { candidatoId: sel.quem, candidatos: ordem }, "faixa_renda")
+        : [],
+    [coberto, filtradas, sel.cruzar, sel.quem, ordem],
+  );
+  const veredito = useMemo(
+    () => conclusaoLeiga(corr ? corr.r : null, [...estratosRegiao, ...estratosRenda]),
+    [corr, estratosRegiao, estratosRenda],
   );
   // Pontos do scatter: pares válidos com identidade (nome/IBGE/UF) p/
   // inspeção de distribuição e outliers (spec §4: pontos por UF + reta).
@@ -891,6 +922,90 @@ export function ExplorarConteudo({
           )}
         </section>
       )}
+
+      <section
+        aria-label="Por quê?"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Por quê? — estratificação
+        </h2>
+        {badge}
+        <p role="note">{ECO_SEAL} — médias de municípios, nunca de pessoas. Correlação não implica causa.</p>
+        {!coberto ? (
+          <p role="alert" style={ALERTA_STYLE}>
+            {SEM_DADO}{!hashAuditado ? ` — ${MOTIVO_SEM_HASH}` : " — sem cobertura nos blocos; ajuste quem · onde · cruzar com acima"}
+          </p>
+        ) : filtradas.length === 0 ? (
+          <p role="alert" style={ALERTA_STYLE}>{SEM_DADO} — nenhum município neste recorte</p>
+        ) : (
+          <>
+            <p>
+              Veredito em linguagem leiga: <strong>{VEREDITO_PT[veredito] ?? veredito}</strong>
+            </p>
+            <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Correlação por região">
+            <table>
+              <caption>Correlação por região</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Região</th>
+                  <th scope="col">r</th>
+                  <th scope="col">n</th>
+                </tr>
+              </thead>
+              <tbody>
+                {estratosRegiao.map((e) => (
+                  <tr key={e.estrato}>
+                    <td>{e.estrato}</td>
+                    <td>
+                      {e.r === null
+                        ? e.n < PISO_CORRELACAO_N
+                          ? `${SEM_DADO} (piso n ≥ 30)`
+                          : `${SEM_DADO} (variância zero)`
+                        : fmtR(e.r)}
+                    </td>
+                    <td>{e.n}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            </div>
+            <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Correlação por faixa de renda">
+            <table>
+              <caption>Correlação por faixa de renda</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Faixa</th>
+                  <th scope="col">r</th>
+                  <th scope="col">n</th>
+                </tr>
+              </thead>
+              <tbody>
+                {estratosRenda.map((e) => (
+                  <tr key={e.estrato}>
+                    <td>{e.estrato}</td>
+                    <td>
+                      {e.r === null
+                        ? e.n < PISO_CORRELACAO_N
+                          ? `${SEM_DADO} (piso n ≥ 30)`
+                          : `${SEM_DADO} (variância zero)`
+                        : fmtR(e.r)}
+                    </td>
+                    <td>{e.n}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            </div>
+          </>
+        )}
+      </section>
 
       <section
         aria-label="Export reproduzível"
