@@ -292,3 +292,9 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 - Direção do usuário: dashboard com fácil acesso — Mapa+Ranking de cara.
 - Escopo: Home reordenada (Busca → Mapa → Ranking → Resumo → Evolução → Exemplos → Abstenção); bloco Resumo movido intacto; teste pinna a ordem. Zero threads no review.
 - Suites: pytest 234 + vitest 586 + tsc + build. Tudo verde, sem rounds.
+
+## Audit visual pós-reposicionamento (2026-10-12, sem PR: operação local)
+- 6 superfícies com dado real 2022 (build 52/52 + serve :3102 + prints em /tmp/opencode/audit-*.png): Home, Analisar (?ano=2022&cargo=presidente), Auditoria, Região 3550308, Verificar, Explorar.
+- OK: H1 "Consulte os resultados auditados", nav Verificar→Exemplos, selos em todas, sem SEM_DADO indevido; Explorar sem cobertura esc_* é fail-closed correto (Censo sem escolaridade).
+- Achado (não-bloqueante, follow-up): /verificar ainda chama sua lista de "Biblioteca" — mesmo padrão curado que motivou a onda consulta-herói. Renomear p/ "Exemplos de afirmações" fica p/ próximo micro-ciclo.
+- Restore + kill por porta; fixture restaurada; árvore limpa.
