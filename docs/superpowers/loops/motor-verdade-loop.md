@@ -287,3 +287,8 @@ Diretiva do usuário (2026-10-09): trabalhar em loop — auditar o PR até green
 - R1: CodeRabbit Minor (label Perguntas contradizia) → "Exemplos", thread resolvida.
 - Rulings: sem prefiltros por card (blocos abstratos, mapear seria chute); Busca da Home (filtros) é o herói, Analisar segue como ferramenta avançada (sem duplicar o componente).
 - Suites: pytest 234 + vitest 585 + tsc + build. Tudo verde no head.
+
+## Dashboard Mapa+Ranking mergeado (2026-10-12, PR #25)
+- Direção do usuário: dashboard com fácil acesso — Mapa+Ranking de cara.
+- Escopo: Home reordenada (Busca → Mapa → Ranking → Resumo → Evolução → Exemplos → Abstenção); bloco Resumo movido intacto; teste pinna a ordem. Zero threads no review.
+- Suites: pytest 234 + vitest 586 + tsc + build. Tudo verde, sem rounds.
