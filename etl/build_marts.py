@@ -5,10 +5,15 @@
    frames já canônicos são aproveitados, demais passam por `normalize_resultados`.
 2. Escreve Parquet particionado `ano=/cargo=/uf=` em `curated_dir`.
 3. Cria o DuckDB com `fato_voto`, `dim_candidato`, `fato_eleitorado` e
-   `fato_fin` (eleitorado/finanças ficam com schema vazio quando não houver
-   fonte — caso do V1, só votação nominal).
+   `fato_fin` (eleitorado fica com schema vazio quando não houver
+   fonte — caso do V1, só votação nominal; `fato_fin` segue vazio sem
+   `fin_df`, preenchido com o canônico de `normalize_prestacao` quando
+   dado) + `dim_ente`/`fato_gov`/`fato_transp_federal` (vazios sem
+   `gov_df`/`cgu_df`).
 4. Escreve agregados JSON em `web/public/data/` (raiz do repo),
-   redirecionável via `web_data_dir`.
+   redirecionável via `web_data_dir`: o trio V1
+   (`resumo`/`por_uf`/`por_candidato`) + `gov_por_ente.json`/
+   `gov_serie.json`/`fin_por_candidato.json` (vazios `[]` sem quadros).
 5. Registra a fonte oficial (campo `url` CDN de `V1_DATASETS`, Task 2) no manifest.
 
 É idempotente e tolera `curated_dir` vazio (cria tabelas/JSONs vazios).
@@ -29,9 +34,13 @@ import pandas as pd
 
 from etl import ETL_VERSION
 from etl.censo import CENSO_ARTIFACT_FILENAME, build_censo_artifact_entry
+from etl.entes import load_entes
 from etl.manifest import _dedupe_key, _validate_entry, load_manifest
 from etl.normalize import CANONICAL_COLUMNS, normalize_resultados
+from etl.prestacao import PRESTACAO_CANONICAL
+from etl.siconfi import SICONFI_CANONICAL
 from etl.sources import CENSO_DATASETS, V1_DATASETS
+from etl.transparencia import CGU_CANONICAL
 from etl.validate import run_gates
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -82,6 +91,62 @@ def _empty_canonical() -> pd.DataFrame:
     out["turno"] = out["turno"].astype("int64")
     out["votos"] = out["votos"].astype("int64")
     return out[CANONICAL_COLUMNS]
+
+
+_GOV_MONETARIAS = ("receita_total", "despesa_empenhada",
+                   "despesa_liquidada", "despesa_paga")
+_FIN_MONETARIAS = ("receita_total", "despesa_total",
+                   "fefc", "fundo_partidario")
+
+
+def _empty_gov() -> pd.DataFrame:
+    out = pd.DataFrame({
+        "ano": pd.Series(dtype="int64"),
+        "ente_id": pd.Series(dtype="string"),
+        "esfera": pd.Series(dtype="string"),
+        **{c: pd.Series(dtype="float64") for c in _GOV_MONETARIAS},
+    })
+    return out[SICONFI_CANONICAL]
+
+
+def _empty_fin() -> pd.DataFrame:
+    out = pd.DataFrame({
+        "ano": pd.Series(dtype="int64"),
+        "cargo": pd.Series(dtype="string"),
+        "candidato_id": pd.Series(dtype="string"),
+        **{c: pd.Series(dtype="float64") for c in _FIN_MONETARIAS},
+    })
+    return out[PRESTACAO_CANONICAL]
+
+
+def _empty_cgu() -> pd.DataFrame:
+    out = pd.DataFrame({
+        "ano": pd.Series(dtype="int64"),
+        "orgao": pd.Series(dtype="string"),
+        "funcao": pd.Series(dtype="string"),
+        "valor": pd.Series(dtype="float64"),
+    })
+    return out[CGU_CANONICAL]
+
+
+def _coerce_quadro(df: pd.DataFrame | None, canonicas: list[str],
+                   rotulo: str) -> pd.DataFrame:
+    """Frame canônico do quadro (`gov`/`fin`/`cgu`) ou vazio (None → V1).
+
+    `None` devolve a tabela vazia (build V1 intacto); frame dado sem as
+    colunas canônicas (saída de `normalize_*`) levanta `ValueError`
+    fail-closed antes de qualquer escrita. Colunas extras são
+    descartadas (só o canônico vai ao mart).
+    """
+    vazios = {"gov": _empty_gov, "fin": _empty_fin, "cgu": _empty_cgu}
+    if df is None:
+        return vazios[rotulo]()
+    ausentes = [c for c in canonicas if c not in df.columns]
+    if ausentes:
+        raise ValueError(
+            f"build_marts: {rotulo}_df sem coluna(s) canônica(s): {ausentes}"
+        )
+    return df[canonicas].reset_index(drop=True)
 
 
 def _is_canonical(df: pd.DataFrame) -> bool:
@@ -194,7 +259,8 @@ def _write_partitioned_parquet(df: pd.DataFrame, curated_dir: Path) -> None:
         part[CANONICAL_COLUMNS].to_parquet(dest, index=False)
 
 
-def _write_duckdb(df: pd.DataFrame, db_path: Path) -> None:
+def _write_duckdb(df: pd.DataFrame, db_path: Path, gov_df=None,
+                  fin_df=None, cgu_df=None) -> None:
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     dim = (
@@ -202,10 +268,18 @@ def _write_duckdb(df: pd.DataFrame, db_path: Path) -> None:
         .drop_duplicates()
         .reset_index(drop=True)
     )
+    gov = _coerce_quadro(gov_df, SICONFI_CANONICAL, "gov")
+    fin = _coerce_quadro(fin_df, PRESTACAO_CANONICAL, "fin")
+    cgu = _coerce_quadro(cgu_df, CGU_CANONICAL, "cgu")
+    entes = load_entes()
     con = duckdb.connect(str(db_path))
     try:
         con.register("fato_df", df[CANONICAL_COLUMNS])
         con.register("dim_df", dim)
+        con.register("gov_df", gov)
+        con.register("fin_df", fin)
+        con.register("cgu_df", cgu)
+        con.register("entes_df", entes)
         con.execute("CREATE OR REPLACE TABLE fato_voto AS SELECT * FROM fato_df")
         con.execute("CREATE OR REPLACE TABLE dim_candidato AS SELECT * FROM dim_df")
         con.execute(
@@ -214,14 +288,23 @@ def _write_duckdb(df: pd.DataFrame, db_path: Path) -> None:
             "eleitorado BIGINT, abstencoes BIGINT)"
         )
         con.execute(
-            "CREATE OR REPLACE TABLE fato_fin ("
-            "ano BIGINT, candidato_id VARCHAR, receita DOUBLE, despesa DOUBLE)"
+            "CREATE OR REPLACE TABLE fato_fin AS SELECT * FROM fin_df"
+        )
+        con.execute(
+            "CREATE OR REPLACE TABLE dim_ente AS SELECT * FROM entes_df"
+        )
+        con.execute(
+            "CREATE OR REPLACE TABLE fato_gov AS SELECT * FROM gov_df"
+        )
+        con.execute(
+            "CREATE OR REPLACE TABLE fato_transp_federal AS SELECT * FROM cgu_df"
         )
     finally:
         con.close()
 
 
-def _write_json_aggs(df: pd.DataFrame, web_data_dir: Path = WEB_DATA_DIR) -> None:
+def _write_json_aggs(df: pd.DataFrame, web_data_dir: Path = WEB_DATA_DIR,
+                     gov_df=None, fin_df=None, cgu_df=None) -> None:
     # DECISÃO (EVOLVE-1 Task 2): agregados seguem `indent=2` legível — sem
     # reforma compacta (churn sem ganho nos KBs atuais); a integridade vem
     # do hash dos bytes servidos (`register_served_artifacts`), não do tamanho.
@@ -263,6 +346,45 @@ def _write_json_aggs(df: pd.DataFrame, web_data_dir: Path = WEB_DATA_DIR) -> Non
     )
     (web_data_dir / "por_candidato.json").write_text(
         json.dumps(por_candidato, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    gov = _coerce_quadro(gov_df, SICONFI_CANONICAL, "gov")
+    fin = _coerce_quadro(fin_df, PRESTACAO_CANONICAL, "fin")
+    if gov.empty:
+        gov_por_ente: list[dict] = []
+        gov_serie: list[dict] = []
+    else:
+        g_ente = gov.groupby(["ente_id", "esfera"], as_index=False)[
+            list(_GOV_MONETARIAS)].sum()
+        gov_por_ente = [
+            {"ente_id": r.ente_id, "esfera": r.esfera,
+             **{c: float(getattr(r, c)) for c in _GOV_MONETARIAS}}
+            for r in g_ente.sort_values("ente_id").itertuples()
+        ]
+        gov_serie = [
+            {"ano": int(r.ano), "ente_id": r.ente_id,
+             "despesa_empenhada": float(r.despesa_empenhada)}
+            for r in gov.sort_values(["ano", "ente_id"]).itertuples()
+        ]
+    if fin.empty:
+        fin_por_candidato: list[dict] = []
+    else:
+        g_fin = fin.groupby(["ano", "cargo", "candidato_id"],
+                            as_index=False)[list(_FIN_MONETARIAS)].sum()
+        fin_por_candidato = [
+            {"ano": int(r.ano), "cargo": r.cargo,
+             "candidato_id": r.candidato_id,
+             **{c: float(getattr(r, c)) for c in _FIN_MONETARIAS}}
+            for r in g_fin.sort_values(
+                ["ano", "cargo", "candidato_id"]).itertuples()
+        ]
+    (web_data_dir / "gov_por_ente.json").write_text(
+        json.dumps(gov_por_ente, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    (web_data_dir / "gov_serie.json").write_text(
+        json.dumps(gov_serie, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    (web_data_dir / "fin_por_candidato.json").write_text(
+        json.dumps(fin_por_candidato, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
 
@@ -920,7 +1042,8 @@ def _verificar_geracao_integra(curated, db_file, manifest_file, web_dir) -> None
 
 
 def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
-              source_shas=None, depara=None) -> None:
+              source_shas=None, depara=None,
+              gov_df=None, fin_df=None, cgu_df=None) -> None:
     """Pipeline completo: Parquet particionado + DuckDB + JSONs + manifest.
 
     `web_data_dir` redireciona os agregados JSON (padrão: `web/public/data/`
@@ -932,7 +1055,13 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
     (threading E4; Tasks 5 e 7 consomem). `depara` (EVOLVE-15, opcional)
     é o mapeamento `{tse5: ibge7}` do CSV oficial (`etl.depara`) repassado
     a `normalize_resultados` — sem ele, códigos TSE viram `""` fail-closed
-    como antes. Após as ingestões, os hashes dos
+    como antes. `gov_df`/`fin_df`/`cgu_df` (Transparência de Gastos,
+    opcionais, default None → tabelas/JSONs vazios, build V1 intacto) são
+    os quadros já canônicos de `normalize_siconfi`/`normalize_prestacao`/
+    `normalize_cgu`: alimentam `dim_ente`/`fato_gov`, `fato_fin` e
+    `fato_transp_federal` + os JSONs `gov_por_ente.json`/`gov_serie.json`/
+    `fin_por_candidato.json`. Nunca passam pelo `_matched_entries` do
+    escopo V1 (quadros de outra fonte, outro escopo). Após as ingestões, os hashes dos
     bytes servidos são registrados em `manifest["artifacts"]`
     (`register_served_artifacts`, EVOLVE-1 Task 2) — dentro do staging,
     junto com Parquet/DB/JSONs/espelho, para o swap publicar hashes
@@ -973,6 +1102,11 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
     _discard_staging(stagings)
     df = _load_canonical(curated, depara=depara)
     fontes = _matched_entries(df)  # pré-checagem fail-closed: antes de qualquer escrita
+    # Quadros gov/fin/cgu: coerção fail-closed antes de qualquer escrita
+    # (None → vazios, V1 intacto; fora do escopo V1 por desenho).
+    gov = _coerce_quadro(gov_df, SICONFI_CANONICAL, "gov")
+    fin = _coerce_quadro(fin_df, PRESTACAO_CANONICAL, "fin")
+    cgu = _coerce_quadro(cgu_df, CGU_CANONICAL, "cgu")
     # Põ props públicos no staging: fontes (CSVs) + fato_* + histórico.
     # Curated/web por cópia (prune/overwrite operam no staging); manifest
     # por cópia (dedupe lê o histórico); DB reescrito por inteiro.
@@ -993,7 +1127,7 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
         _prune_fato_sem_proveniencia(web_st, fontes)
         # Ordem Tasks 4–7 preservada, toda dentro do staging.
         _write_partitioned_parquet(df, curated_st)
-        _write_duckdb(df, db_st)
+        _write_duckdb(df, db_st, gov_df=gov, fin_df=fin, cgu_df=cgu)
         # Gates contra o staging (EVOLVE-4 T2, bytes-aware): o manifest
         # aqui é o espelho staged (atestação servida anterior) e os fatos
         # staged precisam conferir com ele (`fato_paths`); fato novo +
@@ -1010,7 +1144,7 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
         gate_errors = [e for e in gate_errors if not e.startswith("manifest")]
         if gate_errors:
             raise RuntimeError(f"gates reprovados: {'; '.join(gate_errors)}")
-        _write_json_aggs(df, web_st)
+        _write_json_aggs(df, web_st, gov_df=gov, fin_df=fin, cgu_df=cgu)
         _register_sources(df, manifest_st, source_shas=source_shas)
         if not df.empty:
             # Hashes dos bytes servidos (trio + fato_* presentes): o espelho

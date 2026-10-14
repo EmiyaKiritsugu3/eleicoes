@@ -41,6 +41,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
+import numbers
 import shutil
 import warnings
 from datetime import datetime, timezone
@@ -68,6 +70,71 @@ def _resolve_manifest(db_path: Path, manifest_path=None) -> Path | None:
         return Path(manifest_path)
     cand = db_path.parent / "manifest.json"
     return cand if cand.is_file() else None
+
+
+def check_monetario(df: pd.DataFrame, cols: list[str]) -> list[str]:
+    """Gate de valores monetários: negativo/NaN/inf/não-numérico reprova.
+
+    Devolve erros contendo "monetario" (lista vazia = ok; nunca levanta
+    por problema nos dados). Coluna ausente reprova fail-closed (nunca
+    assume 0). DataFrame vazio passa (sem linhas, nada a somar).
+    """
+    errors: list[str] = []
+    for col in cols:
+        if col not in df.columns:
+            errors.append(
+                f"monetario: coluna ausente {col!r} (sem dado oficial)"
+            )
+            continue
+        serie = pd.to_numeric(df[col], errors="coerce")
+        ruins = 0
+        for valor in serie.tolist():
+            if pd.isna(valor):
+                ruins += 1
+            elif not isinstance(valor, numbers.Real):
+                ruins += 1
+            elif not math.isfinite(float(valor)):
+                ruins += 1
+            elif float(valor) < 0:
+                ruins += 1
+        if ruins:
+            errors.append(
+                f"monetario: {ruins} valor(es) inválido(s) em {col} "
+                "(negativo/NaN/não-finito/não-numérico)"
+            )
+    return errors
+
+
+def _gate_fin_orphans(con, tables: set[str]) -> list[str]:
+    """Órfãos `fato_fin` sem `dim_candidato` acima de 0,1% reprovam.
+
+    Mesmo `ORPHAN_THRESHOLD` do voto (matemática inteira, sem float).
+    Tabela ausente ou vazia passa (V1: `fato_fin` vazio nunca reprova).
+    """
+    if "fato_fin" not in tables:
+        return []
+    try:
+        total = con.execute("SELECT COUNT(*) FROM fato_fin").fetchone()[0]
+    except Exception as exc:
+        return [f"orfaos: nao foi possivel contar fato_fin ({exc})"]
+    if not total:
+        return []
+    if "dim_candidato" not in tables:
+        return [f"orfaos: dim_candidato ausente, 100% de {total} linha(s) de fato_fin sem dimensao"]
+    try:
+        orphans = con.execute(
+            "SELECT COUNT(*) FROM fato_fin f LEFT JOIN dim_candidato d "
+            "ON f.candidato_id = d.candidato_id WHERE d.candidato_id IS NULL"
+        ).fetchone()[0]
+    except Exception as exc:
+        return [f"orfaos: nao foi possivel checar fato_fin sem dim ({exc})"]
+    if orphans * 1000 > total:
+        pct = 100 * orphans / total
+        return [
+            f"orfaos em fato_fin sem dim_candidato acima de 0,1%: "
+            f"{pct:.2f}% ({orphans}/{total})"
+        ]
+    return []
 
 
 def _tables(con) -> set[str]:
@@ -267,7 +334,9 @@ def run_gates(db_path, manifest_path=None, totais_oficiais=None,
     `UserWarning` e checa só integridade interna. `fato_paths=None`
     (default) preserva o comportamento anterior; com uma lista de
     fatos, cada um precisa conferir com o manifest resolvido
-    (`_gate_fatos`, bytes-aware fail-closed).
+    (`_gate_fatos`, bytes-aware fail-closed). `fato_fin` não-vazio com
+    órfãos sem `dim_candidato` acima de 0,1% reprova (`_gate_fin_orphans`,
+    mesmo `ORPHAN_THRESHOLD`; vazio/ausente passa — V1 intacto).
     """
     db_path = Path(db_path)
     errors: list[str] = []
@@ -290,6 +359,7 @@ def run_gates(db_path, manifest_path=None, totais_oficiais=None,
             return [f"banco: tabela fato_voto ausente em {db_path}"]
         errors.extend(_gate_sum(con, totais_oficiais))
         errors.extend(_gate_orphans(con, tables))
+        errors.extend(_gate_fin_orphans(con, tables))
     finally:
         con.close()
     manifest = _resolve_manifest(db_path, manifest_path)

@@ -26,6 +26,12 @@ O fetch é opt-in (`--fetch`, baixa os zips V1 p/ `data/raw` — sandbox do
 `etl.fetch`, sem `--raw-dir` de propósito); sem ele o run é offline a
 partir do `--curated-dir`. Sem `--censo-csv` não há `dim_municipio` e o
 `build_fato` reprova fail-closed ("sem dado oficial"), nunca fato sem Censo.
+
+Transparência de gastos (opt-in, offline-first): `--siconfi-json` (array
+JSON DCA → `fato_gov`), `--prestacao-csv` (CSV TSE `;` → `fato_fin`) e
+`--with-transparencia` (detalhe federal CGU → `fato_transp_federal`,
+exige `TRANSPARENCIA_API_KEY` no env; sem chave pula com `UserWarning`).
+Sem as flags, os quadros seguem vazios e o build V1 é intacto.
 """
 
 from __future__ import annotations
@@ -34,7 +40,9 @@ import argparse
 import hashlib
 import io
 import json
+import os
 import sys
+import warnings
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -91,6 +99,19 @@ def _parse_args(argv=None):
     parser.add_argument("--totais-oficiais", type=Path, default=None,
                         help="JSON {UF: total} p/ a comparação externa do gate de soma "
                              "(sem ele, só integridade interna + aviso explícito)")
+    parser.add_argument("--siconfi-json", type=Path, default=None,
+                        help="JSON bruto SICONFI DCA (array de registros) p/ "
+                             "materializar fato_gov via normalize_siconfi "
+                             "(sem ele, fato_gov vazio, V1 intacto)")
+    parser.add_argument("--prestacao-csv", type=Path, default=None,
+                        help="CSV bruto TSE de prestação de contas "
+                             "(`;`-separado) p/ preencher fato_fin via "
+                             "normalize_prestacao (sem ele, fato_fin vazio)")
+    parser.add_argument("--with-transparencia", action="store_true",
+                        help="buscar o detalhe federal CGU p/ fato_transp_federal "
+                             "(exige TRANSPARENCIA_API_KEY no env; sem chave "
+                             "ou com falha de rede, pula com UserWarning e o "
+                             "build base SICONFI+TSE segue)")
     return parser.parse_args(argv)
 
 
@@ -216,6 +237,122 @@ def _carregar_totais(path) -> dict | None:
     return doc
 
 
+def _passo_siconfi(siconfi_json: Path):
+    """Lê o JSON bruto SICONFI DCA e devolve o quadro canônico (fato_gov).
+
+    Escolha de leitura (brief subespecificado): o arquivo é um array
+    JSON de registros (formato do Data Lake); bytes lidos com fallback
+    de encoding `utf-8-sig/utf-8/latin1` (mesmo padrão de
+    `build_marts._read_input_file`), `json.loads` → `pd.DataFrame` →
+    `normalize_siconfi` (sem fork de lógica). Top-level fora de lista
+    levanta `ValueError` fail-closed.
+    """
+    import pandas as pd
+
+    from etl.siconfi import normalize_siconfi
+
+    bruto = Path(siconfi_json).read_bytes()
+    texto = None
+    for encoding in ("utf-8-sig", "utf-8", "latin1"):
+        try:
+            texto = bruto.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    if texto is None:  # pragma: no cover — bytes ilegíveis nos 3 encodings
+        raise ValueError(f"siconfi: JSON ilegível em {siconfi_json} (sem dado oficial)")
+    try:
+        records = json.loads(texto)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"siconfi: JSON inválido em {siconfi_json}: {exc} (sem dado oficial)"
+        ) from exc
+    if not isinstance(records, list):
+        raise ValueError(
+            f"siconfi: esperado array JSON de registros em {siconfi_json} "
+            f"(veio {type(records).__name__}; sem dado oficial)"
+        )
+    if not records:
+        # Array vazio: skip honesto (quadro vazio, como Task 4 p/ CGU),
+        # nunca erro — a frente exibe "sem dado oficial".
+        df = normalize_siconfi(pd.DataFrame(
+            {c: pd.Series(dtype="string") for c in
+             ("ANO", "ENTE", "RECEITA", "EMPENHADO", "LIQUIDADO", "PAGO")}))
+    else:
+        df = normalize_siconfi(pd.DataFrame(records))
+    print(f"siconfi: fato_gov ok ({len(df)} linhas)")
+    return df
+
+
+def _passo_prestacao(prestacao_csv: Path):
+    """Lê o CSV bruto TSE de prestação e devolve o quadro canônico (fato_fin).
+
+    Leitura espelha `build_marts._read_input_file` (`;` com fallback de
+    encoding `utf-8-sig/utf-8/latin1`, depois `,`/latin1) → DataFrame →
+    `normalize_prestacao` (sem fork de lógica).
+    """
+    import pandas as pd
+
+    from etl.prestacao import normalize_prestacao
+
+    df = None
+    for encoding in ("utf-8-sig", "utf-8", "latin1"):
+        try:
+            df = pd.read_csv(prestacao_csv, sep=";", encoding=encoding,
+                             dtype="string")
+            break
+        except (UnicodeDecodeError, pd.errors.ParserError):
+            continue
+    if df is None:
+        df = pd.read_csv(prestacao_csv, sep=",", encoding="latin1",
+                         dtype="string")
+    fin = normalize_prestacao(df)
+    print(f"prestacao: fato_fin ok ({len(fin)} linhas)")
+    return fin
+
+
+def _passo_cgu():
+    """Busca o detalhe federal CGU ou devolve None com `UserWarning` (skip honesto).
+
+    Sem `TRANSPARENCIA_API_KEY` no env — ou com qualquer falha de rede/
+    parse — emite `UserWarning` e devolve None: o build base SICONFI+TSE
+    segue intacto (nunca erro). A chave nunca é logada nem gravada.
+    """
+    from etl.sources import CGU_META
+    from etl.transparencia import normalize_cgu
+
+    chave = os.environ.get("TRANSPARENCIA_API_KEY")
+    if not chave:
+        warnings.warn(
+            "transparencia: TRANSPARENCIA_API_KEY ausente — detalhe federal "
+            "CGU pulado (base SICONFI+TSE intacta)",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
+    try:
+        import requests
+
+        resp = requests.get(CGU_META["url"], timeout=60,
+                            headers={"chave-api-dados": chave,
+                                     "Accept": "application/json"})
+        resp.raise_for_status()
+        payload = resp.json()
+        records = (payload.get("data") if isinstance(payload, dict)
+                   else payload) or []
+        cgu = normalize_cgu(records if isinstance(records, list) else [])
+    except Exception as exc:
+        warnings.warn(
+            "transparencia: CGU indisponível "
+            f"({exc}) — detalhe federal pulado (base SICONFI+TSE intacta)",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
+    print(f"transparencia: fato_transp_federal ok ({len(cgu)} linhas)")
+    return cgu
+
+
 def main(argv=None) -> int:
     """Roda o pipeline; devolve 0 ok, 1 gates reprovados, 2 erro."""
     args = _parse_args(argv)
@@ -234,9 +371,14 @@ def main(argv=None) -> int:
 
             depara_url = DEPARA_URL
             print("de-para: join TSE→IBGE7 ativo nos marts")
+        gov_df = _passo_siconfi(Path(args.siconfi_json)) \
+            if args.siconfi_json is not None else None
+        fin_df = _passo_prestacao(Path(args.prestacao_csv)) \
+            if args.prestacao_csv is not None else None
+        cgu_df = _passo_cgu() if args.with_transparencia else None
         build_all(args.curated_dir, args.db, manifest,
                   web_data_dir=args.web_data_dir, source_shas=source_shas,
-                  depara=depara)
+                  depara=depara, gov_df=gov_df, fin_df=fin_df, cgu_df=cgu_df)
         print("build: marts ok")
         if args.censo_csv is not None:
             # --sem-fato: sem build_fato não há recalc de served artifacts

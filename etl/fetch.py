@@ -21,7 +21,9 @@ DEFAULT_MAX_BYTES = 2 * 1024**3  # 2 GiB: teto fail-closed antes de estourar o d
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RAW_ROOT = REPO_ROOT / "data" / "raw"
-ALLOWED_HOSTS = frozenset({"cdn.tse.jus.br", "dadosabertos.tse.jus.br", "ftp.ibge.gov.br"})
+ALLOWED_HOSTS = frozenset({"cdn.tse.jus.br", "dadosabertos.tse.jus.br", "ftp.ibge.gov.br",
+                             "apidatalake.tesouro.gov.br", "tesourotransparente.gov.br",
+                             "api.portaldatransparencia.gov.br"})
 
 
 def _validator_of(resp_headers) -> str | None:
