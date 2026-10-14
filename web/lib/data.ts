@@ -352,7 +352,6 @@ export interface LadoComparador {
   votos: number;
   detalhe?: string;
 }
-
 export function resolverComparador(args: {
   compMode: "candidatos" | "anos" | "municipios";
   compA: string;
@@ -382,4 +381,51 @@ export function resolverComparador(args: {
     };
   };
   return { left: mk(args.compA), right: mk(args.compB) };
+}
+
+/** Notas fixas da /transparencia (Task 6): valores sempre nominais e o
+ *  lag do DCA — ano sem dado é "sem dado oficial", nunca 0. */
+export const NOTA_TRANSPARENCIA_NOMINAL =
+  "valores nominais, sem deflação IPCA";
+export const NOTA_TRANSPARENCIA_LAG =
+  "DCA com lag: ano sem dado = sem dado oficial";
+
+/** Linha de `gov_serie.json` (`[{ano, ente_id, despesa_empenhada}]`). */
+export interface GovRow {
+  ano: number;
+  ente_id: string;
+  despesa_empenhada: number;
+}
+
+export interface GovSerieItem {
+  ano: number;
+  valor: number;
+  eleitoral: boolean;
+}
+
+/** Anos eleitorais cobertos pela série (municipais + gerais). */
+const ANOS_ELEITORAIS = new Set([2014, 2016, 2018, 2020, 2022, 2024]);
+
+export function isAnoEleitoral(ano: number): boolean {
+  return ANOS_ELEITORAIS.has(ano);
+}
+
+/** Série de despesa empenhada ordenada por ano, com marcador eleitoral.
+ *  Linha com valor não-finito é pulada (nunca somada como 0); ano ausente
+ *  do JSON simplesmente não aparece (a página mostra "sem dado oficial").
+ */
+export function govSerie(
+  rows: GovRow[],
+  filtros: { ente_id?: string },
+): GovSerieItem[] {
+  const q = (filtros.ente_id ?? "").trim().toLowerCase();
+  const out: GovSerieItem[] = [];
+  for (const r of Array.isArray(rows) ? rows : []) {
+    if (q && String(r.ente_id ?? "").toLowerCase() !== q) continue;
+    if (!votosFinito(r.despesa_empenhada)) continue;
+    const ano = Number(r.ano);
+    if (!Number.isFinite(ano)) continue;
+    out.push({ ano, valor: Number(r.despesa_empenhada), eleitoral: isAnoEleitoral(ano) });
+  }
+  return out.sort((a, b) => a.ano - b.ano);
 }

@@ -201,7 +201,9 @@ def test_seed_artifact_entries(tmp_path):
     names = sorted(a["arquivo"] for a in artifacts)
     # Seed multi-pleito (2018+2022): arquivos não-fato têm 1 entry por fonte
     # V1 (fan-out documentado em `_artifact_entries_for`); fatos têm 1 por triple.
+    # Task 6 (Transparência): o seed serve também os quadros gov/fin fixture.
     assert sorted(set(names)) == ["censo_municipios.json", "fato_2018_1_presidente.json", "fato_2022_1_presidente.json",
+                     "fin_por_candidato.json", "gov_por_ente.json", "gov_serie.json",
                      "por_candidato.json", "por_uf.json", "resumo.json"]
     for entry in artifacts:
         assert entry.get("fixture") is True

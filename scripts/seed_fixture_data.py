@@ -71,6 +71,28 @@ _FIXTURE_CENSO_CSV = (
 # usam a data da coleta (register_censo_ingest) — só o fixture é fixo.
 _FIXTURE_CENSO_DATA = "2022-01-01"
 
+# Quadros gov/fin fixture (Task 6 — Transparência de Gastos): 2 linhas gov
+# + 1 fin, já no canônico de `normalize_siconfi`/`normalize_prestacao`,
+# passados a `build_all` via `gov_df`/`fin_df` (mesmo kwarg do CLI
+# `--with-transparencia`). SINTÉTICOS como o resto do seed: o loop adiante
+# marca `fixture:true` — nunca selo oficial. Valores positivos e finitos
+# (gate monetário reprova negativo/NaN/inf).
+_FIXTURE_GOV_ROWS = [
+    {"ano": 2022, "ente_id": "UNIAO", "esfera": "federal",
+     "receita_total": 3000.0, "despesa_empenhada": 2000.0,
+     "despesa_liquidada": 1900.0, "despesa_paga": 1800.0},
+    {"ano": 2020, "ente_id": "UNIAO", "esfera": "federal",
+     "receita_total": 2500.0, "despesa_empenhada": 1500.0,
+     "despesa_liquidada": 1400.0, "despesa_paga": 1300.0},
+]
+_FIXTURE_FIN_ROWS = [
+    # candidato_id casa com a dim do _FIXTURE_CSV (gate de órfãos fin):
+    # sem SQ_CANDIDATO na amostra, o id deriva do nome ("NOME|").
+    {"ano": 2022, "cargo": "presidente", "candidato_id": "CANDIDATO EXEMPLO A|",
+     "receita_total": 100.0, "despesa_total": 90.0,
+     "fefc": 50.0, "fundo_partidario": 10.0},
+]
+
 # Triples cobertas pelo fixture TSE acima (turno ausente vira 1, M7).
 _FATO_TRIPLE = (2022, 1, "presidente")
 _FATO_TRIPLES = [(2018, 1, "presidente"), (2022, 1, "presidente")]
@@ -163,15 +185,18 @@ def seed(manifest_path: Path, web_data_dir: Path, force: bool = False) -> dict:
             curated.mkdir()
             (curated / "fixture.csv").write_text(_FIXTURE_CSV, encoding="utf-8")
             db_tmp = Path(tmp) / "seed.duckdb"
+            import pandas as pd
+            gov_df = pd.DataFrame(_FIXTURE_GOV_ROWS)
+            fin_df = pd.DataFrame(_FIXTURE_FIN_ROWS)
             build_all(curated, db_tmp, manifest_path,
-                      web_data_dir=web_data_dir)
+                      web_data_dir=web_data_dir,
+                      gov_df=gov_df, fin_df=fin_df)
             # Motor Verdade: Censo fixture -> dim_municipio -> fato sintético,
             # pelo caminho REAL (normalize_censo + build_fato). Seed é
             # fixture-only por desenho: o entry do Censo
             # abaixo usa a página do catálogo IBGE como source_url e o sha256
             # do payload sintético — sempre marcado fixture:true adiante.
             import duckdb
-            import pandas as pd
             censo_raw = pd.read_csv(io.StringIO(_FIXTURE_CENSO_CSV), sep=";",
                                     dtype="string")
             con = duckdb.connect(str(db_tmp))
