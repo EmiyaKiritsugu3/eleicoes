@@ -50,6 +50,7 @@ import {
   quintis,
   shareCandidato,
   totalLinha,
+  type Estrato,
   type MunRow,
   type VarDemo,
 } from "../lib/motor";
@@ -63,6 +64,47 @@ const VEREDITO_PT: Record<string, string> = {
 /** r com 3 casas em pt-BR; null (suprimido) → sem dado oficial. */
 function fmtR(r: number | null): string {
   return r === null || !finito(r) ? SEM_DADO : r.toFixed(3).replace(".", ",");
+}
+
+/** Célula de r de estrato: null → piso ou variância (nunca zero). */
+function celulaR(e: Estrato): string {
+  if (e.r !== null) return fmtR(e.r);
+  return e.n < PISO_CORRELACAO_N ? `${SEM_DADO} (piso n ≥ 30)` : `${SEM_DADO} (variância zero)`;
+}
+
+/** Tabela de estratos (região ou renda — fonte única contra duplicação). */
+function TabelaEstratos({
+  caption,
+  primeiraColuna,
+  linhas,
+}: {
+  caption: string;
+  primeiraColuna: string;
+  linhas: Estrato[];
+}) {
+  return (
+    <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label={caption}>
+    <table>
+      <caption>{caption}</caption>
+      <thead>
+        <tr>
+          <th scope="col">{primeiraColuna}</th>
+          <th scope="col">r</th>
+          <th scope="col">n</th>
+        </tr>
+      </thead>
+      <tbody>
+        {linhas.map((e) => (
+          <tr key={e.estrato}>
+            <td>{e.estrato}</td>
+            <td>{celulaR(e)}</td>
+            <td>{e.n}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+    </div>
+  );
 }
 
 export interface ExplorarSelecao {
@@ -974,60 +1016,8 @@ export function ExplorarConteudo({
             <p>
               Veredito em linguagem leiga: <strong>{VEREDITO_PT[veredito] ?? veredito}</strong>
             </p>
-            <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Correlação por região">
-            <table>
-              <caption>Correlação por região</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Região</th>
-                  <th scope="col">r</th>
-                  <th scope="col">n</th>
-                </tr>
-              </thead>
-              <tbody>
-                {estratosRegiao.map((e) => (
-                  <tr key={e.estrato}>
-                    <td>{e.estrato}</td>
-                    <td>
-                      {e.r === null
-                        ? e.n < PISO_CORRELACAO_N
-                          ? `${SEM_DADO} (piso n ≥ 30)`
-                          : `${SEM_DADO} (variância zero)`
-                        : fmtR(e.r)}
-                    </td>
-                    <td>{e.n}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
-            <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label="Correlação por faixa de renda">
-            <table>
-              <caption>Correlação por faixa de renda</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Faixa</th>
-                  <th scope="col">r</th>
-                  <th scope="col">n</th>
-                </tr>
-              </thead>
-              <tbody>
-                {estratosRenda.map((e) => (
-                  <tr key={e.estrato}>
-                    <td>{e.estrato}</td>
-                    <td>
-                      {e.r === null
-                        ? e.n < PISO_CORRELACAO_N
-                          ? `${SEM_DADO} (piso n ≥ 30)`
-                          : `${SEM_DADO} (variância zero)`
-                        : fmtR(e.r)}
-                    </td>
-                    <td>{e.n}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
+            <TabelaEstratos caption="Correlação por região" primeiraColuna="Região" linhas={estratosRegiao} />
+            <TabelaEstratos caption="Correlação por faixa de renda" primeiraColuna="Faixa" linhas={estratosRenda} />
           </>
         )}
       </section>

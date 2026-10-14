@@ -97,7 +97,7 @@ describe.skipIf(!HAS_SEED)("auditoria data path (CI seed via real build_all)", (
     expect(resumo.total_votos).toBe(30);
     expect(resumo.total_linhas).toBe(4);
     expect(resumo.anos).toEqual([2018, 2022]);
-    expect(porUf.length).toBe(4);
+    expect(porUf).toHaveLength(4);
   });
 });
 
