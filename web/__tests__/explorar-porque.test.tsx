@@ -5,23 +5,10 @@ import { ExplorarConteudo, type ExplorarSelecao } from "../components/Explorar";
 import type { MunRow } from "../lib/motor";
 import {
   CANDIDATOS_LULA as CANDIDATOS,
-  demoBase,
-  municipios40Linear,
+  demoLula,
+  linhas40LulaVencedor,
+  SEAL_EXEMPLO as SEAL_OK,
 } from "./helpers";
-
-function demo(escSup: number) {
-  return demoBase(escSup, 2000);
-}
-
-function linhasValidas(): MunRow[] {
-  return municipios40Linear({ nome: (i) => `Mun ${i}`, abst: 0, demo: (i) => demo(5 + i * 0.5) });
-}
-
-const SEAL_OK = {
-  official: { hash: "a".repeat(64), url: "https://exemplo.tse.br/x.zip", date: "2026-01-01" },
-  hasFixture: false,
-  fixtureHash: "",
-};
 
 const SEL_VALIDA: ExplorarSelecao = {
   quem: "lula",
@@ -34,7 +21,7 @@ describe("explorar por-que (estratos + veredito leigo)", () => {
   it("recorte válido rende tabelas por região/renda + veredito, com aviso não-causal", () => {
     const html = renderToStaticMarkup(
       <ExplorarConteudo
-        fato={{ candidatos: CANDIDATOS, municipios: linhasValidas() }}
+        fato={{ candidatos: CANDIDATOS, municipios: linhas40LulaVencedor() }}
         seal={SEAL_OK}
         initial={SEL_VALIDA}
       />,
@@ -57,7 +44,7 @@ describe("explorar por-que (estratos + veredito leigo)", () => {
         votos: [600 + i * 10, 400 - i * 10],
         total: 1000,
         abst: 0,
-        demo: demo(10 + i),
+        demo: demoLula(10 + i),
       });
     }
     const html = renderToStaticMarkup(
