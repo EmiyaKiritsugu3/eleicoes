@@ -29,14 +29,42 @@ function fatoParamDaUrl(): string {
 }
 
 // Derivação pura manifest → dataset+selo (mount + rotação partilham —
-// sem fork: o fetch pesado do fato vive só em `carregarSeloEFato` e no
-// ramo com-mudança da rotação, nunca antes da comparação).
+// sem fork: o fetch pesado do fato vive só em `buscarFatos`, nunca
+// antes da comparação).
 function derivarDatasetESelo(manifest: unknown): {
   dataset: string | null;
   novoSeal: SealState;
 } {
   const dataset = fatoDatasetDe(manifest, fatoParamDaUrl());
   return { dataset, novoSeal: getSealParaDataset(manifest, dataset) };
+}
+
+// Derivação pura manifest → datasets+selo (comparação barata da rotação
+// e núcleo do `buscarFatos` partilham — sem fork).
+function derivacaoTripla(manifestData: unknown): {
+  dataset: string | null;
+  datasetB: string | null;
+  novoSeal: SealState;
+} {
+  const { dataset, novoSeal } = derivarDatasetESelo(manifestData);
+  const datasetB = listarFatosMunicipais(manifestData).find((d) => d !== dataset) ?? null;
+  return { dataset, datasetB, novoSeal };
+}
+
+// Derivação pura manifest → datasets+selo (mount + rotação partilham —
+// sem fork) + busca dos fatos (principal + comparativo B quando o
+// manifest lista 2+ fatos). Rotações e mount usam SÓ este núcleo.
+async function buscarFatos(manifestData: unknown): Promise<{
+  dataset: string | null;
+  datasetB: string | null;
+  novoSeal: SealState;
+  f: FatoRegiao | null;
+  fB: FatoRegiao | null;
+}> {
+  const { dataset, datasetB, novoSeal } = derivacaoTripla(manifestData);
+  const f = dataset ? (await fetchJson<FatoRegiao>(`/data/${dataset}.json`)).data : null;
+  const fB = datasetB ? (await fetchJson<FatoRegiao>(`/data/${datasetB}.json`)).data : null;
+  return { dataset, datasetB, novoSeal, f, fB };
 }
 
 export default function Explorar() {
@@ -57,16 +85,10 @@ export default function Explorar() {
   const geracaoRef = useRef(0);
 
   // Núcleo único de leitura (mount + ramo com-mudança da rotação
-  // partilham — sem fork): manifest → dataset+selo → fato (+ fatoB
-  // comparativo quando o manifest lista 2+ fatos).
+  // partilham — sem fork): manifest → `buscarFatos` (datasets+selo+fatos).
   const carregarSeloEFato = useCallback(async () => {
     const manifest = (await fetchJson("/data/manifest.json")).data;
-    const { dataset, novoSeal } = derivarDatasetESelo(manifest);
-    const f = dataset ? (await fetchJson<FatoRegiao>(`/data/${dataset}.json`)).data : null;
-    const todos = listarFatosMunicipais(manifest);
-    const datasetB = todos.find((d) => d !== dataset) ?? null;
-    const fB = datasetB ? (await fetchJson<FatoRegiao>(`/data/${datasetB}.json`)).data : null;
-    return { dataset, novoSeal, f, datasetB, fB };
+    return buscarFatos(manifest);
   }, []);
 
   useEffect(() => {
@@ -118,12 +140,9 @@ export default function Explorar() {
         const leitura = await fetchJson("/data/manifest.json");
         if (leitura.status !== "ok" || !manifestoValidoParaRotacao(leitura.data)) return;
         if (geracaoRef.current !== minha) return;
-        const { dataset, novoSeal } = derivarDatasetESelo(leitura.data);
-        const todos = listarFatosMunicipais(leitura.data);
-        const datasetB = todos.find((d) => d !== dataset) ?? null;
+        const { dataset, datasetB, novoSeal } = derivacaoTripla(leitura.data);
         if (JSON.stringify({ ds: dataset, dsB: datasetB, seal: novoSeal }) === seloRef.current) return;
-        const f = dataset ? (await fetchJson<FatoRegiao>(`/data/${dataset}.json`)).data : null;
-        const fB = datasetB ? (await fetchJson<FatoRegiao>(`/data/${datasetB}.json`)).data : null;
+        const { f, fB } = await buscarFatos(leitura.data);
         if (geracaoRef.current !== minha) return;
         seloRef.current = JSON.stringify({ ds: dataset, dsB: datasetB, seal: novoSeal });
         setSeal(novoSeal);

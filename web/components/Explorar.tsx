@@ -72,7 +72,14 @@ function celulaR(e: Estrato): string {
   return e.n < PISO_CORRELACAO_N ? `${SEM_DADO} (piso n ≥ 30)` : `${SEM_DADO} (variância zero)`;
 }
 
-/** Tabela de estratos (região ou renda — fonte única contra duplicação). */
+/** Alerta fail-closed dos blocos (fonte única das seções Por quê?/Comparar). */
+function AlertaBlocos({ hashAuditado }: { hashAuditado: boolean }) {
+  return (
+    <p role="alert" style={ALERTA_STYLE}>
+      {SEM_DADO}{!hashAuditado ? ` — ${MOTIVO_SEM_HASH}` : " — sem cobertura nos blocos; ajuste quem · onde · cruzar com acima"}
+    </p>
+  );
+}
 function TabelaEstratos({
   caption,
   primeiraColuna,
@@ -1006,9 +1013,7 @@ export function ExplorarConteudo({
         {badge}
         <p role="note">{ECO_SEAL} — médias de municípios, nunca de pessoas. Correlação não implica causa.</p>
         {!coberto ? (
-          <p role="alert" style={ALERTA_STYLE}>
-            {SEM_DADO}{!hashAuditado ? ` — ${MOTIVO_SEM_HASH}` : " — sem cobertura nos blocos; ajuste quem · onde · cruzar com acima"}
-          </p>
+          <AlertaBlocos hashAuditado={hashAuditado} />
         ) : filtradas.length === 0 ? (
           <p role="alert" style={ALERTA_STYLE}>{SEM_DADO} — nenhum município neste recorte</p>
         ) : (
@@ -1038,9 +1043,7 @@ export function ExplorarConteudo({
         {badge}
         <p role="note">{ECO_SEAL} — cada r é de um pleito auditado; comparar exige os dois.</p>
         {!coberto ? (
-          <p role="alert" style={ALERTA_STYLE}>
-            {SEM_DADO}{!hashAuditado ? ` — ${MOTIVO_SEM_HASH}` : " — sem cobertura nos blocos; ajuste quem · onde · cruzar com acima"}
-          </p>
+          <AlertaBlocos hashAuditado={hashAuditado} />
         ) : !corr ? (
           <p role="alert" style={ALERTA_STYLE}>
             {SEM_DADO} —{" "}
