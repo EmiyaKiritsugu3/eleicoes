@@ -463,3 +463,24 @@ export function linhas40Municipio(): MunRow[] {
       }),
   });
 }
+
+// ---------- família lula/vencedor p/ /explorar (por-que + comparar) ----------
+
+// Demo mínima da família lula (esc_sup variável, renda fixa): cada teste
+// define só a variação de votos/demo por linha.
+export function demoLula(escSup: number) {
+  return demoBase(escSup, 2000);
+}
+
+// 40 municípios, Lula vence todos; share de Lula cresce com esc_sup
+// (correlação forte, n = 40 ≥ piso 30).
+export function linhas40LulaVencedor(): MunRow[] {
+  return municipios40Linear({ nome: (i) => `Mun ${i}`, abst: 0, demo: (i) => demoLula(5 + i * 0.5) });
+}
+
+// Selo oficial de exemplo p/ render SSR (hash 64-hex, nunca fixture).
+export const SEAL_EXEMPLO = {
+  official: { hash: "a".repeat(64), url: "https://exemplo.tse.br/x.zip", date: "2026-01-01" },
+  hasFixture: false,
+  fixtureHash: "",
+};

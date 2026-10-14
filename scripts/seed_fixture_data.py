@@ -45,6 +45,8 @@ _FIXTURE_CSV = (
     "ANO_ELEICAO;DS_CARGO;SG_UF;CD_MUNICIPIO;NM_URNA;QT_VOTOS\n"
     "2022;PRESIDENTE;SP;3550308;CANDIDATO EXEMPLO A;10\n"
     "2022;PRESIDENTE;RJ;3304557;CANDIDATO EXEMPLO B;5\n"
+    "2018;PRESIDENTE;SP;3550308;CANDIDATO EXEMPLO A;5\n"
+    "2018;PRESIDENTE;RJ;3304557;CANDIDATO EXEMPLO B;10\n"
 )
 
 _FIXTURE_NOTA = (
@@ -69,11 +71,12 @@ _FIXTURE_CENSO_CSV = (
 # usam a data da coleta (register_censo_ingest) — só o fixture é fixo.
 _FIXTURE_CENSO_DATA = "2022-01-01"
 
-# Triple coberta pelo fixture TSE acima (turno ausente vira 1, M7).
+# Triples cobertas pelo fixture TSE acima (turno ausente vira 1, M7).
 _FATO_TRIPLE = (2022, 1, "presidente")
+_FATO_TRIPLES = [(2018, 1, "presidente"), (2022, 1, "presidente")]
 
 
-def _remover_fatos_nao_fixture(web_data_dir: Path, esperado: str) -> list[str]:
+def _remover_fatos_nao_fixture(web_data_dir: Path, esperados: set[str]) -> list[str]:
     """Remove fato_*.json que não seja o do triple fixture (fail-closed).
 
     Fato obsoleto sobrevivendo no web_data_dir seria registrado pelo
@@ -83,7 +86,7 @@ def _remover_fatos_nao_fixture(web_data_dir: Path, esperado: str) -> list[str]:
     """
     removidos = []
     for path in sorted(Path(web_data_dir).glob("fato_*.json")):
-        if path.name != esperado and path.is_file():
+        if path.name not in esperados and path.is_file():
             path.unlink()
             removidos.append(path.name)
     return removidos
@@ -192,7 +195,8 @@ def seed(manifest_path: Path, web_data_dir: Path, force: bool = False) -> dict:
                 "rows": 2,
             })
             ano, turno, cargo = _FATO_TRIPLE
-            build_fato(db_tmp, web_data_dir, ano, turno, cargo)
+            for (ano, turno, cargo) in _FATO_TRIPLES:
+                build_fato(db_tmp, web_data_dir, ano, turno, cargo)
             # EVOLVE-7 Task 1 fix (seam fresh-deploy): o artefato fixture
             # `{ibge7: pop}` vai direto ao web_data_dir ANTES do recalc
             # abaixo — sem passo manual, o deploy fresco serve pop (não
@@ -208,18 +212,18 @@ def seed(manifest_path: Path, web_data_dir: Path, force: bool = False) -> dict:
             for entry in tmp_manifest.get("ingestions", []):
                 if isinstance(entry, dict):
                     write_manifest(manifest_path, entry)
-            # Hashes dos bytes servidos (trio do build_all + fato do
-            # build_fato): recalculados aqui porque o fato só existe após o
+            # Hashes dos bytes servidos (trio do build_all + fatos do
+            # build_fato): recalculados aqui porque os fatos só existem após o
             # build_fato. Substituição integral — o trio sai idêntico.
-            ano, turno, cargo = _FATO_TRIPLE
             # Fato obsoleto (não-fixture) nunca é registrado nem marcado
             # fixture:true — só artefatos gerados por este seed levam a flag.
-            _remover_fatos_nao_fixture(
-                web_data_dir,
-                f"fato_{ano}_{turno}_{str(cargo).strip().lower()}.json")
+            esperados = {
+                f"fato_{a}_{t}_{str(c).strip().lower()}.json" for (a, t, c) in _FATO_TRIPLES
+            }
+            _remover_fatos_nao_fixture(web_data_dir, esperados)
             fixture_sources = [
                 e for e in V1_DATASETS
-                if e["ano"] == ano and str(e["cargo"]).upper() == cargo.upper()
+                if (e["ano"], str(e["cargo"]).upper()) in {(a, c.upper()) for (a, _, c) in _FATO_TRIPLES}
             ]
             register_served_artifacts(manifest_path, web_data_dir,
                                       fixture_sources)

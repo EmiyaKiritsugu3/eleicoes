@@ -94,10 +94,10 @@ describe.skipIf(!HAS_SEED)("auditoria data path (CI seed via real build_all)", (
       expect(isOfficialDisplay(entry)).toBe(false);
     }
     // Valores determinísticos do seed (scripts/seed_fixture_data.py).
-    expect(resumo.total_votos).toBe(15);
-    expect(resumo.total_linhas).toBe(2);
-    expect(resumo.anos).toEqual([2022]);
-    expect(porUf.length).toBe(2);
+    expect(resumo.total_votos).toBe(30);
+    expect(resumo.total_linhas).toBe(4);
+    expect(resumo.anos).toEqual([2018, 2022]);
+    expect(porUf).toHaveLength(4);
   });
 });
 

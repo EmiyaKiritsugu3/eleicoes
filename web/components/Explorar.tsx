@@ -41,16 +41,78 @@ import { tokens } from "../lib/tokens";
 import {
   VAR_DEMO,
   PISO_CORRELACAO_N,
+  conclusaoLeiga,
   correlacao,
+  estratificar,
   finito,
   indiceVencedor,
   perfilOndeVenceu,
   quintis,
   shareCandidato,
   totalLinha,
+  type Estrato,
   type MunRow,
   type VarDemo,
 } from "../lib/motor";
+
+const VEREDITO_PT: Record<string, string> = {
+  sustentado: "padrão sustentado entre os estratos",
+  misto: "evidência mista entre os estratos",
+  nao_sustentado: "padrão não sustentado pelos estratos",
+};
+
+/** r com 3 casas em pt-BR; null (suprimido) → sem dado oficial. */
+function fmtR(r: number | null): string {
+  return r === null || !finito(r) ? SEM_DADO : r.toFixed(3).replace(".", ",");
+}
+
+/** Célula de r de estrato: null → piso ou variância (nunca zero). */
+function celulaR(e: Estrato): string {
+  if (e.r !== null) return fmtR(e.r);
+  return e.n < PISO_CORRELACAO_N ? `${SEM_DADO} (piso n ≥ 30)` : `${SEM_DADO} (variância zero)`;
+}
+
+/** Alerta fail-closed dos blocos (fonte única das seções Por quê?/Comparar). */
+function AlertaBlocos({ hashAuditado }: { hashAuditado: boolean }) {
+  return (
+    <p role="alert" style={ALERTA_STYLE}>
+      {SEM_DADO}{!hashAuditado ? ` — ${MOTIVO_SEM_HASH}` : " — sem cobertura nos blocos; ajuste quem · onde · cruzar com acima"}
+    </p>
+  );
+}
+function TabelaEstratos({
+  caption,
+  primeiraColuna,
+  linhas,
+}: {
+  caption: string;
+  primeiraColuna: string;
+  linhas: Estrato[];
+}) {
+  return (
+    <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label={caption}>
+    <table>
+      <caption>{caption}</caption>
+      <thead>
+        <tr>
+          <th scope="col">{primeiraColuna}</th>
+          <th scope="col">r</th>
+          <th scope="col">n</th>
+        </tr>
+      </thead>
+      <tbody>
+        {linhas.map((e) => (
+          <tr key={e.estrato}>
+            <td>{e.estrato}</td>
+            <td>{celulaR(e)}</td>
+            <td>{e.n}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+    </div>
+  );
+}
 
 export interface ExplorarSelecao {
   quem: string;
@@ -257,10 +319,16 @@ export function ExplorarConteudo({
   fato,
   seal,
   initial,
+  fatoB = null,
+  fatoALabel = "atual",
+  fatoBLabel = "B",
 }: {
   fato: FatoRegiao | null;
   seal: SealState;
   initial: ExplorarSelecao;
+  fatoB?: FatoRegiao | null;
+  fatoALabel?: string;
+  fatoBLabel?: string;
 }) {
   const [sel, setSel] = useState<ExplorarSelecao>({ ...SEL_PADRAO, ...initial });
   const [busca, setBusca] = useState("");
@@ -325,6 +393,43 @@ export function ExplorarConteudo({
     () => (coberto && filtradas.length > 0 ? quintis(xs, ys) : []),
     [coberto, filtradas.length, xs, ys],
   );
+  const estratosRegiao = useMemo(
+    () =>
+      coberto && filtradas.length > 0
+        ? estratificar(filtradas, sel.cruzar as VarDemo, { candidatoId: sel.quem, candidatos: ordem }, "regiao")
+        : [],
+    [coberto, filtradas, sel.cruzar, sel.quem, ordem],
+  );
+  const estratosRenda = useMemo(
+    () =>
+      coberto && filtradas.length > 0
+        ? estratificar(filtradas, sel.cruzar as VarDemo, { candidatoId: sel.quem, candidatos: ordem }, "faixa_renda")
+        : [],
+    [coberto, filtradas, sel.cruzar, sel.quem, ordem],
+  );
+  const veredito = useMemo(
+    () => conclusaoLeiga(corr ? corr.r : null, [...estratosRegiao, ...estratosRenda]),
+    [corr, estratosRegiao, estratosRenda],
+  );
+  // Comparador de pleitos (v1 lado a lado, sem join municipal): mesmo
+  // `quem/onde/cruzar` aplicado ao fatoB; rA vs rB + Δr. Sem fatoB
+  // auditado → SEM_DADO comparativo (nunca r solitário como comparação).
+  const ordemB = useMemo(() => fatoB?.candidatos ?? [], [fatoB]);
+  const linhasB = useMemo(() => fatoB?.municipios ?? [], [fatoB]);
+  const cobertoB = hashAuditado && fatoB !== null && ordemB.some((c) => c?.id === sel.quem) && ondeOk && cruzarOk;
+  const filtradasB = useMemo(
+    () => (cobertoB ? aplicarOnde(linhasB, ordemB, sel.quem, sel.onde) : []),
+    [cobertoB, linhasB, ordemB, sel.quem, sel.onde],
+  );
+  const idxQuemB = ordemB.findIndex((c) => c?.id === sel.quem);
+  const corrB = useMemo(() => {
+    if (!cobertoB || filtradasB.length === 0 || idxQuemB < 0) return null;
+    const xsB = filtradasB.map(
+      (r) => (r?.demo ? (r.demo[sel.cruzar as VarDemo] as unknown as number) : null) as unknown as number,
+    );
+    const ysB = filtradasB.map((r) => shareCandidato(r, idxQuemB) as unknown as number);
+    return correlacao(xsB, ysB, "pearson");
+  }, [cobertoB, filtradasB, idxQuemB, sel.cruzar]);
   // Pontos do scatter: pares válidos com identidade (nome/IBGE/UF) p/
   // inspeção de distribuição e outliers (spec §4: pontos por UF + reta).
   const pontos = useMemo(() => {
@@ -891,6 +996,69 @@ export function ExplorarConteudo({
           )}
         </section>
       )}
+
+      <section
+        aria-label="Por quê?"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Por quê? — estratificação
+        </h2>
+        {badge}
+        <p role="note">{ECO_SEAL} — médias de municípios, nunca de pessoas. Correlação não implica causa.</p>
+        {!coberto ? (
+          <AlertaBlocos hashAuditado={hashAuditado} />
+        ) : filtradas.length === 0 ? (
+          <p role="alert" style={ALERTA_STYLE}>{SEM_DADO} — nenhum município neste recorte</p>
+        ) : (
+          <>
+            <p>
+              Veredito em linguagem leiga: <strong>{VEREDITO_PT[veredito] ?? veredito}</strong>
+            </p>
+            <TabelaEstratos caption="Correlação por região" primeiraColuna="Região" linhas={estratosRegiao} />
+            <TabelaEstratos caption="Correlação por faixa de renda" primeiraColuna="Faixa" linhas={estratosRenda} />
+          </>
+        )}
+      </section>
+
+      <section
+        aria-label="Comparar pleitos"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Comparar pleitos — mesmo cruzamento em dois fatos
+        </h2>
+        {badge}
+        <p role="note">{ECO_SEAL} — cada r é de um pleito auditado; comparar exige os dois.</p>
+        {!coberto ? (
+          <AlertaBlocos hashAuditado={hashAuditado} />
+        ) : !corr ? (
+          <p role="alert" style={ALERTA_STYLE}>
+            {SEM_DADO} —{" "}
+            {filtradas.length < PISO_CORRELACAO_N
+              ? "municípios insuficientes (piso n ≥ 30)"
+              : "correlação indefinida (variância zero ou pares válidos abaixo do piso)"}
+          </p>
+        ) : !fatoB || !cobertoB || !corrB ? (
+          <p role="alert" style={ALERTA_STYLE}>{SEM_DADO} — segundo pleito sem fato auditado</p>
+        ) : (
+          <p>
+            r {fatoBLabel} = {fmtR(corrB.r)} (n = {corrB.n}) · r {fatoALabel} = {fmtR(corr.r)} (n = {corr.n}) · Δr = {(corr.r - corrB.r).toFixed(3).replace(".", ",")}
+          </p>
+        )}
+      </section>
 
       <section
         aria-label="Export reproduzível"

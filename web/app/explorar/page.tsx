@@ -6,7 +6,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import SealSlot from "../../components/SealSlot";
 import { ExplorarConteudo, parseExplorarQuery, type ExplorarSelecao } from "../../components/Explorar";
 import type { SealState } from "../../lib/data";
-import { fatoDatasetDe, getSealParaDataset, isHashDivergente, manifestoValidoParaRotacao } from "../../lib/regiao";
+import { fatoDatasetDe, getSealParaDataset, isHashDivergente, listarFatosMunicipais, manifestoValidoParaRotacao } from "../../lib/regiao";
 import { fetchJson } from "../../lib/fetchJson";
 import { ALERTA_STYLE } from "../../lib/textos";
 import type { FatoRegiao } from "../../components/PainelRegiao";
@@ -29,8 +29,8 @@ function fatoParamDaUrl(): string {
 }
 
 // Derivação pura manifest → dataset+selo (mount + rotação partilham —
-// sem fork: o fetch pesado do fato vive só em `carregarSeloEFato` e no
-// ramo com-mudança da rotação, nunca antes da comparação).
+// sem fork: o fetch pesado do fato vive só em `buscarFatos`, nunca
+// antes da comparação).
 function derivarDatasetESelo(manifest: unknown): {
   dataset: string | null;
   novoSeal: SealState;
@@ -39,8 +39,39 @@ function derivarDatasetESelo(manifest: unknown): {
   return { dataset, novoSeal: getSealParaDataset(manifest, dataset) };
 }
 
+// Derivação pura manifest → datasets+selo (comparação barata da rotação
+// e núcleo do `buscarFatos` partilham — sem fork).
+function derivacaoTripla(manifestData: unknown): {
+  dataset: string | null;
+  datasetB: string | null;
+  novoSeal: SealState;
+} {
+  const { dataset, novoSeal } = derivarDatasetESelo(manifestData);
+  const datasetB = listarFatosMunicipais(manifestData).find((d) => d !== dataset) ?? null;
+  return { dataset, datasetB, novoSeal };
+}
+
+// Derivação pura manifest → datasets+selo (mount + rotação partilham —
+// sem fork) + busca dos fatos (principal + comparativo B quando o
+// manifest lista 2+ fatos). Rotações e mount usam SÓ este núcleo.
+async function buscarFatos(manifestData: unknown): Promise<{
+  dataset: string | null;
+  datasetB: string | null;
+  novoSeal: SealState;
+  f: FatoRegiao | null;
+  fB: FatoRegiao | null;
+}> {
+  const { dataset, datasetB, novoSeal } = derivacaoTripla(manifestData);
+  const f = dataset ? (await fetchJson<FatoRegiao>(`/data/${dataset}.json`)).data : null;
+  const fB = datasetB ? (await fetchJson<FatoRegiao>(`/data/${datasetB}.json`)).data : null;
+  return { dataset, datasetB, novoSeal, f, fB };
+}
+
 export default function Explorar() {
   const [fato, setFato] = useState<FatoRegiao | null>(null);
+  const [fatoB, setFatoB] = useState<FatoRegiao | null>(null);
+  const [datasetB, setDatasetB] = useState<string | null>(null);
+  const [dataset, setDataset] = useState<string | null>(null);
   const [seal, setSeal] = useState<SealState>({ official: null, hasFixture: false, fixtureHash: "" });
   const [manifestChecked, setManifestChecked] = useState(false);
   const [initial, setInitial] = useState<ExplorarSelecao & { hash: string } | null>(null);
@@ -54,12 +85,10 @@ export default function Explorar() {
   const geracaoRef = useRef(0);
 
   // Núcleo único de leitura (mount + ramo com-mudança da rotação
-  // partilham — sem fork): manifest → dataset+selo → fato.
+  // partilham — sem fork): manifest → `buscarFatos` (datasets+selo+fatos).
   const carregarSeloEFato = useCallback(async () => {
     const manifest = (await fetchJson("/data/manifest.json")).data;
-    const { dataset, novoSeal } = derivarDatasetESelo(manifest);
-    const f = dataset ? (await fetchJson<FatoRegiao>(`/data/${dataset}.json`)).data : null;
-    return { dataset, novoSeal, f };
+    return buscarFatos(manifest);
   }, []);
 
   useEffect(() => {
@@ -76,8 +105,11 @@ export default function Explorar() {
         const r = await carregarSeloEFato();
         if (geracaoRef.current !== minha) return;
         setSeal(r.novoSeal);
-        seloRef.current = JSON.stringify({ ds: r.dataset, seal: r.novoSeal });
+        seloRef.current = JSON.stringify({ ds: r.dataset, dsB: r.datasetB, seal: r.novoSeal });
         setFato(r.f);
+        setFatoB(r.fB);
+        setDataset(r.dataset);
+        setDatasetB(r.datasetB);
         setManifestChecked(true);
       } finally {
         if (geracaoRef.current === minha) ocupadoRef.current = false;
@@ -108,13 +140,16 @@ export default function Explorar() {
         const leitura = await fetchJson("/data/manifest.json");
         if (leitura.status !== "ok" || !manifestoValidoParaRotacao(leitura.data)) return;
         if (geracaoRef.current !== minha) return;
-        const { dataset, novoSeal } = derivarDatasetESelo(leitura.data);
-        if (JSON.stringify({ ds: dataset, seal: novoSeal }) === seloRef.current) return;
-        const f = dataset ? (await fetchJson<FatoRegiao>(`/data/${dataset}.json`)).data : null;
+        const { dataset, datasetB, novoSeal } = derivacaoTripla(leitura.data);
+        if (JSON.stringify({ ds: dataset, dsB: datasetB, seal: novoSeal }) === seloRef.current) return;
+        const { f, fB } = await buscarFatos(leitura.data);
         if (geracaoRef.current !== minha) return;
-        seloRef.current = JSON.stringify({ ds: dataset, seal: novoSeal });
+        seloRef.current = JSON.stringify({ ds: dataset, dsB: datasetB, seal: novoSeal });
         setSeal(novoSeal);
         setFato(f);
+        setFatoB(fB);
+        setDataset(dataset);
+        setDatasetB(datasetB);
       } finally {
         if (geracaoRef.current === minha) ocupadoRef.current = false;
       }
@@ -154,6 +189,9 @@ export default function Explorar() {
       ) : (
         <ExplorarConteudo
           fato={fato}
+          fatoB={fatoB}
+          fatoALabel={dataset ?? "atual"}
+          fatoBLabel={datasetB ?? "B"}
           seal={seal}
           initial={initial ?? SEL_VAZIA}
           key={initial ? JSON.stringify(initial) : "vazio"}
