@@ -78,10 +78,10 @@ _FIXTURE_CENSO_DATA = "2022-01-01"
 # marca `fixture:true` — nunca selo oficial. Valores positivos e finitos
 # (gate monetário reprova negativo/NaN/inf).
 _FIXTURE_GOV_ROWS = [
-    {"ano": 2022, "ente_id": "UNIAO", "esfera": "federal",
+    {"ano": 2022, "ente_id": "UNIAO", "esfera": "uniao",
      "receita_total": 3000.0, "despesa_empenhada": 2000.0,
      "despesa_liquidada": 1900.0, "despesa_paga": 1800.0},
-    {"ano": 2020, "ente_id": "UNIAO", "esfera": "federal",
+    {"ano": 2020, "ente_id": "UNIAO", "esfera": "uniao",
      "receita_total": 2500.0, "despesa_empenhada": 1500.0,
      "despesa_liquidada": 1400.0, "despesa_paga": 1300.0},
 ]
