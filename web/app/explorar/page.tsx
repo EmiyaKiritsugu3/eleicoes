@@ -6,7 +6,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import SealSlot from "../../components/SealSlot";
 import { ExplorarConteudo, parseExplorarQuery, type ExplorarSelecao } from "../../components/Explorar";
 import type { SealState } from "../../lib/data";
-import { fatoDatasetDe, getSealParaDataset, isHashDivergente, manifestoValidoParaRotacao } from "../../lib/regiao";
+import { fatoDatasetDe, getSealParaDataset, isHashDivergente, listarFatosMunicipais, manifestoValidoParaRotacao } from "../../lib/regiao";
 import { fetchJson } from "../../lib/fetchJson";
 import { ALERTA_STYLE } from "../../lib/textos";
 import type { FatoRegiao } from "../../components/PainelRegiao";
@@ -41,6 +41,9 @@ function derivarDatasetESelo(manifest: unknown): {
 
 export default function Explorar() {
   const [fato, setFato] = useState<FatoRegiao | null>(null);
+  const [fatoB, setFatoB] = useState<FatoRegiao | null>(null);
+  const [datasetB, setDatasetB] = useState<string | null>(null);
+  const [dataset, setDataset] = useState<string | null>(null);
   const [seal, setSeal] = useState<SealState>({ official: null, hasFixture: false, fixtureHash: "" });
   const [manifestChecked, setManifestChecked] = useState(false);
   const [initial, setInitial] = useState<ExplorarSelecao & { hash: string } | null>(null);
@@ -54,12 +57,16 @@ export default function Explorar() {
   const geracaoRef = useRef(0);
 
   // Núcleo único de leitura (mount + ramo com-mudança da rotação
-  // partilham — sem fork): manifest → dataset+selo → fato.
+  // partilham — sem fork): manifest → dataset+selo → fato (+ fatoB
+  // comparativo quando o manifest lista 2+ fatos).
   const carregarSeloEFato = useCallback(async () => {
     const manifest = (await fetchJson("/data/manifest.json")).data;
     const { dataset, novoSeal } = derivarDatasetESelo(manifest);
     const f = dataset ? (await fetchJson<FatoRegiao>(`/data/${dataset}.json`)).data : null;
-    return { dataset, novoSeal, f };
+    const todos = listarFatosMunicipais(manifest);
+    const datasetB = todos.find((d) => d !== dataset) ?? null;
+    const fB = datasetB ? (await fetchJson<FatoRegiao>(`/data/${datasetB}.json`)).data : null;
+    return { dataset, novoSeal, f, datasetB, fB };
   }, []);
 
   useEffect(() => {
@@ -76,8 +83,11 @@ export default function Explorar() {
         const r = await carregarSeloEFato();
         if (geracaoRef.current !== minha) return;
         setSeal(r.novoSeal);
-        seloRef.current = JSON.stringify({ ds: r.dataset, seal: r.novoSeal });
+        seloRef.current = JSON.stringify({ ds: r.dataset, dsB: r.datasetB, seal: r.novoSeal });
         setFato(r.f);
+        setFatoB(r.fB);
+        setDataset(r.dataset);
+        setDatasetB(r.datasetB);
         setManifestChecked(true);
       } finally {
         if (geracaoRef.current === minha) ocupadoRef.current = false;
@@ -109,12 +119,18 @@ export default function Explorar() {
         if (leitura.status !== "ok" || !manifestoValidoParaRotacao(leitura.data)) return;
         if (geracaoRef.current !== minha) return;
         const { dataset, novoSeal } = derivarDatasetESelo(leitura.data);
-        if (JSON.stringify({ ds: dataset, seal: novoSeal }) === seloRef.current) return;
+        const todos = listarFatosMunicipais(leitura.data);
+        const datasetB = todos.find((d) => d !== dataset) ?? null;
+        if (JSON.stringify({ ds: dataset, dsB: datasetB, seal: novoSeal }) === seloRef.current) return;
         const f = dataset ? (await fetchJson<FatoRegiao>(`/data/${dataset}.json`)).data : null;
+        const fB = datasetB ? (await fetchJson<FatoRegiao>(`/data/${datasetB}.json`)).data : null;
         if (geracaoRef.current !== minha) return;
-        seloRef.current = JSON.stringify({ ds: dataset, seal: novoSeal });
+        seloRef.current = JSON.stringify({ ds: dataset, dsB: datasetB, seal: novoSeal });
         setSeal(novoSeal);
         setFato(f);
+        setFatoB(fB);
+        setDataset(dataset);
+        setDatasetB(datasetB);
       } finally {
         if (geracaoRef.current === minha) ocupadoRef.current = false;
       }
@@ -154,6 +170,9 @@ export default function Explorar() {
       ) : (
         <ExplorarConteudo
           fato={fato}
+          fatoB={fatoB}
+          fatoALabel={dataset ?? "atual"}
+          fatoBLabel={datasetB ?? "B"}
           seal={seal}
           initial={initial ?? SEL_VAZIA}
           key={initial ? JSON.stringify(initial) : "vazio"}

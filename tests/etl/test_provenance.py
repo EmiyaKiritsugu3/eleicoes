@@ -199,7 +199,9 @@ def test_seed_artifact_entries(tmp_path):
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     artifacts = manifest.get("artifacts", [])
     names = sorted(a["arquivo"] for a in artifacts)
-    assert names == ["censo_municipios.json", "fato_2022_1_presidente.json",
+    # Seed multi-pleito (2018+2022): arquivos não-fato têm 1 entry por fonte
+    # V1 (fan-out documentado em `_artifact_entries_for`); fatos têm 1 por triple.
+    assert sorted(set(names)) == ["censo_municipios.json", "fato_2018_1_presidente.json", "fato_2022_1_presidente.json",
                      "por_candidato.json", "por_uf.json", "resumo.json"]
     for entry in artifacts:
         assert entry.get("fixture") is True

@@ -270,10 +270,16 @@ export function ExplorarConteudo({
   fato,
   seal,
   initial,
+  fatoB = null,
+  fatoALabel = "atual",
+  fatoBLabel = "B",
 }: {
   fato: FatoRegiao | null;
   seal: SealState;
   initial: ExplorarSelecao;
+  fatoB?: FatoRegiao | null;
+  fatoALabel?: string;
+  fatoBLabel?: string;
 }) {
   const [sel, setSel] = useState<ExplorarSelecao>({ ...SEL_PADRAO, ...initial });
   const [busca, setBusca] = useState("");
@@ -356,6 +362,25 @@ export function ExplorarConteudo({
     () => conclusaoLeiga(corr ? corr.r : null, [...estratosRegiao, ...estratosRenda]),
     [corr, estratosRegiao, estratosRenda],
   );
+  // Comparador de pleitos (v1 lado a lado, sem join municipal): mesmo
+  // `quem/onde/cruzar` aplicado ao fatoB; rA vs rB + Δr. Sem fatoB
+  // auditado → SEM_DADO comparativo (nunca r solitário como comparação).
+  const ordemB = useMemo(() => fatoB?.candidatos ?? [], [fatoB]);
+  const linhasB = useMemo(() => fatoB?.municipios ?? [], [fatoB]);
+  const cobertoB = hashAuditado && fatoB !== null && ordemB.some((c) => c?.id === sel.quem) && ondeOk && cruzarOk;
+  const filtradasB = useMemo(
+    () => (cobertoB ? aplicarOnde(linhasB, ordemB, sel.quem, sel.onde) : []),
+    [cobertoB, linhasB, ordemB, sel.quem, sel.onde],
+  );
+  const idxQuemB = ordemB.findIndex((c) => c?.id === sel.quem);
+  const corrB = useMemo(() => {
+    if (!cobertoB || filtradasB.length === 0 || idxQuemB < 0) return null;
+    const xsB = filtradasB.map(
+      (r) => (r?.demo ? (r.demo[sel.cruzar as VarDemo] as unknown as number) : null) as unknown as number,
+    );
+    const ysB = filtradasB.map((r) => shareCandidato(r, idxQuemB) as unknown as number);
+    return correlacao(xsB, ysB, "pearson");
+  }, [cobertoB, filtradasB, idxQuemB, sel.cruzar]);
   // Pontos do scatter: pares válidos com identidade (nome/IBGE/UF) p/
   // inspeção de distribuição e outliers (spec §4: pontos por UF + reta).
   const pontos = useMemo(() => {
@@ -1004,6 +1029,41 @@ export function ExplorarConteudo({
             </table>
             </div>
           </>
+        )}
+      </section>
+
+      <section
+        aria-label="Comparar pleitos"
+        style={{ borderTop: FILETE, paddingTop: tokens.espaco[4], marginTop: tokens.espaco[6] }}
+      >
+        <h2
+          style={{
+            fontFamily: tokens.fonte.display,
+            fontSize: secaoSize,
+            lineHeight: secaoLine,
+          }}
+        >
+          Comparar pleitos — mesmo cruzamento em dois fatos
+        </h2>
+        {badge}
+        <p role="note">{ECO_SEAL} — cada r é de um pleito auditado; comparar exige os dois.</p>
+        {!coberto ? (
+          <p role="alert" style={ALERTA_STYLE}>
+            {SEM_DADO}{!hashAuditado ? ` — ${MOTIVO_SEM_HASH}` : " — sem cobertura nos blocos; ajuste quem · onde · cruzar com acima"}
+          </p>
+        ) : !corr ? (
+          <p role="alert" style={ALERTA_STYLE}>
+            {SEM_DADO} —{" "}
+            {filtradas.length < PISO_CORRELACAO_N
+              ? "municípios insuficientes (piso n ≥ 30)"
+              : "correlação indefinida (variância zero ou pares válidos abaixo do piso)"}
+          </p>
+        ) : !fatoB || !cobertoB || !corrB ? (
+          <p role="alert" style={ALERTA_STYLE}>{SEM_DADO} — segundo pleito sem fato auditado</p>
+        ) : (
+          <p>
+            r {fatoBLabel} = {fmtR(corrB.r)} (n = {corrB.n}) · r {fatoALabel} = {fmtR(corr.r)} (n = {corr.n}) · Δr = {(corr.r - corrB.r).toFixed(3).replace(".", ",")}
+          </p>
         )}
       </section>
 
