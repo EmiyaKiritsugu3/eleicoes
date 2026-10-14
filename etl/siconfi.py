@@ -15,6 +15,7 @@ Schema canônico (ordem exata):
 from __future__ import annotations
 
 import math
+import numbers
 import warnings
 
 import pandas as pd
@@ -108,7 +109,7 @@ def normalize_siconfi(df: pd.DataFrame) -> pd.DataFrame:
     mon_ok = pd.Series(True, index=df.index)
     for serie in monetarias.values():
         finita = serie.apply(
-            lambda v: isinstance(v, (int, float)) and math.isfinite(float(v))
+            lambda v: isinstance(v, numbers.Real) and math.isfinite(float(v))
             if pd.notna(v)
             else False
         )
