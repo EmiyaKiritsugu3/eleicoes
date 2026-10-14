@@ -289,23 +289,32 @@ def _passo_prestacao(prestacao_csv: Path):
 
     Leitura espelha `build_marts._read_input_file` (`;` com fallback de
     encoding `utf-8-sig/utf-8/latin1`, depois `,`/latin1) → DataFrame →
-    `normalize_prestacao` (sem fork de lógica).
+    `normalize_prestacao` (sem fork de lógica). Falha de leitura
+    (ausente/ilegível) levanta `ValueError` fail-closed explícito (nunca
+    traceback cru de IO); drift de header continua como `ValueError` do
+    normalizador.
     """
     import pandas as pd
 
     from etl.prestacao import normalize_prestacao
 
-    df = None
-    for encoding in ("utf-8-sig", "utf-8", "latin1"):
-        try:
-            df = pd.read_csv(prestacao_csv, sep=";", encoding=encoding,
+    try:
+        df = None
+        for encoding in ("utf-8-sig", "utf-8", "latin1"):
+            try:
+                df = pd.read_csv(prestacao_csv, sep=";", encoding=encoding,
+                                 dtype="string")
+                break
+            except (UnicodeDecodeError, pd.errors.ParserError):
+                continue
+        if df is None:
+            df = pd.read_csv(prestacao_csv, sep=",", encoding="latin1",
                              dtype="string")
-            break
-        except (UnicodeDecodeError, pd.errors.ParserError):
-            continue
-    if df is None:
-        df = pd.read_csv(prestacao_csv, sep=",", encoding="latin1",
-                         dtype="string")
+    except (OSError, pd.errors.ParserError, UnicodeDecodeError) as exc:
+        raise ValueError(
+            f"prestacao: CSV ilegível em {prestacao_csv}: {exc} "
+            "(sem dado oficial)"
+        ) from exc
     fin = normalize_prestacao(df)
     print(f"prestacao: fato_fin ok ({len(fin)} linhas)")
     return fin
@@ -317,6 +326,11 @@ def _passo_cgu():
     Sem `TRANSPARENCIA_API_KEY` no env — ou com qualquer falha de rede/
     parse — emite `UserWarning` e devolve None: o build base SICONFI+TSE
     segue intacto (nunca erro). A chave nunca é logada nem gravada.
+
+    Best-effort sem paginador (ruling: sem chute de protocolo de
+    paginação — fetch único, sem loop de páginas): se a resposta indicar
+    total maior que o recebido, emite `UserWarning` nomeando o
+    truncamento e segue com o parcial honesto.
     """
     from etl.sources import CGU_META
     from etl.transparencia import normalize_cgu
@@ -340,7 +354,25 @@ def _passo_cgu():
         payload = resp.json()
         records = (payload.get("data") if isinstance(payload, dict)
                    else payload) or []
-        cgu = normalize_cgu(records if isinstance(records, list) else [])
+        records = records if isinstance(records, list) else []
+        total = None
+        if isinstance(payload, dict):
+            for chave_total in ("total", "totalCount", "totalRegistros",
+                                "total_registros", "count"):
+                try:
+                    total = int(payload.get(chave_total))
+                except (TypeError, ValueError):
+                    continue
+                break
+        if total is not None and total > len(records):
+            warnings.warn(
+                "transparencia: resposta CGU indica "
+                f"{total} registros, {len(records)} recebidos "
+                "(sem paginação — parcial honesto, série federal incompleta)",
+                UserWarning,
+                stacklevel=2,
+            )
+        cgu = normalize_cgu(records)
     except Exception as exc:
         warnings.warn(
             "transparencia: CGU indisponível "

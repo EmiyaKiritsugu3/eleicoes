@@ -1,7 +1,10 @@
 """Task 5: wiring gov+fin+cgu (build_all estendido + check_monetario)."""
 
+import json
+
 import duckdb
 import pandas as pd
+import pytest
 
 from etl.build_marts import build_all
 
@@ -26,7 +29,8 @@ def fin_fixture() -> pd.DataFrame:
     ]))
 
 
-def test_build_all_com_gov_e_fin(tmp_path):
+def _build_com_gov_fin(tmp_path):
+    """Build de sucesso com gov+fin; devolve (db, manifest, webdata)."""
     curated = tmp_path / "curated"
     curated.mkdir()
     # Voto V1 cujo SQ_CANDIDATO casa com o fin_fixture: dim_candidato
@@ -41,13 +45,18 @@ def test_build_all_com_gov_e_fin(tmp_path):
     build_all(curated, tmp_path / "t.duckdb", manifest,
               web_data_dir=tmp_path / "webdata",
               gov_df=gov_fixture(), fin_df=fin_fixture())
-    con = duckdb.connect(str(tmp_path / "t.duckdb"))
+    return tmp_path / "t.duckdb", manifest, tmp_path / "webdata"
+
+
+def test_build_all_com_gov_e_fin(tmp_path):
+    db, _manifest, webdata = _build_com_gov_fin(tmp_path)
+    con = duckdb.connect(str(db))
     try:
         assert con.execute("SELECT COUNT(*) FROM fato_gov").fetchone()[0] == 2
         assert con.execute("SELECT COUNT(*) FROM fato_fin").fetchone()[0] == 1
     finally:
         con.close()
-    assert (tmp_path / "webdata" / "gov_serie.json").is_file()
+    assert (webdata / "gov_serie.json").is_file()
 
 
 def test_check_monetario_reprova_negativo():
@@ -55,3 +64,38 @@ def test_check_monetario_reprova_negativo():
 
     df = pd.DataFrame([{"despesa_empenhada": -1.0}])
     assert any("monetario" in e for e in check_monetario(df, ["despesa_empenhada"]))
+
+
+def test_build_all_reprova_gov_negativo(tmp_path):
+    """Quadro gov com negativo reprova o build (fail-closed, nada publica)."""
+    from etl.siconfi import SICONFI_CANONICAL
+
+    curated = tmp_path / "curated"
+    curated.mkdir()
+    gov_ruim = pd.DataFrame([{
+        "ano": 2022, "ente_id": "UNIAO", "esfera": "uniao",
+        "receita_total": 100.0, "despesa_empenhada": -1.0,
+        "despesa_liquidada": 70.0, "despesa_paga": 60.0,
+    }])[SICONFI_CANONICAL]
+    with pytest.raises(RuntimeError, match="gates reprovados"):
+        build_all(curated, tmp_path / "t.duckdb", tmp_path / "m.json",
+                  web_data_dir=tmp_path / "webdata", gov_df=gov_ruim)
+    assert not (tmp_path / "t.duckdb").exists()
+    assert not (tmp_path / "m.json").exists()
+    assert not (tmp_path / "webdata" / "gov_serie.json").exists()
+
+
+def test_gov_jsons_tem_hash_e_gate_bytes(tmp_path):
+    """gov/fin servidos com fonte+hash: entries `artifact` + gate bytes-aware."""
+    from etl.validate import run_gates
+
+    db, _manifest, webdata = _build_com_gov_fin(tmp_path)
+    manifest = json.loads((tmp_path / "m.json").read_text(encoding="utf-8"))
+    arquivos = {e.get("arquivo") for e in manifest.get("artifacts", [])
+                if isinstance(e, dict)}
+    assert {"gov_serie.json", "gov_por_ente.json",
+            "fin_por_candidato.json"} <= arquivos
+    # Bytes-aware: gov_serie.json confere com o mirror servido.
+    mirror = webdata / "manifest.json"
+    assert run_gates(db, manifest_path=mirror,
+                     fato_paths=[webdata / "gov_serie.json"]) == []

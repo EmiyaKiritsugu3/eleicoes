@@ -232,5 +232,10 @@ def test_orphan_boundary_integer_math():  # exatos 0,1% passa sem float (M8, via
     _make_db(db, rows, [("1", "X", "P")])
     manifest = _make_manifest(tmp / "m.json")
     assert run_gates(db, manifest_path=manifest) == []
+    # Matemática inteira ancorada na constante (sem float e sem número
+    # mágico): o gate delega a `_acima_do_limiar`, derivado de
+    # ORPHAN_THRESHOLD.
     src = inspect.getsource(validate._gate_orphans)
-    assert "* 1000" in src, "gate de orfaos deve usar matematica inteira (orphans * 1000)"
+    assert "_acima_do_limiar" in src
+    src_helper = inspect.getsource(validate._acima_do_limiar)
+    assert "ORPHAN_THRESHOLD" in src_helper

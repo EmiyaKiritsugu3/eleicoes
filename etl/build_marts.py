@@ -13,7 +13,8 @@
 4. Escreve agregados JSON em `web/public/data/` (raiz do repo),
    redirecionável via `web_data_dir`: o trio V1
    (`resumo`/`por_uf`/`por_candidato`) + `gov_por_ente.json`/
-   `gov_serie.json`/`fin_por_candidato.json` (vazios `[]` sem quadros).
+   `gov_serie.json`/`fin_por_candidato.json` (só com quadros não-vazios;
+   quadro vazio = arquivo ausente, nunca `[]` hashless).
 5. Registra a fonte oficial (campo `url` CDN de `V1_DATASETS`, Task 2) no manifest.
 
 É idempotente e tolera `curated_dir` vazio (cria tabelas/JSONs vazios).
@@ -39,9 +40,9 @@ from etl.manifest import _dedupe_key, _validate_entry, load_manifest
 from etl.normalize import CANONICAL_COLUMNS, normalize_resultados
 from etl.prestacao import PRESTACAO_CANONICAL
 from etl.siconfi import SICONFI_CANONICAL
-from etl.sources import CENSO_DATASETS, V1_DATASETS
+from etl.sources import CENSO_DATASETS, SICONFI_DATASETS, PRESTACAO_DATASETS, V1_DATASETS
 from etl.transparencia import CGU_CANONICAL
-from etl.validate import run_gates
+from etl.validate import check_monetario, run_gates
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 WEB_DATA_DIR = _REPO_ROOT / "web" / "public" / "data"
@@ -377,15 +378,23 @@ def _write_json_aggs(df: pd.DataFrame, web_data_dir: Path = WEB_DATA_DIR,
             for r in g_fin.sort_values(
                 ["ano", "cargo", "candidato_id"]).itertuples()
         ]
-    (web_data_dir / "gov_por_ente.json").write_text(
-        json.dumps(gov_por_ente, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    (web_data_dir / "gov_serie.json").write_text(
-        json.dumps(gov_serie, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    (web_data_dir / "fin_por_candidato.json").write_text(
-        json.dumps(fin_por_candidato, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    # Ruling served+hashed-or-not-written: quadro vazio = nada a servir —
+    # o JSON NÃO é escrito (nunca `[]` hashless); resto obsoleto do
+    # staging é podado p/ não servir geração passada como atual.
+    for nome, linhas, quadro in (
+        ("gov_por_ente.json", gov_por_ente, gov),
+        ("gov_serie.json", gov_serie, gov),
+        ("fin_por_candidato.json", fin_por_candidato, fin),
+    ):
+        destino = web_data_dir / nome
+        if quadro.empty:
+            _dentro_de(destino, web_data_dir)
+            destino.unlink(missing_ok=True)
+        else:
+            destino.write_text(
+                json.dumps(linhas, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
 
 
 def _read_existing_ingestions(manifest_path) -> list:
@@ -514,11 +523,17 @@ def _register_sources(df: pd.DataFrame, manifest_path, source_shas=None) -> None
     _write_json_atomico(manifest_file, {"ingestions": deduped + legacy})
 
 
-_SERVED_AGG_NAMES = ("resumo.json", "por_uf.json", "por_candidato.json")
+# Agregados gov/fin servidos (Transparência de Gastos): servidos +
+# hasheados como o trio (ruling: "served+hashed or not-written" — estes
+# são sempre escritos em `web_data_dir`, logo sempre atestados).
+_GOV_FIN_SERVED = ("gov_por_ente.json", "gov_serie.json", "fin_por_candidato.json")
+
+_SERVED_AGG_NAMES = (("resumo.json", "por_uf.json", "por_candidato.json")
+                     + _GOV_FIN_SERVED)
 
 
 def _served_files(web_data_dir: Path) -> list[Path]:
-    """JSONs servidos presentes no dir público: trio + fato_* + Censo.
+    """JSONs servidos presentes no dir público: trio + gov/fin + fato_* + Censo.
 
     `censo_municipios.json` (EVOLVE-7 Task 1, `{ibge7: pop}` do
     `etl.censo.ingerir_censo`) é preservado pelo staging como os demais
@@ -555,6 +570,10 @@ def _artifact_entries_for(web_data_dir: Path, sources: list[dict],
     `censo_municipios.json` (EVOLVE-7 Task 1) ganha 1 entry ÚNICA com a
     fonte do Censo (`CENSO_DATASETS[0]`, via o construtor compartilhado
     de `etl.censo` — sem fork de contrato), nunca fan-out TSE.
+    Agregados gov/fin (`gov_*.json`/`fin_*.json`) ganham 1 entry por
+    fonte-ano SICONFI/prestação (mesmo fan-out do trio: cada ano
+    contribui p/ a série) — nunca fan-out V1 (outra fonte, outro
+    escopo).
     """
     by_pair = {(s["ano"], str(s["cargo"]).upper()): s for s in sources}
     censo_meta = CENSO_DATASETS[0]
@@ -568,6 +587,25 @@ def _artifact_entries_for(web_data_dir: Path, sources: list[dict],
         if path.name == CENSO_ARTIFACT_FILENAME:
             entries.append(build_censo_artifact_entry(
                 raw, path.name, dataset=censo_meta, data_iso=today))
+            continue
+        if path.name in _GOV_FIN_SERVED:
+            quadros = (SICONFI_DATASETS if path.name.startswith("gov_")
+                       else PRESTACAO_DATASETS)
+            for quadro in quadros:
+                entries.append(
+                    {
+                        "source_url": quadro["url"],
+                        "sha256": sha,
+                        "sha_origin": "artifact",
+                        "data": today,
+                        "etl_version": ETL_VERSION,
+                        "dataset": quadro.get("dataset"),
+                        "ano": quadro.get("ano"),
+                        "tipo": quadro.get("tipo"),
+                        "arquivo": path.name,
+                        "size_bytes": len(raw),
+                    }
+                )
             continue
         if path.name.startswith("fato_"):
             triple = _fato_triple_from_name(path.name)
@@ -1056,11 +1094,13 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
     é o mapeamento `{tse5: ibge7}` do CSV oficial (`etl.depara`) repassado
     a `normalize_resultados` — sem ele, códigos TSE viram `""` fail-closed
     como antes. `gov_df`/`fin_df`/`cgu_df` (Transparência de Gastos,
-    opcionais, default None → tabelas/JSONs vazios, build V1 intacto) são
+    opcionais, default None → tabelas vazias e JSONs gov/fin ausentes,
+    build V1 intacto) são
     os quadros já canônicos de `normalize_siconfi`/`normalize_prestacao`/
     `normalize_cgu`: alimentam `dim_ente`/`fato_gov`, `fato_fin` e
     `fato_transp_federal` + os JSONs `gov_por_ente.json`/`gov_serie.json`/
-    `fin_por_candidato.json`. Nunca passam pelo `_matched_entries` do
+    `fin_por_candidato.json` (só escritos com quadro não-vazio;
+    ruling served+hashed-or-not-written). Nunca passam pelo `_matched_entries` do
     escopo V1 (quadros de outra fonte, outro escopo). Após as ingestões, os hashes dos
     bytes servidos são registrados em `manifest["artifacts"]`
     (`register_served_artifacts`, EVOLVE-1 Task 2) — dentro do staging,
@@ -1107,6 +1147,18 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
     gov = _coerce_quadro(gov_df, SICONFI_CANONICAL, "gov")
     fin = _coerce_quadro(fin_df, PRESTACAO_CANONICAL, "fin")
     cgu = _coerce_quadro(cgu_df, CGU_CANONICAL, "cgu")
+    # Gate monetário pré-write (fail-closed antes de qualquer escrita no
+    # staging): quadro com negativo/NaN/inf reprova o build — nunca
+    # publica. Complementa o sub-gate do `run_gates` sobre o DB staged
+    # (defesa em profundidade p/ qualquer escritor dos quadros); o
+    # prefixo "gates reprovados" é o mesmo do C2.
+    erros_monetarios = (
+        check_monetario(gov, list(_GOV_MONETARIAS))
+        + check_monetario(fin, list(_FIN_MONETARIAS))
+        + check_monetario(cgu, ["valor"])
+    )
+    if erros_monetarios:
+        raise RuntimeError(f"gates reprovados: {'; '.join(erros_monetarios)}")
     # Põ props públicos no staging: fontes (CSVs) + fato_* + histórico.
     # Curated/web por cópia (prune/overwrite operam no staging); manifest
     # por cópia (dedupe lê o histórico); DB reescrito por inteiro.
@@ -1132,24 +1184,29 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
         # aqui é o espelho staged (atestação servida anterior) e os fatos
         # staged precisam conferir com ele (`fato_paths`); fato novo +
         # mirror velho (crash entre passos) reprova com erro "fato"
-        # (não filtrado). O gate de forma do manifest segue excluído —
+        # (não filtrado). Os agregados gov/fin staged entram no mesmo
+        # `fato_paths` (bytes-aware como fato_*). O gate de forma do manifest segue excluído —
         # o manifest desta ingestão ainda não foi escrito (vai em
         # `_register_sources`, após os JSONs) — e a ausência de totais
         # oficiais é só `UserWarning` (contrato `run_gates`), nunca erro.
         # Sem mirror anterior não há baseline: o gate de fatos é `[]` e
         # a atestação fresca de `register_served_artifacts` cobre.
+        gate_paths = sorted(web_st.glob("fato_*.json"))
+        gate_paths += [web_st / nome for nome in _GOV_FIN_SERVED
+                       if (web_st / nome).is_file()]
         gate_errors = run_gates(
             db_st, manifest_path=web_st / "manifest.json",
-            fato_paths=sorted(web_st.glob("fato_*.json")))
+            fato_paths=gate_paths)
         gate_errors = [e for e in gate_errors if not e.startswith("manifest")]
         if gate_errors:
             raise RuntimeError(f"gates reprovados: {'; '.join(gate_errors)}")
         _write_json_aggs(df, web_st, gov_df=gov, fin_df=fin, cgu_df=cgu)
         _register_sources(df, manifest_st, source_shas=source_shas)
-        if not df.empty:
-            # Hashes dos bytes servidos (trio + fato_* presentes): o espelho
-            # abaixo os inclui para /auditoria provar igualdade (display é
-            # follow-up). Vazio segue sem proveniência (contrato E5).
+        if not df.empty or not gov.empty or not fin.empty or not cgu.empty:
+            # Hashes dos bytes servidos (trio + gov/fin + fato_* presentes):
+            # o espelho abaixo os inclui para /auditoria provar igualdade
+            # (display é follow-up). Tudo vazio segue sem proveniência
+            # (contrato E5).
             register_served_artifacts(manifest_st, web_st, fontes)
         # Espelho idêntico ao canônico — ainda dentro do staging (swap conjunto).
         web_st.mkdir(parents=True, exist_ok=True)
