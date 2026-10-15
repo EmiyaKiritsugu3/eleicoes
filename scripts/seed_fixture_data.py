@@ -251,7 +251,9 @@ def seed(manifest_path: Path, web_data_dir: Path, force: bool = False) -> dict:
                 if (e["ano"], str(e["cargo"]).upper()) in {(a, c.upper()) for (a, _, c) in _FATO_TRIPLES}
             ]
             register_served_artifacts(manifest_path, web_data_dir,
-                                      fixture_sources)
+                                      fixture_sources,
+                                      anos_gov={r["ano"] for r in _FIXTURE_GOV_ROWS},
+                                      anos_fin={r["ano"] for r in _FIXTURE_FIN_ROWS})
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         for entry in manifest.get("ingestions", []):
             if isinstance(entry, dict):

@@ -356,9 +356,14 @@ def _passo_cgu():
                                      "Accept": "application/json"})
         resp.raise_for_status()
         payload = resp.json()
-        records = (payload.get("data") if isinstance(payload, dict)
-                   else payload) or []
-        records = records if isinstance(records, list) else []
+        if isinstance(payload, list):
+            records = payload
+        elif isinstance(payload, dict) and isinstance(payload.get("data"), list):
+            records = payload["data"]
+        else:
+            raise ValueError(
+                "resposta CGU sem lista de registros (sem dado oficial)"
+            )
         total = None
         if isinstance(payload, dict):
             for chave_total in ("total", "totalCount", "totalRegistros",

@@ -145,6 +145,15 @@ def normalize_siconfi(df: pd.DataFrame) -> pd.DataFrame:
         )
 
     mantidas = ano_ok & mon_ok & ente_ok
+    # 1 linha por ente/ano (spec §3): duplicata (incl. representações
+    # distintas do mesmo ente) reprova fail-closed, nunca soma em dobro.
+    chave = pd.DataFrame({"ano": ano[mantidas], "ente_id": ente_id[mantidas]})
+    n_duplicadas = int(chave.duplicated(keep=False).sum())
+    if n_duplicadas:
+        raise ValueError(
+            f"siconfi: {n_duplicadas} linha(s) com (ano, ente_id) "
+            "duplicado (uma linha por ente/ano; sem dado oficial)"
+        )
     out = pd.DataFrame(index=df.index[mantidas])
     out["ano"] = ano[mantidas].astype("int64")
     out["ente_id"] = ente_id[mantidas].values

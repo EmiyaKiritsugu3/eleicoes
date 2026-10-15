@@ -560,10 +560,17 @@ def _fato_triple_from_name(name: str) -> tuple | None:
         return None
 
 
-def _entries_gov_fin(nome: str, sha: str, raw: bytes, today: str) -> list[dict]:
-    """Entries gov/fin: 1 por fonte-ano SICONFI/prestação (nunca fan-out V1)."""
+def _entries_gov_fin(nome: str, sha: str, raw: bytes, today: str,
+                    anos: set | None = None) -> list[dict]:
+    """Entries gov/fin: 1 por fonte-ano SICONFI/prestação (nunca fan-out V1).
+
+    `anos` restringe aos anos presentes no quadro (None = todos): o
+    manifest só atesta proveniência real, nunca fonte-ano ausente.
+    """
     quadros = (SICONFI_DATASETS if nome.startswith("gov_")
                else PRESTACAO_DATASETS)
+    if anos is not None:
+        quadros = [q for q in quadros if q.get("ano") in anos]
     return [
         {
             "source_url": quadro["url"],
@@ -616,7 +623,8 @@ def _entries_fato_ou_trio(nome: str, sha: str, raw: bytes,
 
 
 def _artifact_entries_for(web_data_dir: Path, sources: list[dict],
-                          today: str) -> list[dict]:
+                          today: str, anos_gov: set | None = None,
+                          anos_fin: set | None = None) -> list[dict]:
     """1 entry `sha_origin: "artifact"` por (arquivo servido × fonte V1).
 
     `sha256`/`size_bytes` medidos dos BYTES servidos; `source_url` é o da
@@ -628,7 +636,8 @@ def _artifact_entries_for(web_data_dir: Path, sources: list[dict],
     Agregados gov/fin (`gov_*.json`/`fin_*.json`) ganham 1 entry por
     fonte-ano SICONFI/prestação (mesmo fan-out do trio: cada ano
     contribui p/ a série) — nunca fan-out V1 (outra fonte, outro
-    escopo).
+    escopo). `anos_gov`/`anos_fin` restringem aos anos presentes nos
+    quadros (None = todos): sem atestar fonte-ano ausente.
     """
     by_pair = {(s["ano"], str(s["cargo"]).upper()): s for s in sources}
     censo_meta = CENSO_DATASETS[0]
@@ -644,7 +653,8 @@ def _artifact_entries_for(web_data_dir: Path, sources: list[dict],
                 raw, path.name, dataset=censo_meta, data_iso=today))
             continue
         if path.name in _GOV_FIN_SERVED:
-            entries.extend(_entries_gov_fin(path.name, sha, raw, today))
+            anos = anos_gov if path.name.startswith("gov_") else anos_fin
+            entries.extend(_entries_gov_fin(path.name, sha, raw, today, anos))
             continue
         entries.extend(
             _entries_fato_ou_trio(path.name, sha, raw, by_pair, sources, today))
@@ -671,7 +681,8 @@ def _prune_fato_sem_proveniencia(web_staging, sources: list[dict]) -> list[str]:
 
 
 def register_served_artifacts(manifest_path, web_data_dir,
-                              sources: list[dict]) -> list[dict]:
+                              sources: list[dict], anos_gov: set | None = None,
+                              anos_fin: set | None = None) -> list[dict]:
     """(Re)escreve a chave `artifacts` do manifest a partir dos bytes servidos.
 
     Substituição integral (não append): o conteúdo é determinístico dos
@@ -682,7 +693,8 @@ def register_served_artifacts(manifest_path, web_data_dir,
     Devolve as entries registradas.
     """
     today = datetime.now(timezone.utc).date().isoformat()
-    entries = _artifact_entries_for(Path(web_data_dir), sources, today)
+    entries = _artifact_entries_for(Path(web_data_dir), sources, today,
+                                    anos_gov=anos_gov, anos_fin=anos_fin)
     for entry in entries:
         _validate_entry(entry)  # fail-closed antes de escrever
     manifest_file = Path(manifest_path)
@@ -1220,7 +1232,10 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
             # o espelho abaixo os inclui para /auditoria provar igualdade
             # (display é follow-up). Tudo vazio segue sem proveniência
             # (contrato E5).
-            register_served_artifacts(manifest_st, web_st, fontes)
+            anos_gov = set(int(a) for a in gov["ano"].tolist()) or None
+            anos_fin = set(int(a) for a in fin["ano"].tolist()) or None
+            register_served_artifacts(manifest_st, web_st, fontes,
+                                      anos_gov=anos_gov, anos_fin=anos_fin)
         # Espelho idêntico ao canônico — ainda dentro do staging (swap conjunto).
         web_st.mkdir(parents=True, exist_ok=True)
         (web_st / "manifest.json").write_bytes(manifest_st.read_bytes())

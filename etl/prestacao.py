@@ -133,7 +133,16 @@ def normalize_prestacao(df: pd.DataFrame) -> pd.DataFrame:
             stacklevel=2,
         )
 
-    mantidas = ano_ok & mon_ok
+    n_id_invalido = int(((candidato_id == "") & ano_ok & mon_ok).sum())
+    if n_id_invalido:
+        warnings.warn(
+            f"prestacao: {n_id_invalido} linha(s) com candidato_id "
+            "vazio descartada(s)",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    mantidas = ano_ok & mon_ok & (candidato_id != "")
     out = pd.DataFrame(index=df.index[mantidas])
     out["ano"] = ano[mantidas].astype("int64").values
     out["cargo"] = cargo[mantidas].values

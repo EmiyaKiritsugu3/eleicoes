@@ -1,3 +1,5 @@
+import { SEM_DADO } from "./textos";
+
 /** Regras de auditoria visível (ledger rulings a/b/c — Task 5, reusado pela Task 6).
  *
  * - Formatação pt-BR de votos: 1234567 -> "1.234.567".
@@ -428,4 +430,85 @@ export function govSerie(
     out.push({ ano, valor: Number(r.despesa_empenhada), eleitoral: isAnoEleitoral(ano) });
   }
   return out.sort((a, b) => a.ano - b.ano);
+}
+
+/** Janela fixa da série (escopo do spec: 2014–2024 contínuo). */
+export const ANO_SERIE_MIN = 2014;
+export const ANO_SERIE_MAX = 2024;
+
+export interface GovSerieLacuna {
+  ano: number;
+  valor: number | null;
+  eleitoral: boolean;
+}
+
+/** Completa a série na janela fixa, marcando lacunas (nunca 0). */
+export function serieComLacunas(serie: GovSerieItem[]): GovSerieLacuna[] {
+  const porAno = new Map(serie.map((r) => [r.ano, r.valor]));
+  const out: GovSerieLacuna[] = [];
+  for (let ano = ANO_SERIE_MIN; ano <= ANO_SERIE_MAX; ano++) {
+    out.push({
+      ano,
+      valor: porAno.has(ano) ? (porAno.get(ano) as number) : null,
+      eleitoral: isAnoEleitoral(ano),
+    });
+  }
+  return out;
+}
+
+/** Moeda pt-BR (BRL); não-finito vira SEM_DADO, nunca 0. */
+export function formatBRL(v: number): string {
+  if (!Number.isFinite(v)) return SEM_DADO;
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(v);
+}
+
+/** Selo ligado a um arquivo servido (ex. `gov_serie.json`), nunca à
+ *  primeira ingestão do manifest: oficial só via artifact auditado
+ *  não-fixture; fixture sinaliza sem selo oficial; sem registro →
+ *  selo vazio (fail-closed: "dado não auditado", nunca hash alheio).
+ */
+export function getSealParaArquivo(
+  manifest: unknown,
+  arquivo: string,
+): SealState {
+  const vazio: SealState = {
+    official: null,
+    hasFixture: false,
+    fixtureHash: "",
+  };
+  if (!arquivo) return vazio;
+  const arts = getArtifacts(manifest);
+  const aud = arts.find(
+    (e) => e.arquivo === arquivo && isOfficialDisplay(e),
+  );
+  if (aud) {
+    return {
+      official: {
+        hash: String(aud.sha256),
+        url: typeof aud.source_url === "string" ? aud.source_url : "",
+        date:
+          typeof aud.date === "string"
+            ? aud.date
+            : typeof aud.data === "string"
+              ? aud.data
+              : "",
+      },
+      hasFixture: false,
+      fixtureHash: "",
+    };
+  }
+  const fix = arts.find(
+    (e) => e.arquivo === arquivo && isFixtureEntry(e),
+  );
+  if (fix) {
+    return {
+      official: null,
+      hasFixture: true,
+      fixtureHash: isAudited(fix) ? String(fix.sha256) : "",
+    };
+  }
+  return vazio;
 }
