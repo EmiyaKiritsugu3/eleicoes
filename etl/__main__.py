@@ -255,7 +255,7 @@ def _passo_siconfi(siconfi_json: Path):
     # --censo-csv/--depara-csv/--curated-dir) — sem fronteira de privilégio:
     # quem passa o arg já executa o ETL. Symlink traversal é bloqueado onde
     # há superfície não-confiável (`_dentro_de` no staging/servido).
-    bruto = Path(siconfi_json).read_bytes()  # NOSONAR (falso-positivo: arg do operador)
+    bruto = Path(siconfi_json).read_bytes()  # NOSONAR
     texto = None
     for encoding in ("utf-8-sig", "utf-8", "latin1"):
         try:
