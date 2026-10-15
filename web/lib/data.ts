@@ -1,3 +1,5 @@
+import { SEM_DADO } from "./textos";
+
 /** Regras de auditoria visível (ledger rulings a/b/c — Task 5, reusado pela Task 6).
  *
  * - Formatação pt-BR de votos: 1234567 -> "1.234.567".
@@ -352,7 +354,6 @@ export interface LadoComparador {
   votos: number;
   detalhe?: string;
 }
-
 export function resolverComparador(args: {
   compMode: "candidatos" | "anos" | "municipios";
   compA: string;
@@ -382,4 +383,130 @@ export function resolverComparador(args: {
     };
   };
   return { left: mk(args.compA), right: mk(args.compB) };
+}
+
+/** Notas fixas da /transparencia (Task 6): valores sempre nominais e o
+ *  lag do DCA — ano sem dado é "sem dado oficial", nunca 0. */
+export const NOTA_TRANSPARENCIA_NOMINAL =
+  "valores nominais, sem deflação IPCA";
+export const NOTA_TRANSPARENCIA_LAG =
+  "DCA com lag: ano sem dado = sem dado oficial";
+
+/** Linha de `gov_serie.json` (`[{ano, ente_id, despesa_empenhada}]`). */
+export interface GovRow {
+  ano: number;
+  ente_id: string;
+  despesa_empenhada: number;
+}
+
+export interface GovSerieItem {
+  ano: number;
+  valor: number;
+  eleitoral: boolean;
+}
+
+/** Anos eleitorais cobertos pela série (municipais + gerais). */
+const ANOS_ELEITORAIS = new Set([2014, 2016, 2018, 2020, 2022, 2024]);
+
+export function isAnoEleitoral(ano: number): boolean {
+  return ANOS_ELEITORAIS.has(ano);
+}
+
+/** Série de despesa empenhada ordenada por ano, com marcador eleitoral.
+ *  Linha com valor não-finito é pulada (nunca somada como 0); ano ausente
+ *  do JSON simplesmente não aparece (a página mostra "sem dado oficial").
+ */
+export function govSerie(
+  rows: GovRow[],
+  filtros: { ente_id?: string },
+): GovSerieItem[] {
+  const q = (filtros.ente_id ?? "").trim().toLowerCase();
+  const out: GovSerieItem[] = [];
+  for (const r of Array.isArray(rows) ? rows : []) {
+    if (q && String(r.ente_id ?? "").toLowerCase() !== q) continue;
+    if (!votosFinito(r.despesa_empenhada)) continue;
+    const ano = Number(r.ano);
+    if (!Number.isFinite(ano)) continue;
+    out.push({ ano, valor: Number(r.despesa_empenhada), eleitoral: isAnoEleitoral(ano) });
+  }
+  return out.sort((a, b) => a.ano - b.ano);
+}
+
+/** Janela fixa da série (escopo do spec: 2014–2024 contínuo). */
+export const ANO_SERIE_MIN = 2014;
+export const ANO_SERIE_MAX = 2024;
+
+export interface GovSerieLacuna {
+  ano: number;
+  valor: number | null;
+  eleitoral: boolean;
+}
+
+/** Completa a série na janela fixa, marcando lacunas (nunca 0). */
+export function serieComLacunas(serie: GovSerieItem[]): GovSerieLacuna[] {
+  const porAno = new Map(serie.map((r) => [r.ano, r.valor]));
+  const out: GovSerieLacuna[] = [];
+  for (let ano = ANO_SERIE_MIN; ano <= ANO_SERIE_MAX; ano++) {
+    out.push({
+      ano,
+      valor: porAno.has(ano) ? (porAno.get(ano) as number) : null,
+      eleitoral: isAnoEleitoral(ano),
+    });
+  }
+  return out;
+}
+
+/** Moeda pt-BR (BRL); não-finito vira SEM_DADO, nunca 0. */
+export function formatBRL(v: number): string {
+  if (!Number.isFinite(v)) return SEM_DADO;
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(v);
+}
+
+/** Selo ligado a um arquivo servido (ex. `gov_serie.json`), nunca à
+ *  primeira ingestão do manifest: oficial só via artifact auditado
+ *  não-fixture; fixture sinaliza sem selo oficial; sem registro →
+ *  selo vazio (fail-closed: "dado não auditado", nunca hash alheio).
+ */
+export function getSealParaArquivo(
+  manifest: unknown,
+  arquivo: string,
+): SealState {
+  const vazio: SealState = {
+    official: null,
+    hasFixture: false,
+    fixtureHash: "",
+  };
+  if (!arquivo) return vazio;
+  const arts = getArtifacts(manifest);
+  const aud = arts.find(
+    (e) => e.arquivo === arquivo && isOfficialDisplay(e),
+  );
+  if (aud) {
+    let date = "";
+    if (typeof aud.date === "string") date = aud.date;
+    else if (typeof aud.data === "string") date = aud.data;
+    return {
+      official: {
+        hash: String(aud.sha256),
+        url: typeof aud.source_url === "string" ? aud.source_url : "",
+        date,
+      },
+      hasFixture: false,
+      fixtureHash: "",
+    };
+  }
+  const fix = arts.find(
+    (e) => e.arquivo === arquivo && isFixtureEntry(e),
+  );
+  if (fix) {
+    return {
+      official: null,
+      hasFixture: true,
+      fixtureHash: isAudited(fix) ? String(fix.sha256) : "",
+    };
+  }
+  return vazio;
 }

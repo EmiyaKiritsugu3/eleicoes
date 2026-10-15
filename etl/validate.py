@@ -41,6 +41,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
+import numbers
 import shutil
 import warnings
 from datetime import datetime, timezone
@@ -68,6 +70,121 @@ def _resolve_manifest(db_path: Path, manifest_path=None) -> Path | None:
         return Path(manifest_path)
     cand = db_path.parent / "manifest.json"
     return cand if cand.is_file() else None
+
+
+def check_monetario(df: pd.DataFrame, cols: list[str]) -> list[str]:
+    """Gate de valores monetários: negativo/NaN/inf/não-numérico reprova.
+
+    Devolve erros contendo "monetario" (lista vazia = ok; nunca levanta
+    por problema nos dados). Coluna ausente reprova fail-closed (nunca
+    assume 0). DataFrame vazio passa (sem linhas, nada a somar).
+    """
+    errors: list[str] = []
+    for col in cols:
+        if col not in df.columns:
+            errors.append(
+                f"monetario: coluna ausente {col!r} (sem dado oficial)"
+            )
+            continue
+        serie = pd.to_numeric(df[col], errors="coerce")
+        ruins = 0
+        for valor in serie.tolist():
+            if (
+                pd.isna(valor)
+                or not isinstance(valor, numbers.Real)
+                or not math.isfinite(float(valor))
+                or float(valor) < 0
+            ):
+                ruins += 1
+        if ruins:
+            errors.append(
+                f"monetario: {ruins} valor(es) inválido(s) em {col} "
+                "(negativo/NaN/não-finito/não-numérico)"
+            )
+    return errors
+
+
+def _acima_do_limiar(orfaos: int, total: int) -> bool:
+    """`orfaos/total` acima de `ORPHAN_THRESHOLD`, em matemática inteira.
+
+    Escala derivada da constante (M8: sem float na comparação); com o
+    valor atual (0,1%) a escala é 1000 — comportamento idêntico ao
+    anterior, agora ancorado na constante em vez de número mágico.
+    """
+    if total <= 0:
+        return False
+    escala = int(round(1.0 / ORPHAN_THRESHOLD))
+    return orfaos * escala > total
+
+
+def _gate_fin_orphans(con, tables: set[str]) -> list[str]:
+    """Órfãos `fato_fin` sem `dim_candidato` acima de 0,1% reprovam.
+
+    Mesmo `ORPHAN_THRESHOLD` do voto (matemática inteira, sem float).
+    Tabela ausente ou vazia passa (V1: `fato_fin` vazio nunca reprova).
+    """
+    if "fato_fin" not in tables:
+        return []
+    try:
+        total = con.execute("SELECT COUNT(*) FROM fato_fin").fetchone()[0]
+    except Exception as exc:
+        return [f"orfaos: nao foi possivel contar fato_fin ({exc})"]
+    if not total:
+        return []
+    if "dim_candidato" not in tables:
+        return [f"orfaos: dim_candidato ausente, 100% de {total} linha(s) de fato_fin sem dimensao"]
+    try:
+        orphans = con.execute(
+            "SELECT COUNT(*) FROM fato_fin f LEFT JOIN dim_candidato d "
+            "ON f.candidato_id = d.candidato_id WHERE d.candidato_id IS NULL"
+        ).fetchone()[0]
+    except Exception as exc:
+        return [f"orfaos: nao foi possivel checar fato_fin sem dim ({exc})"]
+    if _acima_do_limiar(orphans, total):
+        pct = 100 * orphans / total
+        return [
+            f"orfaos em fato_fin sem dim_candidato acima de 0,1%: "
+            f"{pct:.2f}% ({orphans}/{total})"
+        ]
+    return []
+
+
+# Colunas monetárias por quadro (Transparência de Gastos): espelham os
+# schemas canônicos de `normalize_siconfi`/`normalize_prestacao`/
+# `normalize_cgu`. Só colunas PRESENTES na tabela são checadas (tabelas
+# legadas com outro schema passam — nunca quebram gates V1).
+_MONETARIAS_POR_QUADRO: dict[str, tuple[str, ...]] = {
+    "fato_gov": ("receita_total", "despesa_empenhada",
+                 "despesa_liquidada", "despesa_paga"),
+    "fato_fin": ("receita_total", "despesa_total",
+                 "fefc", "fundo_partidario"),
+    "fato_transp_federal": ("valor",),
+}
+
+
+def _gate_monetario_quadros(con, tables: set[str]) -> list[str]:
+    """Sub-gate monetário sobre os quadros gov/fin/cgu materializados.
+
+    Reusa `check_monetario` (nunca fork de regra): lê cada tabela
+    presente no DB e reprova negativo/NaN/inf com erro "monetario".
+    Tabela ausente ou sem colunas monetárias passa (V1 intacto: quadros
+    vazios têm zero linhas ruins). Nunca levanta — falha de leitura
+    vira erro "monetario" fail-closed.
+    """
+    errors: list[str] = []
+    for tabela, cols in _MONETARIAS_POR_QUADRO.items():
+        if tabela not in tables:
+            continue
+        try:
+            df = con.execute(f"SELECT * FROM {tabela}").df()
+        except Exception as exc:
+            errors.append(
+                f"monetario: nao foi possivel ler {tabela} ({exc})"
+            )
+            continue
+        errors.extend(
+            check_monetario(df, [c for c in cols if c in df.columns]))
+    return errors
 
 
 def _tables(con) -> set[str]:
@@ -168,9 +285,9 @@ def _gate_orphans(con, tables: set[str]) -> list[str]:
         ).fetchone()[0]
     except Exception as exc:
         return [f"orfaos: nao foi possivel checar fato sem dim ({exc})"]
-    # M8: matemática inteira (orphans*1000 > total == fração acima de
+    # M8: matemática inteira via `_acima_do_limiar` (ancorada em
     # ORPHAN_THRESHOLD), sem float.
-    if orphans * 1000 > total:
+    if _acima_do_limiar(orphans, total):
         pct = 100 * orphans / total
         return [
             f"orfaos em fato_voto sem dim_candidato acima de 0,1%: "
@@ -267,7 +384,12 @@ def run_gates(db_path, manifest_path=None, totais_oficiais=None,
     `UserWarning` e checa só integridade interna. `fato_paths=None`
     (default) preserva o comportamento anterior; com uma lista de
     fatos, cada um precisa conferir com o manifest resolvido
-    (`_gate_fatos`, bytes-aware fail-closed).
+    (`_gate_fatos`, bytes-aware fail-closed). `fato_fin` não-vazio com
+    órfãos sem `dim_candidato` acima de 0,1% reprova (`_gate_fin_orphans`,
+    mesmo `ORPHAN_THRESHOLD`; vazio/ausente passa — V1 intacto). Quadros
+    gov/fin/cgu materializados passam pelo gate monetário
+    (`_gate_monetario_quadros`, reuso de `check_monetario`; tabelas
+    ausentes passam).
     """
     db_path = Path(db_path)
     errors: list[str] = []
@@ -290,6 +412,8 @@ def run_gates(db_path, manifest_path=None, totais_oficiais=None,
             return [f"banco: tabela fato_voto ausente em {db_path}"]
         errors.extend(_gate_sum(con, totais_oficiais))
         errors.extend(_gate_orphans(con, tables))
+        errors.extend(_gate_fin_orphans(con, tables))
+        errors.extend(_gate_monetario_quadros(con, tables))
     finally:
         con.close()
     manifest = _resolve_manifest(db_path, manifest_path)

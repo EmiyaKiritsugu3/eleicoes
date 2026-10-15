@@ -127,3 +127,60 @@ CENSO_DATASETS: list[dict] = [
         "sha256": None,
     },
 ]
+
+
+"""Fontes de transparência de gastos (Transparência de Gastos, Task 5).
+
+Só metadados (URL + página do catálogo p/ rastreabilidade); nenhum
+download acontece aqui — o fetch vive em `etl.fetch`/`etl.__main__`
+(offline-first: `--siconfi-json`/`--prestacao-csv` locais). `sha256` é
+`None` até a primeira ingestão (mesmo contrato V1).
+
+- SICONFI DCA 2014–2024 (anos eleitorais + baselines ímpares): a `url` é
+  a página de docs do Data Lake (`.../docs/siconfi`, verificada no spec
+  de 2026-10-14) — o path do endpoint por ano é resolvido no fetch, não
+  chutado aqui.
+- TSE prestação de contas: página do catálogo por ano (padrão
+  `prestacao-de-contas-eleitorais-{ano}`, anos eleitorais 2014–2024); o
+  ZIP do recurso é resolvido via CKAN no fetch.
+- CGU: base da API + página da doc; a chave via env
+  `TRANSPARENCIA_API_KEY` (lida só no `__main__`, nunca no repo).
+"""
+
+_SICONFI_DOCS = "https://apidatalake.tesouro.gov.br/docs/siconfi"
+
+SICONFI_DATASETS: list[dict] = [
+    {
+        "ano": ano,
+        "nome": f"siconfi_dca_{ano}",
+        "tipo": "siconfi_dca",
+        "url": _SICONFI_DOCS,
+        "dataset": _SICONFI_DOCS,
+        "sha256": None,
+    }
+    for ano in range(2014, 2025)
+]
+
+_PRESTACAO_CATALOG = (
+    "https://dadosabertos.tse.jus.br/dataset/prestacao-de-contas-eleitorais-{ano}"
+)
+
+PRESTACAO_DATASETS: list[dict] = [
+    {
+        "ano": ano,
+        "nome": f"tse_prestacao_{ano}",
+        "tipo": "prestacao_contas",
+        "url": _PRESTACAO_CATALOG.format(ano=ano),
+        "dataset": _PRESTACAO_CATALOG.format(ano=ano),
+        "sha256": None,
+    }
+    for ano in (2014, 2016, 2018, 2020, 2022, 2024)
+]
+
+CGU_META: dict = {
+    "nome": "cgu_despesas_uniao",
+    "tipo": "cgu_despesas",
+    "url": "https://api.portaldatransparencia.gov.br/api-de-dados",
+    "dataset": "https://portaldatransparencia.gov.br/api-de-dados",
+    "sha256": None,
+}

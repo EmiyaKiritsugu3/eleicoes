@@ -5,10 +5,16 @@
    frames já canônicos são aproveitados, demais passam por `normalize_resultados`.
 2. Escreve Parquet particionado `ano=/cargo=/uf=` em `curated_dir`.
 3. Cria o DuckDB com `fato_voto`, `dim_candidato`, `fato_eleitorado` e
-   `fato_fin` (eleitorado/finanças ficam com schema vazio quando não houver
-   fonte — caso do V1, só votação nominal).
+   `fato_fin` (eleitorado fica com schema vazio quando não houver
+   fonte — caso do V1, só votação nominal; `fato_fin` segue vazio sem
+   `fin_df`, preenchido com o canônico de `normalize_prestacao` quando
+   dado) + `dim_ente`/`fato_gov`/`fato_transp_federal` (vazios sem
+   `gov_df`/`cgu_df`).
 4. Escreve agregados JSON em `web/public/data/` (raiz do repo),
-   redirecionável via `web_data_dir`.
+   redirecionável via `web_data_dir`: o trio V1
+   (`resumo`/`por_uf`/`por_candidato`) + `gov_por_ente.json`/
+   `gov_serie.json`/`fin_por_candidato.json` (só com quadros não-vazios;
+   quadro vazio = arquivo ausente, nunca `[]` hashless).
 5. Registra a fonte oficial (campo `url` CDN de `V1_DATASETS`, Task 2) no manifest.
 
 É idempotente e tolera `curated_dir` vazio (cria tabelas/JSONs vazios).
@@ -29,10 +35,14 @@ import pandas as pd
 
 from etl import ETL_VERSION
 from etl.censo import CENSO_ARTIFACT_FILENAME, build_censo_artifact_entry
+from etl.entes import load_entes
 from etl.manifest import _dedupe_key, _validate_entry, load_manifest
 from etl.normalize import CANONICAL_COLUMNS, normalize_resultados
-from etl.sources import CENSO_DATASETS, V1_DATASETS
-from etl.validate import run_gates
+from etl.prestacao import PRESTACAO_CANONICAL
+from etl.siconfi import SICONFI_CANONICAL
+from etl.sources import CENSO_DATASETS, SICONFI_DATASETS, PRESTACAO_DATASETS, V1_DATASETS
+from etl.transparencia import CGU_CANONICAL
+from etl.validate import check_monetario, run_gates
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 WEB_DATA_DIR = _REPO_ROOT / "web" / "public" / "data"
@@ -82,6 +92,62 @@ def _empty_canonical() -> pd.DataFrame:
     out["turno"] = out["turno"].astype("int64")
     out["votos"] = out["votos"].astype("int64")
     return out[CANONICAL_COLUMNS]
+
+
+_GOV_MONETARIAS = ("receita_total", "despesa_empenhada",
+                   "despesa_liquidada", "despesa_paga")
+_FIN_MONETARIAS = ("receita_total", "despesa_total",
+                   "fefc", "fundo_partidario")
+
+
+def _empty_gov() -> pd.DataFrame:
+    out = pd.DataFrame({
+        "ano": pd.Series(dtype="int64"),
+        "ente_id": pd.Series(dtype="string"),
+        "esfera": pd.Series(dtype="string"),
+        **{c: pd.Series(dtype="float64") for c in _GOV_MONETARIAS},
+    })
+    return out[SICONFI_CANONICAL]
+
+
+def _empty_fin() -> pd.DataFrame:
+    out = pd.DataFrame({
+        "ano": pd.Series(dtype="int64"),
+        "cargo": pd.Series(dtype="string"),
+        "candidato_id": pd.Series(dtype="string"),
+        **{c: pd.Series(dtype="float64") for c in _FIN_MONETARIAS},
+    })
+    return out[PRESTACAO_CANONICAL]
+
+
+def _empty_cgu() -> pd.DataFrame:
+    out = pd.DataFrame({
+        "ano": pd.Series(dtype="int64"),
+        "orgao": pd.Series(dtype="string"),
+        "funcao": pd.Series(dtype="string"),
+        "valor": pd.Series(dtype="float64"),
+    })
+    return out[CGU_CANONICAL]
+
+
+def _coerce_quadro(df: pd.DataFrame | None, canonicas: list[str],
+                   rotulo: str) -> pd.DataFrame:
+    """Frame canônico do quadro (`gov`/`fin`/`cgu`) ou vazio (None → V1).
+
+    `None` devolve a tabela vazia (build V1 intacto); frame dado sem as
+    colunas canônicas (saída de `normalize_*`) levanta `ValueError`
+    fail-closed antes de qualquer escrita. Colunas extras são
+    descartadas (só o canônico vai ao mart).
+    """
+    vazios = {"gov": _empty_gov, "fin": _empty_fin, "cgu": _empty_cgu}
+    if df is None:
+        return vazios[rotulo]()
+    ausentes = [c for c in canonicas if c not in df.columns]
+    if ausentes:
+        raise ValueError(
+            f"build_marts: {rotulo}_df sem coluna(s) canônica(s): {ausentes}"
+        )
+    return df[canonicas].reset_index(drop=True)
 
 
 def _is_canonical(df: pd.DataFrame) -> bool:
@@ -194,7 +260,8 @@ def _write_partitioned_parquet(df: pd.DataFrame, curated_dir: Path) -> None:
         part[CANONICAL_COLUMNS].to_parquet(dest, index=False)
 
 
-def _write_duckdb(df: pd.DataFrame, db_path: Path) -> None:
+def _write_duckdb(df: pd.DataFrame, db_path: Path, gov_df=None,
+                  fin_df=None, cgu_df=None) -> None:
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     dim = (
@@ -202,10 +269,18 @@ def _write_duckdb(df: pd.DataFrame, db_path: Path) -> None:
         .drop_duplicates()
         .reset_index(drop=True)
     )
+    gov = _coerce_quadro(gov_df, SICONFI_CANONICAL, "gov")
+    fin = _coerce_quadro(fin_df, PRESTACAO_CANONICAL, "fin")
+    cgu = _coerce_quadro(cgu_df, CGU_CANONICAL, "cgu")
+    entes = load_entes()
     con = duckdb.connect(str(db_path))
     try:
         con.register("fato_df", df[CANONICAL_COLUMNS])
         con.register("dim_df", dim)
+        con.register("gov_df", gov)
+        con.register("fin_df", fin)
+        con.register("cgu_df", cgu)
+        con.register("entes_df", entes)
         con.execute("CREATE OR REPLACE TABLE fato_voto AS SELECT * FROM fato_df")
         con.execute("CREATE OR REPLACE TABLE dim_candidato AS SELECT * FROM dim_df")
         con.execute(
@@ -214,14 +289,23 @@ def _write_duckdb(df: pd.DataFrame, db_path: Path) -> None:
             "eleitorado BIGINT, abstencoes BIGINT)"
         )
         con.execute(
-            "CREATE OR REPLACE TABLE fato_fin ("
-            "ano BIGINT, candidato_id VARCHAR, receita DOUBLE, despesa DOUBLE)"
+            "CREATE OR REPLACE TABLE fato_fin AS SELECT * FROM fin_df"
+        )
+        con.execute(
+            "CREATE OR REPLACE TABLE dim_ente AS SELECT * FROM entes_df"
+        )
+        con.execute(
+            "CREATE OR REPLACE TABLE fato_gov AS SELECT * FROM gov_df"
+        )
+        con.execute(
+            "CREATE OR REPLACE TABLE fato_transp_federal AS SELECT * FROM cgu_df"
         )
     finally:
         con.close()
 
 
-def _write_json_aggs(df: pd.DataFrame, web_data_dir: Path = WEB_DATA_DIR) -> None:
+def _write_json_aggs(df: pd.DataFrame, web_data_dir: Path = WEB_DATA_DIR,
+                     gov_df=None, fin_df=None) -> None:
     # DECISÃO (EVOLVE-1 Task 2): agregados seguem `indent=2` legível — sem
     # reforma compacta (churn sem ganho nos KBs atuais); a integridade vem
     # do hash dos bytes servidos (`register_served_artifacts`), não do tamanho.
@@ -264,6 +348,53 @@ def _write_json_aggs(df: pd.DataFrame, web_data_dir: Path = WEB_DATA_DIR) -> Non
     (web_data_dir / "por_candidato.json").write_text(
         json.dumps(por_candidato, ensure_ascii=False, indent=2), encoding="utf-8"
     )
+    gov = _coerce_quadro(gov_df, SICONFI_CANONICAL, "gov")
+    fin = _coerce_quadro(fin_df, PRESTACAO_CANONICAL, "fin")
+    if gov.empty:
+        gov_por_ente: list[dict] = []
+        gov_serie: list[dict] = []
+    else:
+        g_ente = gov.groupby(["ente_id", "esfera"], as_index=False)[
+            list(_GOV_MONETARIAS)].sum()
+        gov_por_ente = [
+            {"ente_id": r.ente_id, "esfera": r.esfera,
+             **{c: float(getattr(r, c)) for c in _GOV_MONETARIAS}}
+            for r in g_ente.sort_values("ente_id").itertuples()
+        ]
+        gov_serie = [
+            {"ano": int(r.ano), "ente_id": r.ente_id,
+             "despesa_empenhada": float(r.despesa_empenhada)}
+            for r in gov.sort_values(["ano", "ente_id"]).itertuples()
+        ]
+    if fin.empty:
+        fin_por_candidato: list[dict] = []
+    else:
+        g_fin = fin.groupby(["ano", "cargo", "candidato_id"],
+                            as_index=False)[list(_FIN_MONETARIAS)].sum()
+        fin_por_candidato = [
+            {"ano": int(r.ano), "cargo": r.cargo,
+             "candidato_id": r.candidato_id,
+             **{c: float(getattr(r, c)) for c in _FIN_MONETARIAS}}
+            for r in g_fin.sort_values(
+                ["ano", "cargo", "candidato_id"]).itertuples()
+        ]
+    # Ruling served+hashed-or-not-written: quadro vazio = nada a servir —
+    # o JSON NÃO é escrito (nunca `[]` hashless); resto obsoleto do
+    # staging é podado p/ não servir geração passada como atual.
+    for nome, linhas, quadro in (
+        ("gov_por_ente.json", gov_por_ente, gov),
+        ("gov_serie.json", gov_serie, gov),
+        ("fin_por_candidato.json", fin_por_candidato, fin),
+    ):
+        destino = web_data_dir / nome
+        if quadro.empty:
+            _dentro_de(destino, web_data_dir)
+            destino.unlink(missing_ok=True)
+        else:
+            destino.write_text(
+                json.dumps(linhas, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
 
 
 def _read_existing_ingestions(manifest_path) -> list:
@@ -392,11 +523,17 @@ def _register_sources(df: pd.DataFrame, manifest_path, source_shas=None) -> None
     _write_json_atomico(manifest_file, {"ingestions": deduped + legacy})
 
 
-_SERVED_AGG_NAMES = ("resumo.json", "por_uf.json", "por_candidato.json")
+# Agregados gov/fin servidos (Transparência de Gastos): servidos +
+# hasheados como o trio (ruling: "served+hashed or not-written" — estes
+# são sempre escritos em `web_data_dir`, logo sempre atestados).
+_GOV_FIN_SERVED = ("gov_por_ente.json", "gov_serie.json", "fin_por_candidato.json")
+
+_SERVED_AGG_NAMES = (("resumo.json", "por_uf.json", "por_candidato.json")
+                     + _GOV_FIN_SERVED)
 
 
 def _served_files(web_data_dir: Path) -> list[Path]:
-    """JSONs servidos presentes no dir público: trio + fato_* + Censo.
+    """JSONs servidos presentes no dir público: trio + gov/fin + fato_* + Censo.
 
     `censo_municipios.json` (EVOLVE-7 Task 1, `{ibge7: pop}` do
     `etl.censo.ingerir_censo`) é preservado pelo staging como os demais
@@ -423,8 +560,71 @@ def _fato_triple_from_name(name: str) -> tuple | None:
         return None
 
 
-def _artifact_entries_for(web_data_dir: Path, sources: list[dict],
+def _entries_gov_fin(nome: str, sha: str, raw: bytes, today: str,
+                    anos: set | None = None) -> list[dict]:
+    """Entries gov/fin: 1 por fonte-ano SICONFI/prestação (nunca fan-out V1).
+
+    `anos` restringe aos anos presentes no quadro (None = todos): o
+    manifest só atesta proveniência real, nunca fonte-ano ausente.
+    """
+    quadros = (SICONFI_DATASETS if nome.startswith("gov_")
+               else PRESTACAO_DATASETS)
+    if anos is not None:
+        quadros = [q for q in quadros if q.get("ano") in anos]
+    return [
+        {
+            "source_url": quadro["url"],
+            "sha256": sha,
+            "sha_origin": "artifact",
+            "data": today,
+            "etl_version": ETL_VERSION,
+            "dataset": quadro.get("dataset"),
+            "ano": quadro.get("ano"),
+            "tipo": quadro.get("tipo"),
+            "arquivo": nome,
+            "size_bytes": len(raw),
+        }
+        for quadro in quadros
+    ]
+
+
+def _entries_fato_ou_trio(nome: str, sha: str, raw: bytes,
+                          by_pair: dict, sources: list[dict],
                           today: str) -> list[dict]:
+    """Entries fato (1 fonte do triple) ou trio (fan-out V1); [] sem match."""
+    if nome.startswith("fato_"):
+        triple = _fato_triple_from_name(nome)
+        if triple is None:
+            return []
+        ano, turno, cargo_upper = triple
+        source = by_pair.get((ano, cargo_upper))
+        if source is None:
+            return []
+        targets, extra = [source], {"turno": turno}
+    else:
+        targets, extra = sources, {}
+    return [
+        {
+            "source_url": target["url"],
+            "sha256": sha,
+            "sha_origin": "artifact",
+            "data": today,
+            "etl_version": ETL_VERSION,
+            "dataset": target["dataset"],
+            "ano": target["ano"],
+            "cargo": target["cargo"],
+            "tipo": target["tipo"],
+            **extra,
+            "arquivo": nome,
+            "size_bytes": len(raw),
+        }
+        for target in targets
+    ]
+
+
+def _artifact_entries_for(web_data_dir: Path, sources: list[dict],
+                          today: str, anos_gov: set | None = None,
+                          anos_fin: set | None = None) -> list[dict]:
     """1 entry `sha_origin: "artifact"` por (arquivo servido × fonte V1).
 
     `sha256`/`size_bytes` medidos dos BYTES servidos; `source_url` é o da
@@ -433,6 +633,11 @@ def _artifact_entries_for(web_data_dir: Path, sources: list[dict],
     `censo_municipios.json` (EVOLVE-7 Task 1) ganha 1 entry ÚNICA com a
     fonte do Censo (`CENSO_DATASETS[0]`, via o construtor compartilhado
     de `etl.censo` — sem fork de contrato), nunca fan-out TSE.
+    Agregados gov/fin (`gov_*.json`/`fin_*.json`) ganham 1 entry por
+    fonte-ano SICONFI/prestação (mesmo fan-out do trio: cada ano
+    contribui p/ a série) — nunca fan-out V1 (outra fonte, outro
+    escopo). `anos_gov`/`anos_fin` restringem aos anos presentes nos
+    quadros (None = todos): sem atestar fonte-ano ausente.
     """
     by_pair = {(s["ano"], str(s["cargo"]).upper()): s for s in sources}
     censo_meta = CENSO_DATASETS[0]
@@ -447,34 +652,12 @@ def _artifact_entries_for(web_data_dir: Path, sources: list[dict],
             entries.append(build_censo_artifact_entry(
                 raw, path.name, dataset=censo_meta, data_iso=today))
             continue
-        if path.name.startswith("fato_"):
-            triple = _fato_triple_from_name(path.name)
-            if triple is None:
-                continue
-            ano, turno, cargo_upper = triple
-            source = by_pair.get((ano, cargo_upper))
-            if source is None:
-                continue
-            targets, extra = [source], {"turno": turno}
-        else:
-            targets, extra = sources, {}
-        for target in targets:
-            entries.append(
-                {
-                    "source_url": target["url"],
-                    "sha256": sha,
-                    "sha_origin": "artifact",
-                    "data": today,
-                    "etl_version": ETL_VERSION,
-                    "dataset": target["dataset"],
-                    "ano": target["ano"],
-                    "cargo": target["cargo"],
-                    "tipo": target["tipo"],
-                    **extra,
-                    "arquivo": path.name,
-                    "size_bytes": len(raw),
-                }
-            )
+        if path.name in _GOV_FIN_SERVED:
+            anos = anos_gov if path.name.startswith("gov_") else anos_fin
+            entries.extend(_entries_gov_fin(path.name, sha, raw, today, anos))
+            continue
+        entries.extend(
+            _entries_fato_ou_trio(path.name, sha, raw, by_pair, sources, today))
     return entries
 
 
@@ -498,7 +681,8 @@ def _prune_fato_sem_proveniencia(web_staging, sources: list[dict]) -> list[str]:
 
 
 def register_served_artifacts(manifest_path, web_data_dir,
-                              sources: list[dict]) -> list[dict]:
+                              sources: list[dict], anos_gov: set | None = None,
+                              anos_fin: set | None = None) -> list[dict]:
     """(Re)escreve a chave `artifacts` do manifest a partir dos bytes servidos.
 
     Substituição integral (não append): o conteúdo é determinístico dos
@@ -509,7 +693,8 @@ def register_served_artifacts(manifest_path, web_data_dir,
     Devolve as entries registradas.
     """
     today = datetime.now(timezone.utc).date().isoformat()
-    entries = _artifact_entries_for(Path(web_data_dir), sources, today)
+    entries = _artifact_entries_for(Path(web_data_dir), sources, today,
+                                    anos_gov=anos_gov, anos_fin=anos_fin)
     for entry in entries:
         _validate_entry(entry)  # fail-closed antes de escrever
     manifest_file = Path(manifest_path)
@@ -920,7 +1105,8 @@ def _verificar_geracao_integra(curated, db_file, manifest_file, web_dir) -> None
 
 
 def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
-              source_shas=None, depara=None) -> None:
+              source_shas=None, depara=None,
+              gov_df=None, fin_df=None, cgu_df=None) -> None:
     """Pipeline completo: Parquet particionado + DuckDB + JSONs + manifest.
 
     `web_data_dir` redireciona os agregados JSON (padrão: `web/public/data/`
@@ -932,7 +1118,15 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
     (threading E4; Tasks 5 e 7 consomem). `depara` (EVOLVE-15, opcional)
     é o mapeamento `{tse5: ibge7}` do CSV oficial (`etl.depara`) repassado
     a `normalize_resultados` — sem ele, códigos TSE viram `""` fail-closed
-    como antes. Após as ingestões, os hashes dos
+    como antes. `gov_df`/`fin_df`/`cgu_df` (Transparência de Gastos,
+    opcionais, default None → tabelas vazias e JSONs gov/fin ausentes,
+    build V1 intacto) são
+    os quadros já canônicos de `normalize_siconfi`/`normalize_prestacao`/
+    `normalize_cgu`: alimentam `dim_ente`/`fato_gov`, `fato_fin` e
+    `fato_transp_federal` + os JSONs `gov_por_ente.json`/`gov_serie.json`/
+    `fin_por_candidato.json` (só escritos com quadro não-vazio;
+    ruling served+hashed-or-not-written). Nunca passam pelo `_matched_entries` do
+    escopo V1 (quadros de outra fonte, outro escopo). Após as ingestões, os hashes dos
     bytes servidos são registrados em `manifest["artifacts"]`
     (`register_served_artifacts`, EVOLVE-1 Task 2) — dentro do staging,
     junto com Parquet/DB/JSONs/espelho, para o swap publicar hashes
@@ -973,6 +1167,23 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
     _discard_staging(stagings)
     df = _load_canonical(curated, depara=depara)
     fontes = _matched_entries(df)  # pré-checagem fail-closed: antes de qualquer escrita
+    # Quadros gov/fin/cgu: coerção fail-closed antes de qualquer escrita
+    # (None → vazios, V1 intacto; fora do escopo V1 por desenho).
+    gov = _coerce_quadro(gov_df, SICONFI_CANONICAL, "gov")
+    fin = _coerce_quadro(fin_df, PRESTACAO_CANONICAL, "fin")
+    cgu = _coerce_quadro(cgu_df, CGU_CANONICAL, "cgu")
+    # Gate monetário pré-write (fail-closed antes de qualquer escrita no
+    # staging): quadro com negativo/NaN/inf reprova o build — nunca
+    # publica. Complementa o sub-gate do `run_gates` sobre o DB staged
+    # (defesa em profundidade p/ qualquer escritor dos quadros); o
+    # prefixo "gates reprovados" é o mesmo do C2.
+    erros_monetarios = (
+        check_monetario(gov, list(_GOV_MONETARIAS))
+        + check_monetario(fin, list(_FIN_MONETARIAS))
+        + check_monetario(cgu, ["valor"])
+    )
+    if erros_monetarios:
+        raise RuntimeError(f"gates reprovados: {'; '.join(erros_monetarios)}")
     # Põ props públicos no staging: fontes (CSVs) + fato_* + histórico.
     # Curated/web por cópia (prune/overwrite operam no staging); manifest
     # por cópia (dedupe lê o histórico); DB reescrito por inteiro.
@@ -993,30 +1204,38 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
         _prune_fato_sem_proveniencia(web_st, fontes)
         # Ordem Tasks 4–7 preservada, toda dentro do staging.
         _write_partitioned_parquet(df, curated_st)
-        _write_duckdb(df, db_st)
+        _write_duckdb(df, db_st, gov_df=gov, fin_df=fin, cgu_df=cgu)
         # Gates contra o staging (EVOLVE-4 T2, bytes-aware): o manifest
         # aqui é o espelho staged (atestação servida anterior) e os fatos
         # staged precisam conferir com ele (`fato_paths`); fato novo +
         # mirror velho (crash entre passos) reprova com erro "fato"
-        # (não filtrado). O gate de forma do manifest segue excluído —
+        # (não filtrado). Os agregados gov/fin staged entram no mesmo
+        # `fato_paths` (bytes-aware como fato_*). O gate de forma do manifest segue excluído —
         # o manifest desta ingestão ainda não foi escrito (vai em
         # `_register_sources`, após os JSONs) — e a ausência de totais
         # oficiais é só `UserWarning` (contrato `run_gates`), nunca erro.
         # Sem mirror anterior não há baseline: o gate de fatos é `[]` e
         # a atestação fresca de `register_served_artifacts` cobre.
+        gate_paths = sorted(web_st.glob("fato_*.json"))
+        gate_paths += [web_st / nome for nome in _GOV_FIN_SERVED
+                       if (web_st / nome).is_file()]
         gate_errors = run_gates(
             db_st, manifest_path=web_st / "manifest.json",
-            fato_paths=sorted(web_st.glob("fato_*.json")))
+            fato_paths=gate_paths)
         gate_errors = [e for e in gate_errors if not e.startswith("manifest")]
         if gate_errors:
             raise RuntimeError(f"gates reprovados: {'; '.join(gate_errors)}")
-        _write_json_aggs(df, web_st)
+        _write_json_aggs(df, web_st, gov_df=gov, fin_df=fin)
         _register_sources(df, manifest_st, source_shas=source_shas)
-        if not df.empty:
-            # Hashes dos bytes servidos (trio + fato_* presentes): o espelho
-            # abaixo os inclui para /auditoria provar igualdade (display é
-            # follow-up). Vazio segue sem proveniência (contrato E5).
-            register_served_artifacts(manifest_st, web_st, fontes)
+        if not df.empty or not gov.empty or not fin.empty or not cgu.empty:
+            # Hashes dos bytes servidos (trio + gov/fin + fato_* presentes):
+            # o espelho abaixo os inclui para /auditoria provar igualdade
+            # (display é follow-up). Tudo vazio segue sem proveniência
+            # (contrato E5).
+            anos_gov = {int(a) for a in gov["ano"].tolist()} or None
+            anos_fin = {int(a) for a in fin["ano"].tolist()} or None
+            register_served_artifacts(manifest_st, web_st, fontes,
+                                      anos_gov=anos_gov, anos_fin=anos_fin)
         # Espelho idêntico ao canônico — ainda dentro do staging (swap conjunto).
         web_st.mkdir(parents=True, exist_ok=True)
         (web_st / "manifest.json").write_bytes(manifest_st.read_bytes())
