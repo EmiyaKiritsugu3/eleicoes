@@ -485,16 +485,14 @@ export function getSealParaArquivo(
     (e) => e.arquivo === arquivo && isOfficialDisplay(e),
   );
   if (aud) {
+    let date = "";
+    if (typeof aud.date === "string") date = aud.date;
+    else if (typeof aud.data === "string") date = aud.data;
     return {
       official: {
         hash: String(aud.sha256),
         url: typeof aud.source_url === "string" ? aud.source_url : "",
-        date:
-          typeof aud.date === "string"
-            ? aud.date
-            : typeof aud.data === "string"
-              ? aud.data
-              : "",
+        date,
       },
       hasFixture: false,
       fixtureHash: "",

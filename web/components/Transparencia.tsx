@@ -25,7 +25,7 @@ export function TransparenciaConteudo({
       const id = String(r.ente_id ?? "").trim();
       if (id) ids.add(id);
     }
-    const lista = [...ids].sort();
+    const lista = [...ids].sort((a, b) => a.localeCompare(b));
     const uniao = lista.indexOf("UNIAO");
     if (uniao > 0) {
       lista.splice(uniao, 1);

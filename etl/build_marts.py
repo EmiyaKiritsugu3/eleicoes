@@ -1232,8 +1232,8 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
             # o espelho abaixo os inclui para /auditoria provar igualdade
             # (display é follow-up). Tudo vazio segue sem proveniência
             # (contrato E5).
-            anos_gov = set(int(a) for a in gov["ano"].tolist()) or None
-            anos_fin = set(int(a) for a in fin["ano"].tolist()) or None
+            anos_gov = {int(a) for a in gov["ano"].tolist()} or None
+            anos_fin = {int(a) for a in fin["ano"].tolist()} or None
             register_served_artifacts(manifest_st, web_st, fontes,
                                       anos_gov=anos_gov, anos_fin=anos_fin)
         # Espelho idêntico ao canônico — ainda dentro do staging (swap conjunto).

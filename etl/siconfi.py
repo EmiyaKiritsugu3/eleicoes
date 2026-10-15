@@ -145,15 +145,7 @@ def normalize_siconfi(df: pd.DataFrame) -> pd.DataFrame:
         )
 
     mantidas = ano_ok & mon_ok & ente_ok
-    # 1 linha por ente/ano (spec §3): duplicata (incl. representações
-    # distintas do mesmo ente) reprova fail-closed, nunca soma em dobro.
-    chave = pd.DataFrame({"ano": ano[mantidas], "ente_id": ente_id[mantidas]})
-    n_duplicadas = int(chave.duplicated(keep=False).sum())
-    if n_duplicadas:
-        raise ValueError(
-            f"siconfi: {n_duplicadas} linha(s) com (ano, ente_id) "
-            "duplicado (uma linha por ente/ano; sem dado oficial)"
-        )
+    _reprovar_duplicatas(ano, ente_id, mantidas)
     out = pd.DataFrame(index=df.index[mantidas])
     out["ano"] = ano[mantidas].astype("int64")
     out["ente_id"] = ente_id[mantidas].values
@@ -161,3 +153,19 @@ def normalize_siconfi(df: pd.DataFrame) -> pd.DataFrame:
     for campo, serie in monetarias.items():
         out[_MONETARIA_PARA_CANONICO[campo]] = serie[mantidas].astype(float).values
     return out[SICONFI_CANONICAL].reset_index(drop=True)
+
+
+def _reprovar_duplicatas(ano: pd.Series, ente_id: pd.Series,
+                         mantidas: pd.Series) -> None:
+    """Fail-closed: (ano, ente_id) duplicado reprova (nunca soma em dobro).
+
+    Cobre representações distintas do mesmo ente: a checagem é
+    pós-resolução do `ente_id`, sobre as linhas mantidas pelos gates.
+    """
+    chave = pd.DataFrame({"ano": ano[mantidas], "ente_id": ente_id[mantidas]})
+    n_duplicadas = int(chave.duplicated(keep=False).sum())
+    if n_duplicadas:
+        raise ValueError(
+            f"siconfi: {n_duplicadas} linha(s) com (ano, ente_id) "
+            "duplicado (uma linha por ente/ano; sem dado oficial)"
+        )
