@@ -6,9 +6,8 @@ describe("transparencia", () => {
     expect(isAnoEleitoral(2022)).toBe(true);
     expect(isAnoEleitoral(2021)).toBe(false);
     expect(
-      govSerie([{ ano: 2021, ente_id: "UNIAO", despesa_empenhada: 10 } as GovRow], {})
-        .length,
-    ).toBe(1);
+      govSerie([{ ano: 2021, ente_id: "UNIAO", despesa_empenhada: 10 } as GovRow], {}),
+    ).toHaveLength(1);
     expect(govSerie([], {})).toEqual([]);
   });
   it("ordena por ano e pula valor não-finito sem somar 0", () => {

@@ -251,7 +251,11 @@ def _passo_siconfi(siconfi_json: Path):
 
     from etl.siconfi import normalize_siconfi
 
-    bruto = Path(siconfi_json).read_bytes()
+    # Guarda S8707: caminho 100% do operador via CLI (mesmo contrato de
+    # --censo-csv/--depara-csv/--curated-dir) — sem fronteira de privilégio:
+    # quem passa o arg já executa o ETL. Symlink traversal é bloqueado onde
+    # há superfície não-confiável (`_dentro_de` no staging/servido).
+    bruto = Path(siconfi_json).read_bytes()  # NOSONAR (falso-positivo: arg do operador)
     texto = None
     for encoding in ("utf-8-sig", "utf-8", "latin1"):
         try:
@@ -385,6 +389,16 @@ def _passo_cgu():
     return cgu
 
 
+def _quadros_gov_fin_cgu(args):
+    """Quadros opcionais gov/fin/cgu a partir das flags (`None` = ausente)."""
+    gov_df = _passo_siconfi(Path(args.siconfi_json)) \
+        if args.siconfi_json is not None else None
+    fin_df = _passo_prestacao(Path(args.prestacao_csv)) \
+        if args.prestacao_csv is not None else None
+    cgu_df = _passo_cgu() if args.with_transparencia else None
+    return gov_df, fin_df, cgu_df
+
+
 def main(argv=None) -> int:
     """Roda o pipeline; devolve 0 ok, 1 gates reprovados, 2 erro."""
     args = _parse_args(argv)
@@ -403,11 +417,7 @@ def main(argv=None) -> int:
 
             depara_url = DEPARA_URL
             print("de-para: join TSE→IBGE7 ativo nos marts")
-        gov_df = _passo_siconfi(Path(args.siconfi_json)) \
-            if args.siconfi_json is not None else None
-        fin_df = _passo_prestacao(Path(args.prestacao_csv)) \
-            if args.prestacao_csv is not None else None
-        cgu_df = _passo_cgu() if args.with_transparencia else None
+        gov_df, fin_df, cgu_df = _quadros_gov_fin_cgu(args)
         build_all(args.curated_dir, args.db, manifest,
                   web_data_dir=args.web_data_dir, source_shas=source_shas,
                   depara=depara, gov_df=gov_df, fin_df=fin_df, cgu_df=cgu_df)

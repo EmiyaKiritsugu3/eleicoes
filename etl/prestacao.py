@@ -62,6 +62,16 @@ def _pick_column(df: pd.DataFrame, field: str):
     return None
 
 
+def _serie_monetaria_valida(serie: pd.Series) -> pd.Series:
+    """True p/ valores finitos e não-negativos (fail-closed, nunca coage)."""
+    finita = serie.apply(
+        lambda v: isinstance(v, numbers.Real) and math.isfinite(float(v))
+        if pd.notna(v)
+        else False
+    )
+    return serie.notna() & finita & (serie >= 0)
+
+
 def normalize_prestacao(df: pd.DataFrame) -> pd.DataFrame:
     """Normaliza um DataFrame bruto TSE de prestação para o schema canônico."""
     if not isinstance(df, pd.DataFrame):
@@ -104,12 +114,7 @@ def normalize_prestacao(df: pd.DataFrame) -> pd.DataFrame:
     ano_ok = ano.notna() & (ano != 0)
     mon_ok = pd.Series(True, index=df.index)
     for serie in monetarias.values():
-        finita = serie.apply(
-            lambda v: isinstance(v, numbers.Real) and math.isfinite(float(v))
-            if pd.notna(v)
-            else False
-        )
-        mon_ok &= serie.notna() & finita & (serie >= 0)
+        mon_ok &= _serie_monetaria_valida(serie)
     n_monetaria_invalida = int((~mon_ok).sum())
     if n_monetaria_invalida:
         warnings.warn(

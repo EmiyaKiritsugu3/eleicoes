@@ -14,17 +14,17 @@ export function TransparenciaConteudo({
   rows,
   enteId,
 }: {
-  rows: GovRow[] | null;
-  enteId?: string;
+  readonly rows: GovRow[] | null;
+  readonly enteId?: string;
 }) {
-  if (!rows) return <p role="status">a carregar…</p>;
+  if (!rows) return <output>a carregar…</output>;
   const serie = govSerie(rows, enteId ? { ente_id: enteId } : {});
   return (
     <section aria-label="Transparência de gastos">
       <p role="note">{NOTA_TRANSPARENCIA_NOMINAL}</p>
       <p role="note">{NOTA_TRANSPARENCIA_LAG}</p>
       {serie.length === 0 ? (
-        <p role="status">{SEM_DADO}</p>
+        <output>{SEM_DADO}</output>
       ) : (
         <table>
           <caption>Despesa empenhada por ano (valores nominais)</caption>

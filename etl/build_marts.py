@@ -305,7 +305,7 @@ def _write_duckdb(df: pd.DataFrame, db_path: Path, gov_df=None,
 
 
 def _write_json_aggs(df: pd.DataFrame, web_data_dir: Path = WEB_DATA_DIR,
-                     gov_df=None, fin_df=None, cgu_df=None) -> None:
+                     gov_df=None, fin_df=None) -> None:
     # DECISÃO (EVOLVE-1 Task 2): agregados seguem `indent=2` legível — sem
     # reforma compacta (churn sem ganho nos KBs atuais); a integridade vem
     # do hash dos bytes servidos (`register_served_artifacts`), não do tamanho.
@@ -560,6 +560,61 @@ def _fato_triple_from_name(name: str) -> tuple | None:
         return None
 
 
+def _entries_gov_fin(nome: str, sha: str, raw: bytes, today: str) -> list[dict]:
+    """Entries gov/fin: 1 por fonte-ano SICONFI/prestação (nunca fan-out V1)."""
+    quadros = (SICONFI_DATASETS if nome.startswith("gov_")
+               else PRESTACAO_DATASETS)
+    return [
+        {
+            "source_url": quadro["url"],
+            "sha256": sha,
+            "sha_origin": "artifact",
+            "data": today,
+            "etl_version": ETL_VERSION,
+            "dataset": quadro.get("dataset"),
+            "ano": quadro.get("ano"),
+            "tipo": quadro.get("tipo"),
+            "arquivo": nome,
+            "size_bytes": len(raw),
+        }
+        for quadro in quadros
+    ]
+
+
+def _entries_fato_ou_trio(nome: str, sha: str, raw: bytes,
+                          by_pair: dict, sources: list[dict],
+                          today: str) -> list[dict]:
+    """Entries fato (1 fonte do triple) ou trio (fan-out V1); [] sem match."""
+    if nome.startswith("fato_"):
+        triple = _fato_triple_from_name(nome)
+        if triple is None:
+            return []
+        ano, turno, cargo_upper = triple
+        source = by_pair.get((ano, cargo_upper))
+        if source is None:
+            return []
+        targets, extra = [source], {"turno": turno}
+    else:
+        targets, extra = sources, {}
+    return [
+        {
+            "source_url": target["url"],
+            "sha256": sha,
+            "sha_origin": "artifact",
+            "data": today,
+            "etl_version": ETL_VERSION,
+            "dataset": target["dataset"],
+            "ano": target["ano"],
+            "cargo": target["cargo"],
+            "tipo": target["tipo"],
+            **extra,
+            "arquivo": nome,
+            "size_bytes": len(raw),
+        }
+        for target in targets
+    ]
+
+
 def _artifact_entries_for(web_data_dir: Path, sources: list[dict],
                           today: str) -> list[dict]:
     """1 entry `sha_origin: "artifact"` por (arquivo servido × fonte V1).
@@ -589,52 +644,10 @@ def _artifact_entries_for(web_data_dir: Path, sources: list[dict],
                 raw, path.name, dataset=censo_meta, data_iso=today))
             continue
         if path.name in _GOV_FIN_SERVED:
-            quadros = (SICONFI_DATASETS if path.name.startswith("gov_")
-                       else PRESTACAO_DATASETS)
-            for quadro in quadros:
-                entries.append(
-                    {
-                        "source_url": quadro["url"],
-                        "sha256": sha,
-                        "sha_origin": "artifact",
-                        "data": today,
-                        "etl_version": ETL_VERSION,
-                        "dataset": quadro.get("dataset"),
-                        "ano": quadro.get("ano"),
-                        "tipo": quadro.get("tipo"),
-                        "arquivo": path.name,
-                        "size_bytes": len(raw),
-                    }
-                )
+            entries.extend(_entries_gov_fin(path.name, sha, raw, today))
             continue
-        if path.name.startswith("fato_"):
-            triple = _fato_triple_from_name(path.name)
-            if triple is None:
-                continue
-            ano, turno, cargo_upper = triple
-            source = by_pair.get((ano, cargo_upper))
-            if source is None:
-                continue
-            targets, extra = [source], {"turno": turno}
-        else:
-            targets, extra = sources, {}
-        for target in targets:
-            entries.append(
-                {
-                    "source_url": target["url"],
-                    "sha256": sha,
-                    "sha_origin": "artifact",
-                    "data": today,
-                    "etl_version": ETL_VERSION,
-                    "dataset": target["dataset"],
-                    "ano": target["ano"],
-                    "cargo": target["cargo"],
-                    "tipo": target["tipo"],
-                    **extra,
-                    "arquivo": path.name,
-                    "size_bytes": len(raw),
-                }
-            )
+        entries.extend(
+            _entries_fato_ou_trio(path.name, sha, raw, by_pair, sources, today))
     return entries
 
 
@@ -1200,7 +1213,7 @@ def build_all(curated_dir, db_path, manifest_path, web_data_dir=None,
         gate_errors = [e for e in gate_errors if not e.startswith("manifest")]
         if gate_errors:
             raise RuntimeError(f"gates reprovados: {'; '.join(gate_errors)}")
-        _write_json_aggs(df, web_st, gov_df=gov, fin_df=fin, cgu_df=cgu)
+        _write_json_aggs(df, web_st, gov_df=gov, fin_df=fin)
         _register_sources(df, manifest_st, source_shas=source_shas)
         if not df.empty or not gov.empty or not fin.empty or not cgu.empty:
             # Hashes dos bytes servidos (trio + gov/fin + fato_* presentes):

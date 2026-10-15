@@ -89,13 +89,12 @@ def check_monetario(df: pd.DataFrame, cols: list[str]) -> list[str]:
         serie = pd.to_numeric(df[col], errors="coerce")
         ruins = 0
         for valor in serie.tolist():
-            if pd.isna(valor):
-                ruins += 1
-            elif not isinstance(valor, numbers.Real):
-                ruins += 1
-            elif not math.isfinite(float(valor)):
-                ruins += 1
-            elif float(valor) < 0:
+            if (
+                pd.isna(valor)
+                or not isinstance(valor, numbers.Real)
+                or not math.isfinite(float(valor))
+                or float(valor) < 0
+            ):
                 ruins += 1
         if ruins:
             errors.append(

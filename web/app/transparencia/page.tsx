@@ -16,7 +16,7 @@ export default function Transparencia() {
 
   useEffect(() => {
     setManifestChecked(false);
-    (async () => {
+    void (async () => {
       const manifest = (await fetchJson("/data/manifest.json")).data;
       setSeal(getSealState(manifest));
       setRows((await fetchJson<GovRow[]>("/data/gov_serie.json")).data);
@@ -33,7 +33,7 @@ export default function Transparencia() {
       )}
       {manifestChecked && <SealSlot seal={seal} />}
       {!manifestChecked ? (
-        <p role="status">a carregar…</p>
+        <output>a carregar…</output>
       ) : (
         <TransparenciaConteudo rows={rows ?? []} />
       )}
